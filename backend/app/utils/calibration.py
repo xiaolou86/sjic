@@ -3,7 +3,8 @@ import cv2
 import numpy as np
 from datetime import datetime
 import base64
-from app import Config, app
+from flask import current_app
+from config import Config
 
 def save_calibration_frame(frame_data, task_id):
     """保存标定图像
@@ -21,7 +22,7 @@ def save_calibration_frame(frame_data, task_id):
         filename = f'calibration_{task_id}.jpg'
         filepath = os.path.join(save_dir, filename)
 
-        app.logger.info(f"Saving calibration image to: {filepath}")
+        current_app.logger.info(f"Saving calibration image to: {filepath}")
 
         # 将图像数据转换为 numpy 数组
         if isinstance(frame_data, str) and frame_data.startswith('data:image'):
@@ -44,7 +45,7 @@ def save_calibration_frame(frame_data, task_id):
         return filename
         
     except Exception as e:
-        app.logger.error(f"Error saving calibration image: {str(e)}")
+        current_app.logger.error(f"Error saving calibration image: {str(e)}")
         raise
 
 def get_calibration_image(task_id):
@@ -54,7 +55,7 @@ def get_calibration_image(task_id):
         save_dir = os.path.join(Config.IMAGE_FOLDER, 'calibration_images')
         filename = f'calibration_{task_id}.jpg'
         filepath = os.path.join(save_dir, filename)
-        app.logger.info(f"Getting calibration image from: {filepath}")
+        current_app.logger.info(f"Getting calibration image from: {filepath}")
         if not os.path.exists(filepath):
             return None
             
@@ -67,5 +68,5 @@ def get_calibration_image(task_id):
         return f'data:image/jpeg;base64,{image_b64}'
         
     except Exception as e:
-        app.logger.error(f"Error reading calibration image: {str(e)}")
+        current_app.logger.error(f"Error reading calibration image: {str(e)}")
         return None 

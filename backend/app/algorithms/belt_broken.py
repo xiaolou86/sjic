@@ -1,6 +1,7 @@
 from .base import BaseAlgorithm
 from app.models import Algorithm
-from app import db, app
+from flask import current_app
+from app.extensions import db
 import cv2
 import numpy as np
 
@@ -26,7 +27,7 @@ class BeltBroken(BaseAlgorithm):
             db.session.add(algorithm)
         else:
             # 如果算法已存在，则更新它
-            app.logger.info(f"Algorithm {type_name} already exists, updating")
+            current_app.logger.info(f"Algorithm {type_name} already exists, updating")
             algorithm.name = '皮带表面故障检测'
             algorithm.description = '皮带表面故障检测'
         db.session.commit()
@@ -144,5 +145,5 @@ class BeltBroken(BaseAlgorithm):
                 }
 
         except Exception as e:
-            app.logger.error(f"Error in belt broken algorithm: {str(e)}")
+            current_app.logger.error(f"Error in belt broken algorithm: {str(e)}")
             raise

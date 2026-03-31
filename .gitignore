@@ -55,11 +55,30 @@ Thumbs.db
 /logs/*
 !/logs/.gitkeep
 /backend/app.db
+/backend/instance/
 
-# YOLO
-#*.pt
-runs/
+# ============================================
+# Binary / Large files (use Git LFS if needed)
+# ============================================
+# Model weights
+*.pt
+*.pth
+*.weights
+*.engine
+
+# ONNX models
 *.onnx
+
+# Video files
+*.mp4
+*.avi
+*.mkv
+*.mov
+*.wmv
+*.flv
+
+# YOLO runs
+runs/
 
 # Frontend build
 /frontend/build/
@@ -78,8 +97,12 @@ coverage/
 # Temp files
 *.log
 *.tmp
-.DS_Store
-Thumbs.db 
 
-# alert images
+# Alert images (runtime generated)
 backend/alerts/
+
+# Calibration images (runtime generated)
+backend/images/calibration_images/
+
+# Old monolithic route file (replaced by blueprints)
+# backend/app/routes/api_routes.py

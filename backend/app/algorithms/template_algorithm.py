@@ -1,6 +1,6 @@
 from .base import BaseAlgorithm
 from app.models import Algorithm
-from app import db
+from app.extensions import db
 
 class TemplateAlgorithm(BaseAlgorithm):
     """模板算法"""

@@ -1,4 +1,5 @@
-from app import db, app
+from flask import current_app
+from app.extensions import db
 from datetime import datetime
 import json
 from sqlalchemy.orm.attributes import flag_modified
@@ -28,22 +29,22 @@ class Setting(db.Model):
 
     def __init__(self):
         super().__init__()
-        app.logger.info("Creating new Setting instance")
+        current_app.logger.info("Creating new Setting instance")
         self.config = self.DEFAULT_CONFIG.copy()
-        app.logger.info(f"Initial config: {self.config}")
+        current_app.logger.info(f"Initial config: {self.config}")
 
     def to_dict(self):
-        app.logger.info(f"Converting to dict, current config: {self.config}")
+        current_app.logger.info(f"Converting to dict, current config: {self.config}")
         return self.config
 
     def update(self, data):
         """更新设置"""
-        app.logger.info(f"Updating config with data: {data}")
-        app.logger.info(f"Current config before update: {self.config}")
+        current_app.logger.info(f"Updating config with data: {data}")
+        current_app.logger.info(f"Current config before update: {self.config}")
 
         # 确保 config 不是 None
         if self.config is None:
-            app.logger.warning("Config was None, resetting to default")
+            current_app.logger.warning("Config was None, resetting to default")
             self.config = self.DEFAULT_CONFIG.copy()
 
         # 递归更新配置
@@ -53,16 +54,16 @@ class Setting(db.Model):
                     if isinstance(value, dict) and isinstance(current[key], dict):
                         update_dict(current[key], value)
                     else:
-                        app.logger.info(f"Updating {key}: {current[key]} -> {value}")
+                        current_app.logger.info(f"Updating {key}: {current[key]} -> {value}")
                         current[key] = value
 
         try:
             update_dict(self.config, data)
-            app.logger.info(f"Config after update: {self.config}")
+            current_app.logger.info(f"Config after update: {self.config}")
             
             # 显式标记 config 字段已被修改
             flag_modified(self, 'config')
             
         except Exception as e:
-            app.logger.error(f"Error updating config: {str(e)}")
+            current_app.logger.error(f"Error updating config: {str(e)}")
             raise

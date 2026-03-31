@@ -1,6 +1,7 @@
 from .base import BaseAlgorithm
 from app.models import Algorithm
-from app import db, app
+from flask import current_app
+from app.extensions import db
 import cv2
 import numpy as np
 import time
@@ -16,29 +17,29 @@ class BeltBrokenHighPrecision(BaseAlgorithm):
     def register(cls):
         """注册或更新算法"""
         type_name = cls.__mapper_args__['polymorphic_identity']
-        app.logger.info(f"Registering algorithm: {type_name}")
+        current_app.logger.info(f"Registering algorithm: {type_name}")
         
         # 查找是否已存在同类型的算法
         algorithm = Algorithm.query.filter_by(type=type_name).first()
         
         if algorithm:
             # 如果算法已存在，则更新它
-            app.logger.info(f"Algorithm {type_name} already exists, updating")
-            algorithm.name = '皮带表面故障检测-高精度检测算法'
-            algorithm.description = '皮带表面故障检测-高精度检测算法'
+            current_app.logger.info(f"Algorithm {type_name} already exists, updating")
+            algorithm.name = '皮带表面故障检测-高精度检测算法2'
+            algorithm.description = '皮带表面故障检测-高精度检测算法2'
         else:
             # 如果算法不存在，则创建新记录
-            app.logger.info(f"Algorithm {type_name} does not exist, creating new")
+            current_app.logger.info(f"Algorithm {type_name} does not exist, creating new")
             algorithm = cls(
-                name='皮带表面故障检测-高精度检测算法',
+                name='皮带表面故障检测-高精度检测算法2',
                 type=type_name,
-                description='皮带表面故障检测-高精度检测算法'
+                description='皮带表面故障检测-高精度检测算法2'
             )
             db.session.add(algorithm)
         
         # 提交更改
         db.session.commit()
-        app.logger.info(f"Algorithm {type_name} registered successfully")
+        current_app.logger.info(f"Algorithm {type_name} registered successfully")
 
     def process(self, camera, parameters):
         """处理图像"""
@@ -180,7 +181,7 @@ class BeltBrokenHighPrecision(BaseAlgorithm):
                                                 2
                                             )
                                 except Exception as e:
-                                    app.logger.error(f"Error in RCNN detection: {str(e)}")
+                                    current_app.logger.error(f"Error in RCNN detection: {str(e)}")
                         else:
                             # 在原图上标记这是YOLO检测结果
                             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
@@ -247,5 +248,5 @@ class BeltBrokenHighPrecision(BaseAlgorithm):
                 }
 
         except Exception as e:
-            app.logger.error(f"Error in belt broken algorithm: {str(e)}")
+            current_app.logger.error(f"Error in belt broken algorithm: {str(e)}")
             raise

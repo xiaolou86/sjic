@@ -1,7 +1,8 @@
 import cv2
 import numpy as np
 from ultralytics import YOLO
-from app import socketio, db, app
+from flask import current_app
+from app.extensions import socketio, db
 import torch
 from app.models import Alert, Camera, DetectionModel, Task
 import os
@@ -13,7 +14,7 @@ from datetime import datetime
 import threading
 import time
 
-app.logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 class DetectorService:
     def __init__(self):
@@ -75,7 +76,7 @@ class DetectorService:
             
             # 检查任务是否已经在运行
             if task_id in self.active_detectors:
-                app.logger.info(f"Task {task_id} is already running")
+                logger.info(f"Task {task_id} is already running")
                 task.status = 'running'
                 db.session.commit()
                 return {"success": True, "message": "Task is already running"}
@@ -106,20 +107,23 @@ class DetectorService:
                 'rtsp_url': rtsp_url
             }
             
+            # 保存 app 引用供线程使用
+            app = current_app._get_current_object()
+            
             # 创建并启动检测线程
             detection_thread = threading.Thread(
                 target=self._detect_loop,
-                args=(task_id, stop_event),
+                args=(task_id, stop_event, app),
                 daemon=True
             )
             self.detection_threads[task_id] = detection_thread
             detection_thread.start()
             
-            app.logger.info(f"Started detection for task {task_id}")
+            logger.info(f"Started detection for task {task_id}")
             return {"success": True, "message": "Detection started"}
             
         except Exception as e:
-            app.logger.error(f"Error starting detection: {str(e)}")
+            logger.error(f"Error starting detection: {str(e)}")
             return {"success": False, "message": str(e)}
 
     def stop_detection(self, task_id):
@@ -133,13 +137,13 @@ class DetectorService:
 
             # 检查任务是否在运行
             if task_id not in self.active_detectors:
-                app.logger.info(f"Task {task_id} is not running")
+                logger.info(f"Task {task_id} is not running")
                 return {"success": True, "message": "Task is not running"}
             
             # 设置停止事件
             if task_id in self.stop_events:
                 self.stop_events[task_id].set()
-                app.logger.info(f"Stop event set for task {task_id}")
+                logger.info(f"Stop event set for task {task_id}")
             
             # 等待线程结束（可选，设置超时）
             if task_id in self.detection_threads:
@@ -148,7 +152,7 @@ class DetectorService:
                     # 等待线程结束，最多等待3秒
                     thread.join(timeout=3)
                     if thread.is_alive():
-                        app.logger.warning(f"Thread for task {task_id} did not terminate within timeout")
+                        logger.warning(f"Thread for task {task_id} did not terminate within timeout")
                 
                 # 从字典中移除线程引用
                 del self.detection_threads[task_id]
@@ -161,15 +165,15 @@ class DetectorService:
                 self.active_detectors[task_id]['camera'].release()
             del self.active_detectors[task_id]
             
-            app.logger.info(f"Stopped detection for task {task_id}")
+            logger.info(f"Stopped detection for task {task_id}")
             return {"success": True, "message": "Detection stopped"}
             
         except Exception as e:
-            app.logger.error(f"Error stopping detection: {str(e)}")
+            logger.error(f"Error stopping detection: {str(e)}")
             return {"success": False, "message": str(e)}
         
 
-    def _detect_loop(self, task_id, stop_event):
+    def _detect_loop(self, task_id, stop_event, app):
         """检测循环"""
         with app.app_context():
             try:
@@ -194,7 +198,7 @@ class DetectorService:
                         self._send_alert_to_external_api(alert.to_dict())
                         
                     except Exception as e:
-                        app.logger.error(f"Error handling alert: {str(e)}")
+                        logger.error(f"Error handling alert: {str(e)}")
 
                 # 启动算法处理
                 algorithm.process(detector['camera'], {
@@ -209,20 +213,20 @@ class DetectorService:
                 })
 
             except Exception as e:
-                app.logger.error(f"Error in detection loop: {str(e)}")
+                logger.error(f"Error in detection loop: {str(e)}")
                 self.stop_detection(task_id)
 
     def _send_alert_to_external_api(self, alert_data):
         """发送告警到外部 API"""
         # todo
-        app.logger.info(f"_send_alert_to_external_api: {alert_data}")
+        logger.info(f"_send_alert_to_external_api: {alert_data}")
         return
     
         try:
             # 配置外部 API 的 URL
-            api_url = app.config.get('EXTERNAL_ALERT_API_URL')
+            api_url = current_app.config.get('EXTERNAL_ALERT_API_URL')
             if not api_url:
-                app.logger.warning("External alert API URL not configured")
+                logger.warning("External alert API URL not configured")
                 return
 
             # 发送 POST 请求
@@ -231,21 +235,21 @@ class DetectorService:
                 json=alert_data,
                 headers={
                     'Content-Type': 'application/json',
-                    'Authorization': f"Bearer {app.config.get('EXTERNAL_API_TOKEN')}"
+                    'Authorization': f"Bearer {current_app.config.get('EXTERNAL_API_TOKEN')}"
                 }
             )
             
             if not response.ok:
-                app.logger.error(f"Failed to send alert to external API: {response.text}")
+                logger.error(f"Failed to send alert to external API: {response.text}")
                 
         except Exception as e:
-            app.logger.error(f"Error sending alert to external API: {str(e)}")
+            logger.error(f"Error sending alert to external API: {str(e)}")
 
     def _save_detection_image(self, frame, results):
         """保存检测图片"""
         try:
             # 创建保存目录
-            save_dir = app.config['ALERT_FOLDER']
+            save_dir = current_app.config['ALERT_FOLDER']
             os.makedirs(save_dir, exist_ok=True)
             
             # 生成文件名
@@ -259,5 +263,5 @@ class DetectorService:
             return filename
             
         except Exception as e:
-            app.logger.error(f"Error saving detection image: {str(e)}")
-            return None 
+            logger.error(f"Error saving detection image: {str(e)}")
+            return None

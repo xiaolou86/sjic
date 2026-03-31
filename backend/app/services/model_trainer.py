@@ -1,7 +1,10 @@
 import yaml
 from pathlib import Path
 from ultralytics import YOLO
-from app import app
+from flask import current_app
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ModelTrainer:
     def __init__(self, config_path='config/training_config.yaml'):
@@ -14,8 +17,7 @@ class ModelTrainer:
             with open(self.config_path) as f:
                 self.config = yaml.safe_load(f)
         except Exception as e:
-            # TODO: 处理错误
-            app.logger.error(f"Error loading config: {str(e)}")
+            logger.error(f"Error loading config: {str(e)}")
             
     def prepare_dataset(self, data_path):
         """准备训练数据集"""
@@ -34,29 +36,28 @@ class ModelTrainer:
         return str(yaml_path)
         
     def train(self, dataset_path, config):
-        with app.app_context():
-            try:
-                # 初始化YOLO模型
-                self.model = YOLO('yolov8n.pt')
-                
-                # 开始训练
-                results = self.model.train(
-                    data=dataset_path,
-                    epochs=config.get('epochs', 100),
-                    batch=config.get('batchSize', 16),
-                    imgsz=640,
-                    save=True,
-                    project='models',
-                    name=config.get('name', 'custom')
-                )
-                
-                return {
-                    'success': True,
-                    'model_path': str(results.save_dir)
-                }
-                
-            except Exception as e:
-                return {
-                    'success': False,
-                    'error': str(e)
-                } 
+        try:
+            # 初始化YOLO模型
+            self.model = YOLO('yolov8n.pt')
+            
+            # 开始训练
+            results = self.model.train(
+                data=dataset_path,
+                epochs=config.get('epochs', 100),
+                batch=config.get('batchSize', 16),
+                imgsz=640,
+                save=True,
+                project='models',
+                name=config.get('name', 'custom')
+            )
+            
+            return {
+                'success': True,
+                'model_path': str(results.save_dir)
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }

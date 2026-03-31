@@ -1,5 +1,6 @@
 from .base import BaseAlgorithm
-from app import db, app
+from flask import current_app
+from app.extensions import db
 from app.models import Algorithm
 import cv2
 import numpy as np
@@ -50,25 +51,25 @@ class BeltDeviationDetection(BaseAlgorithm):
             stop_event = parameters.get('stop_event')
 
             if camera is None:
-                app.logger.error(f"error: camera is None")
+                current_app.logger.error(f"error: camera is None")
                 return
             
             # 获取标定数据
             calibration = algorithm_parameters.get('calibration', {})
             if not calibration:
-                app.logger.error("未找到标定数据，无法进行皮带跑偏检测")
+                current_app.logger.error("未找到标定数据，无法进行皮带跑偏检测")
                 return
                 
             boundary_lines = calibration.get('boundary_lines', [])  # 边界线坐标
             if len(boundary_lines) != 2:
-                app.logger.error(f"边界线数量错误，期望2条，实际{len(boundary_lines)}条")
+                current_app.logger.error(f"边界线数量错误，期望2条，实际{len(boundary_lines)}条")
                 return
                 
             frame_size = calibration.get('frame_size', {})         # 前端显示的帧尺寸
             boundary_distance = calibration.get('boundary_distance', 0)  # 边界线间实际距离(cm)
             deviation_threshold = calibration.get('deviation_threshold', 0)  # 跑偏报警阈值(cm)
             
-            app.logger.info(f"皮带跑偏检测参数: 边界线距离={boundary_distance}cm, 跑偏阈值={deviation_threshold}cm")
+            current_app.logger.info(f"皮带跑偏检测参数: 边界线距离={boundary_distance}cm, 跑偏阈值={deviation_threshold}cm")
             
             h, w = camera.get(cv2.CAP_PROP_FRAME_HEIGHT), camera.get(cv2.CAP_PROP_FRAME_WIDTH)
             new_h, new_w, top, bottom, left, right = get_letterbox_params(h, w, target_size=640)
@@ -82,10 +83,10 @@ class BeltDeviationDetection(BaseAlgorithm):
                     points.append(point)
             if points:
                 line_points = transform_points_from_frontend_to_backend(points, frame_size['height'], frame_size['width'], new_h, new_w, top, left)
-                app.logger.debug(f"points: {points}")
-                app.logger.debug(f"roi_points: {line_points}")
+                current_app.logger.debug(f"points: {points}")
+                current_app.logger.debug(f"roi_points: {line_points}")
                 if line_points is None:
-                    app.logger.error(f"error: line_points is None")
+                    current_app.logger.error(f"error: line_points is None")
                     return
             
             actual_line = []
@@ -95,13 +96,13 @@ class BeltDeviationDetection(BaseAlgorithm):
                     actual_lines.append(actual_line)
                     actual_line = []
             if len(actual_lines) != 2:
-                app.logger.error("actual_lines: need to have 2 lines!")
+                current_app.logger.error("actual_lines: need to have 2 lines!")
 
             while not stop_event.is_set():
                 # 读取一帧
                 ret, frame = camera.read()
                 if not ret:
-                    app.logger.warning("无法读取视频帧")
+                    current_app.logger.warning("无法读取视频帧")
                     time.sleep(1)
                     continue
 
@@ -144,7 +145,7 @@ class BeltDeviationDetection(BaseAlgorithm):
                             
                             # 如果检测到跑偏并且需要告警
                             if is_deviation and self.need_alert_again(last_alert_time, alertThreshold):
-                                app.logger.warning("检测到皮带跑偏！")
+                                current_app.logger.warning("检测到皮带跑偏！")
                                 last_alert_time = datetime.now()
 
                                 # 创建一个副本用于可视化
@@ -154,7 +155,7 @@ class BeltDeviationDetection(BaseAlgorithm):
                                 # 绘制边界线
                                 for line in actual_lines:
                                     cv2.line(vis_frame, line[0], line[1], (0, 0, 255), 2)
-                                    app.logger.debug(f"line: {line}")
+                                    current_app.logger.debug(f"line: {line}")
                                 
                                 # 在可视化图像上绘制皮带轮廓
                                 cv2.drawContours(vis_frame, [belt_contour], -1, (0, 255, 0), 2)
@@ -190,7 +191,7 @@ class BeltDeviationDetection(BaseAlgorithm):
                 time.sleep(0.01)
                 
         except Exception as e:
-            app.logger.error(f"皮带跑偏检测错误: {str(e)}")
+            current_app.logger.error(f"皮带跑偏检测错误: {str(e)}")
             import traceback
-            app.logger.error(traceback.format_exc())
+            current_app.logger.error(traceback.format_exc())
             raise

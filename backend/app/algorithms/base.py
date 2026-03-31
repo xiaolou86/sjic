@@ -1,5 +1,6 @@
 from abc import abstractmethod
-from app import db, app
+from flask import current_app
+from app.extensions import db
 from app.models.algorithm import Algorithm
 import requests
 import os
@@ -45,9 +46,9 @@ class BaseAlgorithm(Algorithm):
         """发送告警到外部 API"""
         try:
             # 配置外部 API 的 URL
-            api_url = app.config.get('EXTERNAL_ALERT_API_URL')
+            api_url = current_app.config.get('EXTERNAL_ALERT_API_URL')
             if not api_url:
-                app.logger.warning("External alert API URL not configured")
+                current_app.logger.warning("External alert API URL not configured")
                 return
 
             # 发送 POST 请求
@@ -56,15 +57,15 @@ class BaseAlgorithm(Algorithm):
                 json=alert_data,
                 headers={
                     'Content-Type': 'application/json',
-                    'Authorization': f"Bearer {app.config.get('EXTERNAL_API_TOKEN')}"
+                    'Authorization': f"Bearer {current_app.config.get('EXTERNAL_API_TOKEN')}"
                 }
             )
             
             if not response.ok:
-                app.logger.error(f"Failed to send alert to external API: {response.text}")
+                current_app.logger.error(f"Failed to send alert to external API: {response.text}")
                 
         except Exception as e:
-            app.logger.error(f"Error sending alert to external API: {str(e)}")
+            current_app.logger.error(f"Error sending alert to external API: {str(e)}")
 
     def save_detection_image(self, frame, results=None, task_name=None, use_frame=False):
         """保存检测图像
@@ -80,7 +81,7 @@ class BaseAlgorithm(Algorithm):
         """
         try:
             # 创建保存目录
-            save_dir = save_dir = app.config['ALERT_FOLDER']
+            save_dir = save_dir = current_app.config['ALERT_FOLDER']
             os.makedirs(save_dir, exist_ok=True)
             
             # 生成文件名
@@ -104,16 +105,16 @@ class BaseAlgorithm(Algorithm):
             
             return filename
         except Exception as e:
-            app.logger.error(f"Error saving detection image: {str(e)}")
+            current_app.logger.error(f"Error saving detection image: {str(e)}")
             return None
 
     def need_alert_again(self, last_alert_time, alertThreshold):
         """判断是否需要再次告警"""
         if last_alert_time is None:
             return True
-        app.logger.debug(f"last_alert_time: {last_alert_time}")
-        app.logger.debug(f"alertThreshold: {alertThreshold}")
-        app.logger.debug(f"datetime.now() - last_alert_time: {(datetime.now() - last_alert_time).total_seconds()}")
+        current_app.logger.debug(f"last_alert_time: {last_alert_time}")
+        current_app.logger.debug(f"alertThreshold: {alertThreshold}")
+        current_app.logger.debug(f"datetime.now() - last_alert_time: {(datetime.now() - last_alert_time).total_seconds()}")
         return (datetime.now() - last_alert_time).total_seconds() >= alertThreshold
 
     def is_point_in_roi(self, point, points):
@@ -124,7 +125,7 @@ class BaseAlgorithm(Algorithm):
         :return: 如果点在检测区域内返回True，否则返回False
         """
         # 创建一个Point对象
-        app.logger.debug(f"is_point_in_roi:point: {point}")
+        current_app.logger.debug(f"is_point_in_roi:point: {point}")
         center_point = Point(point)
         # 创建一个Polygon对象
         roi_polygon = Polygon(points)
