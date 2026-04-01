@@ -16,3 +16,4 @@ flask-sock==0.7.0
 paho-mqtt==1.6.1
 boto3==1.34.0
 flasgger==0.9.7.1
+requests>=2.31.0

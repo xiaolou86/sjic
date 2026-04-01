@@ -88,15 +88,13 @@ def create_app(config_class=Config):
 
         # 导入模型以确保表能被创建
         from app.models import camera, detection_model, alert, task, log  # noqa: F401
-        from app.algorithms.base import BaseAlgorithm
-
-        # 创建数据库表
+        # 初始化数据库与基础预设算法列表（纯数据元信息）
         db.create_all()
         app.logger.info('Database tables created')
 
-        # 注册算法
-        BaseAlgorithm.register_algorithms()
-        app.logger.info('Algorithms registered')
+        from app.models.algorithm import Algorithm
+        Algorithm.initialize_default_algorithms()
+        app.logger.info('Algorithms metadata initialized')
 
         # 注册错误处理器
         _register_error_handlers(app)

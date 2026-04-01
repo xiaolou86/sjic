@@ -1,0 +1,13 @@
+# AI-Worker 全局配置文件
+MQTT_BROKER: "127.0.0.1"
+MQTT_PORT: 1883
+
+# 要监听的任务队列主题
+TRAINING_TOPIC: "sjic/training/jobs"
+
+# 要报告进度的状态汇报主题
+STATUS_TOPIC: "sjic/training/status"
+
+# 本地工作目录
+DOWNLOAD_DIR: "./data/downloads"
+OUTPUT_DIR: "./data/models"
