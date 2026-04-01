@@ -64,7 +64,24 @@ def handle_start_stream(data):
 @stream_bp.route('/api/stream/<int:camera_id>', methods=['GET'])
 @token_required
 def stream_camera(camera_id):
-    """将 RTSP 流转换为 HTTP 流 (MPEG-TS)"""
+    """
+    将 RTSP 转 HTTP 流 (MPEG-TS)
+    ---
+    tags:
+      - 流媒体 (Streams)
+    summary: 获取摄像头的实时网页兼容视频流
+    security:
+      - APIKeyHeader: []
+    parameters:
+      - name: camera_id
+        in: path
+        type: integer
+        required: true
+        description: 摄像头 ID
+    responses:
+      200:
+        description: 返回 MPEG-TS 视频长连接流
+    """
     try:
         camera = Camera.query.get_or_404(camera_id)
         rtsp_url = camera.url
@@ -137,7 +154,23 @@ def stream_camera(camera_id):
 @stream_bp.route('/api/hls/<int:camera_id>/playlist.m3u8', methods=['GET'])
 @token_required
 def hls_playlist(camera_id):
-    """生成 HLS 播放列表"""
+    """
+    生成 HLS 播放列表
+    ---
+    tags:
+      - 流媒体 (Streams)
+    summary: 返回 HLS M3U8 播放列表
+    security:
+      - APIKeyHeader: []
+    parameters:
+      - name: camera_id
+        in: path
+        type: integer
+        required: true
+    responses:
+      200:
+        description: 返回 m3u8 文本
+    """
     camera = Camera.query.get_or_404(camera_id)
 
     # 创建 HLS 目录
@@ -183,7 +216,27 @@ def hls_playlist(camera_id):
 @stream_bp.route('/api/hls/<int:camera_id>/segment_<segment_id>.ts', methods=['GET'])
 @token_required
 def hls_segment(camera_id, segment_id):
-    """提供 HLS 分段"""
+    """
+    提供 HLS 视频分段
+    ---
+    tags:
+      - 流媒体 (Streams)
+    summary: 返回 HLS 具体 ts 分段视频块
+    security:
+      - APIKeyHeader: []
+    parameters:
+      - name: camera_id
+        in: path
+        type: integer
+        required: true
+      - name: segment_id
+        in: path
+        type: string
+        required: true
+    responses:
+      200:
+        description: TS 二进制流
+    """
     from flask import send_from_directory
     hls_dir = os.path.join(current_app.config['TEMP_FOLDER'], f'hls_{camera_id}')
     segment_path = os.path.join(hls_dir, f'segment_{segment_id}.ts')
@@ -267,7 +320,21 @@ def ws_stream_camera(ws, camera_id):
 
 @stream_bp.route('/api/mjpeg/<int:camera_id>', methods=['GET'])
 def mjpeg_stream(camera_id):
-    """使用 OpenCV 提供 MJPEG 流"""
+    """
+    生成 MJPEG 流
+    ---
+    tags:
+      - 流媒体 (Streams)
+    summary: 返回 OpenCV 处理后的 MJPEG 图集流
+    parameters:
+      - name: camera_id
+        in: path
+        type: integer
+        required: true
+    responses:
+      200:
+        description: MJPEG 组合图流
+    """
     try:
         # 获取摄像头
         camera = Camera.query.get_or_404(camera_id)

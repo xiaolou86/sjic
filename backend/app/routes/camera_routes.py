@@ -13,7 +13,18 @@ camera_bp = Blueprint('camera', __name__)
 @camera_bp.route('/api/cameras', methods=['GET'])
 @token_required
 def get_cameras():
-    """获取所有摄像头"""
+    """
+    获取所有摄像头
+    ---
+    tags:
+      - 摄像头管理 (Cameras)
+    summary: 获取摄像头列表
+    security:
+      - APIKeyHeader: []
+    responses:
+      200:
+        description: 摄像头列表
+    """
     try:
         cameras = Camera.query.all()
         current_app.logger.info([camera.to_dict() for camera in cameras])
@@ -25,7 +36,30 @@ def get_cameras():
 @camera_bp.route('/api/cameras', methods=['POST'])
 @token_required
 def create_camera():
-    """创建新摄像头"""
+    """
+    创建新摄像头
+    ---
+    tags:
+      - 摄像头管理 (Cameras)
+    summary: 注册新摄像头
+    security:
+      - APIKeyHeader: []
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            name:
+              type: string
+            url:
+              type: string
+              description: RTSP/HTTP流地址
+    responses:
+      201:
+        description: 摄像头创建成功
+    """
     try:
         data = request.json
         current_app.logger.info(f"Creating new camera: {data}")
@@ -47,7 +81,23 @@ def create_camera():
 @camera_bp.route('/api/cameras/<int:camera_id>', methods=['DELETE'])
 @token_required
 def delete_camera(camera_id):
-    """删除摄像头"""
+    """
+    删除摄像头
+    ---
+    tags:
+      - 摄像头管理 (Cameras)
+    summary: 删除指定摄像头
+    security:
+      - APIKeyHeader: []
+    parameters:
+      - name: camera_id
+        in: path
+        type: integer
+        required: true
+    responses:
+      204:
+        description: 删除成功
+    """
     camera = Camera.query.get_or_404(camera_id)
     db.session.delete(camera)
     db.session.commit()
@@ -56,7 +106,27 @@ def delete_camera(camera_id):
 
 @camera_bp.route('/api/cameras/capture', methods=['POST'])
 def capture_frame():
-    """获取摄像头当前帧"""
+    """
+    获取摄像头当前帧
+    ---
+    tags:
+      - 摄像头管理 (Cameras)
+    summary: 实时截取摄像头图像
+    security:
+      - APIKeyHeader: []
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            camera_id:
+              type: integer
+    responses:
+      200:
+        description: 返回 JPEG 图像二进制流
+    """
     try:
         data = request.json
         camera_id = data.get('camera_id')

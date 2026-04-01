@@ -105,6 +105,10 @@ def create_app(config_class=Config):
     from app.services.mqtt_service import mqtt_service
     mqtt_service.init_app(app)
 
+    # 注册 Swagger
+    from flasgger import Swagger
+    swagger = Swagger(app)
+
     return app
 
 

@@ -12,7 +12,18 @@ setting_bp = Blueprint('setting', __name__)
 @setting_bp.route('/api/settings', methods=['GET'])
 @token_required
 def get_settings():
-    """获取系统设置"""
+    """
+    获取系统全局设置
+    ---
+    tags:
+      - 系统设置 (Settings)
+    summary: 获取配置参数
+    security:
+      - APIKeyHeader: []
+    responses:
+      200:
+        description: 系统配置 JSON
+    """
     try:
         settings = Setting.query.first()
         if not settings:
@@ -28,7 +39,24 @@ def get_settings():
 @setting_bp.route('/api/settings', methods=['POST'])
 @token_required
 def update_settings():
-    """更新系统设置"""
+    """
+    更新系统设置
+    ---
+    tags:
+      - 系统设置 (Settings)
+    summary: 全量更新系统设置
+    security:
+      - APIKeyHeader: []
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+    responses:
+      200:
+        description: 设置更新成功
+    """
     try:
         data = request.get_json()
         current_app.logger.info(f"Received settings update: {data}")

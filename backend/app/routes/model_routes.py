@@ -24,7 +24,18 @@ def allowed_file(filename):
 @model_bp.route('/api/models', methods=['GET'])
 @token_required
 def get_models():
-    """获取所有模型"""
+    """
+    获取所有模型
+    ---
+    tags:
+      - 模型管理 (Models)
+    summary: 获取可用检测模型列表
+    security:
+      - APIKeyHeader: []
+    responses:
+      200:
+        description: 模型配置列表
+    """
     models = DetectionModel.query.all()
     return jsonify([model.to_dict() for model in models])
 
@@ -32,7 +43,38 @@ def get_models():
 @model_bp.route('/api/models/upload', methods=['POST'])
 @token_required
 def upload_model():
-    """上传模型文件"""
+    """
+    上传模型文件
+    ---
+    tags:
+      - 模型管理 (Models)
+    summary: 上传新的网络结构模型文件 (.pt, .onnx, .engine)
+    security:
+      - APIKeyHeader: []
+    consumes:
+      - multipart/form-data
+    parameters:
+      - in: formData
+        name: file
+        type: file
+        required: true
+        description: 模型文件
+      - in: formData
+        name: name
+        type: string
+        required: false
+        description: 模型名称
+      - in: formData
+        name: description
+        type: string
+        required: false
+        description: 模型描述
+    responses:
+      201:
+        description: 模型上传成功
+      400:
+        description: 上传失败，文件格式不对等
+    """
     temp_file = None
     try:
         current_app.logger.info("Model upload request received")
@@ -106,7 +148,24 @@ def upload_model():
 @model_bp.route('/api/models/<int:model_id>', methods=['DELETE'])
 @token_required
 def delete_model(model_id):
-    """删除模型"""
+    """
+    删除模型
+    ---
+    tags:
+      - 模型管理 (Models)
+    summary: 删除指定的检测模型
+    security:
+      - APIKeyHeader: []
+    parameters:
+      - name: model_id
+        in: path
+        type: integer
+        required: true
+        description: 模型 ID
+    responses:
+      204:
+        description: 模型删除成功
+    """
     model = DetectionModel.query.get_or_404(model_id)
     db.session.delete(model)
     db.session.commit()

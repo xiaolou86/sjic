@@ -9,7 +9,47 @@ edge_bp = Blueprint('edge', __name__)
 
 @edge_bp.route('/api/edge/alerts', methods=['POST'])
 def receive_alert():
-    """接收来自边缘设备的告警数据（图片 + JSON数据）"""
+    """
+    接收来自边缘设备的告警数据（图片 + JSON数据）
+    ---
+    tags:
+      - 边缘计算 (Edge Agent)
+    summary: 接收边缘告警
+    description: 专供内网边缘设备调用的接口，通过 HTTP POST (multipart/form-data) 提交告警和截图。
+    consumes:
+      - multipart/form-data
+    parameters:
+      - in: formData
+        name: camera_id
+        type: integer
+        required: true
+        description: 发生违规的摄像头 ID
+      - in: formData
+        name: alert_type
+        type: string
+        required: true
+        description: 告警类型，比如 belt_broken
+      - in: formData
+        name: confidence
+        type: number
+        required: false
+        description: YOLO 算法预测出的置信度 (0.0 - 1.0)
+      - in: formData
+        name: image
+        type: file
+        required: true
+        description: 现场抓拍的实时视频帧 jpeg 截图
+    responses:
+      200:
+        description: 告警接收成功并广播至 WebSocket
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+            message:
+              type: string
+    """
     try:
         # 获取表单中的告警信息 (multipart/form-data)
         camera_id = request.form.get('camera_id')
