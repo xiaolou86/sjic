@@ -1,6 +1,5 @@
 import yaml
 from pathlib import Path
-from ultralytics import YOLO
 from flask import current_app
 import logging
 
@@ -37,6 +36,9 @@ class ModelTrainer:
         
     def train(self, dataset_path, config):
         try:
+            # 延迟加载，防止在云端纯 API 服务器启动时强制要求 torch 环境
+            from ultralytics import YOLO
+            
             # 初始化YOLO模型
             self.model = YOLO('yolov8n.pt')
             
