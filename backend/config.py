@@ -14,6 +14,20 @@ class Config:
     # 模型配置
     MODEL_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
     
+    # --- 端边云对象存储与模型下发配置 ---
+    # 支持: 'MINIO', 'OBS', 'NGINX'
+    STORAGE_TYPE = os.environ.get('STORAGE_TYPE', 'NGINX')
+    
+    # 针对 Nginx: 代理的静态基础路径及下载签名密钥
+    NGINX_STATIC_BASE_URL = os.environ.get('NGINX_STATIC_BASE_URL', 'http://127.0.0.1/static-models')
+    DOWNLOAD_SECURE_KEY = os.environ.get('DOWNLOAD_SECURE_KEY', 'my-super-secret-key-for-nginx')
+    
+    # 针对 MinIO / OBS: API凭证和 Endpoint
+    STORAGE_ENDPOINT = os.environ.get('STORAGE_ENDPOINT', 'http://192.168.1.10:9000')
+    STORAGE_ACCESS_KEY = os.environ.get('STORAGE_ACCESS_KEY', 'minioadmin')
+    STORAGE_SECRET_KEY = os.environ.get('STORAGE_SECRET_KEY', 'minioadmin')
+    STORAGE_BUCKET = os.environ.get('STORAGE_BUCKET', 'sjic-models')
+    
     # 视频源配置
     VIDEO_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'videos')
 

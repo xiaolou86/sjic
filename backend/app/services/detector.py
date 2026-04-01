@@ -1,31 +1,19 @@
 import cv2
-import numpy as np
-from ultralytics import YOLO
 from flask import current_app
 from app.extensions import socketio, db
-import torch
-from app.models import Alert, Camera, DetectionModel, Task
+from app.models import Alert, Camera, DetectionModel, Task, EdgeNode
 import os
 from app.models.algorithm import Algorithm
 from config import Config
 import logging
 import requests
 from datetime import datetime
-import threading
-import time
 
 logger = logging.getLogger(__name__)
 
 class DetectorService:
     def __init__(self):
-        self.running = False
-        self.camera = None
-        self.model = None
-        self.task = None
-        self.active_detectors = {}  # 存储每个任务的检测状态
-        self.detection_threads = {}  # 存储每个任务的线程对象
-        self.stop_events = {}  # 存储每个任务的停止事件
-
+        pass
     def load_camera(self, camera_id):
         """加载摄像头"""
         camera = Camera.query.get(camera_id)
@@ -67,106 +55,91 @@ class DetectorService:
         return alert
 
     def start_detection(self, task_id):
-        """启动检测任务"""
+        """启动检测任务（下发给边缘计算节点）"""
         try:
-            # 获取任务信息
             task = Task.query.get(task_id)
             if not task:
                 return {"success": False, "message": f"Task with id {task_id} not found"}
             
-            # 检查任务是否已经在运行
-            if task_id in self.active_detectors:
-                logger.info(f"Task {task_id} is already running")
-                task.status = 'running'
-                db.session.commit()
-                return {"success": True, "message": "Task is already running"}
+            # 获取算法类型
+            algorithm = Algorithm.query.get(task.algorithm_id)
+            if not algorithm:
+                return {"success": False, "message": "Algorithm not found"}
+
+            # 获取摄像头
+            camera = Camera.query.get(task.cameraId)
+            if not camera:
+                return {"success": False, "message": "Camera not found"}
+
+            # 获取模型
+            model = DetectionModel.query.get(task.modelId)
             
-            # 加载摄像头
-            camera = self.load_camera(task.cameraId)
-            rtsp_url = camera.get_rtsp_url()
-            cap = cv2.VideoCapture(rtsp_url)
-            if not cap.isOpened():
-                return {"success": False, "message": f"Failed to open camera with rtsp url: {rtsp_url}"}
-            
-            # 加载模型
-            model = self.load_model(task.modelId)
-                        
-            # 更新任务状态
-            task.status = 'running'
+            # TODO: 如果还是希望在云端跑（没有edge_node_id的情况），可以保留原逻辑。或者强迫下发。
+            if not task.edge_node_id:
+                return {"success": False, "message": "此任务未指定边缘计算节点 (edge_node_id 为空)"}
+
+            edge_node = EdgeNode.query.get(task.edge_node_id)
+            if not edge_node:
+                return {"success": False, "message": f"Edge node {task.edge_node_id} not found"}
+
+            # 生成受保护的模型下载 URL（24小时内有效）
+            from app.utils.storage import StorageService
+            download_url = StorageService.get_download_url(model.path, expires_in_seconds=86400) if model else ""
+
+            # 组装任务配置负载
+            task_payload = {
+                "msg_id": f"req_{int(datetime.now().timestamp())}",
+                "timestamp": int(datetime.now().timestamp()),
+                "task_id": task.id,
+                "task_name": task.name,
+                "algorithm_type": algorithm.type,
+                "camera": {
+                    "id": camera.id,
+                    "rtsp_url": camera.get_rtsp_url()
+                },
+                "model": {
+                    "id": model.id if model else None,
+                    "download_url": download_url,
+                    "filename": model.path if model else ""
+                },
+                "parameters": {
+                    "confidence": task.confidence,
+                    "alertThreshold": task.alertThreshold,
+                    **(task.algorithm_parameters or {})
+                }
+            }
+
+            from app.services.mqtt_service import mqtt_service
+            mqtt_service.publish_task_start(edge_node.mac_address, task_payload)
+
+            task.status = 'syncing'
+            task.run_status = 'starting'
             db.session.commit()
             
-            # 创建停止事件
-            stop_event = threading.Event()
-            self.stop_events[task_id] = stop_event
-            
-            # 标记任务为运行状态
-            self.active_detectors[task_id] = {
-                'task_id': task_id,
-                'camera': cap,
-                'model': model,
-                'rtsp_url': rtsp_url
-            }
-            
-            # 保存 app 引用供线程使用
-            app = current_app._get_current_object()
-            
-            # 创建并启动检测线程
-            detection_thread = threading.Thread(
-                target=self._detect_loop,
-                args=(task_id, stop_event, app),
-                daemon=True
-            )
-            self.detection_threads[task_id] = detection_thread
-            detection_thread.start()
-            
-            logger.info(f"Started detection for task {task_id}")
-            return {"success": True, "message": "Detection started"}
+            logger.info(f"Published task {task_id} to edge node {edge_node.mac_address}")
+            return {"success": True, "message": "Task start command sent to edge node"}
             
         except Exception as e:
             logger.error(f"Error starting detection: {str(e)}")
             return {"success": False, "message": str(e)}
 
     def stop_detection(self, task_id):
-        """停止检测任务"""
+        """停止检测任务（下发给边缘计算节点）"""
         try:
-            # 更新任务状态
             task = Task.query.get(task_id)
-            if task:
-                task.status = 'stopped'
-                db.session.commit()
+            if not task:
+                return {"success": False, "message": "Task not found"}
 
-            # 检查任务是否在运行
-            if task_id not in self.active_detectors:
-                logger.info(f"Task {task_id} is not running")
-                return {"success": True, "message": "Task is not running"}
-            
-            # 设置停止事件
-            if task_id in self.stop_events:
-                self.stop_events[task_id].set()
-                logger.info(f"Stop event set for task {task_id}")
-            
-            # 等待线程结束（可选，设置超时）
-            if task_id in self.detection_threads:
-                thread = self.detection_threads[task_id]
-                if thread.is_alive():
-                    # 等待线程结束，最多等待3秒
-                    thread.join(timeout=3)
-                    if thread.is_alive():
-                        logger.warning(f"Thread for task {task_id} did not terminate within timeout")
-                
-                # 从字典中移除线程引用
-                del self.detection_threads[task_id]
-            
-            # 清理停止事件
-            if task_id in self.stop_events:
-                del self.stop_events[task_id]
+            task.status = 'stopped'
+            db.session.commit()
 
-            if self.active_detectors[task_id]['camera'] and self.active_detectors[task_id]['camera'].isOpened():
-                self.active_detectors[task_id]['camera'].release()
-            del self.active_detectors[task_id]
-            
-            logger.info(f"Stopped detection for task {task_id}")
-            return {"success": True, "message": "Detection stopped"}
+            if task.edge_node_id:
+                edge_node = EdgeNode.query.get(task.edge_node_id)
+                if edge_node:
+                    from app.services.mqtt_service import mqtt_service
+                    mqtt_service.publish_task_stop(edge_node.mac_address, task_id)
+
+            return {"success": True, "message": "Detection stop command sent"}
             
         except Exception as e:
             logger.error(f"Error stopping detection: {str(e)}")

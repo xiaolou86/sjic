@@ -16,3 +16,5 @@ torchvision==0.21.0
 torch==2.6.0
 shapely==1.8.5
 flask-sock==0.7.0
+paho-mqtt==1.6.1
+boto3==1.34.0

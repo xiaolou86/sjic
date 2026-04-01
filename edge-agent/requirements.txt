@@ -1,0 +1,10 @@
+import paho.mqtt.client as mqtt
+pydantic==2.4.2
+PyYAML==6.0.1
+requests==2.31.0
+opencv-python==4.8.1.78
+numpy==1.24.3
+psutil==5.9.5
+# onnxruntime==1.16.1 # Uncomment if using ONNX format
+# rkinnlite==1.5.0 # Need manual installation for RK3588
+# ultralytics==8.3.78 # Uncomment if using PyTorch/TensorRT

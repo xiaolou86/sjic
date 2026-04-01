@@ -1,0 +1,15 @@
+edge_id: "aa:bb:cc:dd:ee:01" # Unique hardware identifier
+architecture: "jetson"       # jetson / rk3588 / x86
+
+mqtt:
+  broker_url: "127.0.0.1"    # Platform IP address
+  broker_port: 1883
+  keepalive: 60
+
+platform:
+  api_base_url: "http://127.0.0.1:38881/api/edge"
+
+paths:
+  models_dir: "./models"
+  alerts_dir: "./alerts"
+  logs_dir: "./logs"

@@ -16,6 +16,9 @@ class Task(db.Model):
     algorithm_id = db.Column(db.Integer, db.ForeignKey('algorithms.id'))
     algorithm_parameters = db.Column(db.JSON)  # 所有算法特定参数
     status = db.Column(db.String(20), default='stopped')
+    # 边缘架构新增字段
+    edge_node_id = db.Column(db.Integer, db.ForeignKey('edge_nodes.id'), nullable=True) # 指派给哪个边缘节点执行
+    run_status = db.Column(db.String(20), default='stopped') # 边缘端实际的运行状态: syncing, running, stopped, error
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
