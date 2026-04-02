@@ -16,12 +16,14 @@ function Tasks() {
   const [models, setModels] = useState([]);
   const [cameras, setCameras] = useState([]);
   const [algorithms, setAlgorithms] = useState([]);
+  const [nodes, setNodes] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     modelId: '',
     cameraId: '',
+    edge_node_id: '',
     confidence: 0.5,
     notificationEnabled: true,
     algorithm_id: '',
@@ -43,16 +45,18 @@ function Tasks() {
 
   const fetchAll = async () => {
     try {
-      const [tasksRes, modelsRes, camerasRes, algorithmsRes] = await Promise.all([
+      const [tasksRes, modelsRes, camerasRes, algorithmsRes, nodesRes] = await Promise.all([
         axios.get('/api/tasks'),
         axios.get('/api/models'),
         axios.get('/api/cameras'),
-        axios.get('/api/algorithms')
+        axios.get('/api/algorithms'),
+        axios.get('/api/nodes')
       ]);
       setTasks(tasksRes || []);
       setModels(modelsRes || []);
       setCameras(camerasRes || []);
       setAlgorithms(algorithmsRes || []);
+      setNodes(nodesRes.data || []);
     } catch (error) {
       console.error('Error fetching data:', error);
     }
@@ -95,12 +99,13 @@ function Tasks() {
       cameraId: task.cameraId,
       modelId: task.modelId,
       algorithm_id: task.algorithm_id,
+      edge_node_id: task.edge_node_id || '',
       confidence: task.confidence,
       alertThreshold: task.alertThreshold,
       notificationEnabled: task.notificationEnabled,
       algorithm_parameters: task.algorithm_parameters || {}
     });
-    
+
     setEditingTask(task);
     setOpenDialog(true);
   };
@@ -111,6 +116,7 @@ function Tasks() {
       name: '',
       modelId: '',
       cameraId: '',
+      edge_node_id: '',
       confidence: 0.5,
       alertThreshold: 3,
       notificationEnabled: true,
@@ -181,7 +187,7 @@ function Tasks() {
     switch (algorithm.type) {
       case 'belt_broken':
         return (
-          <BeltCalibrationTool 
+          <BeltCalibrationTool
             cameraId={formData.cameraId}
             onCalibrate={handleCalibrate}
           />
@@ -233,7 +239,7 @@ function Tasks() {
         console.log('Detection region data:', task.algorithm_parameters?.detection_region);
         console.log('Points:', task.algorithm_parameters?.detection_region?.points);
         console.log('Frame size:', task.algorithm_parameters?.detection_region?.frame_size);
-        
+
         return (
           <>
             <Typography variant="subtitle2" gutterBottom>目标检测参数：</Typography>
@@ -242,8 +248,8 @@ function Tasks() {
                 <Grid item xs={12}>
                   <Typography gutterBottom>检测区域：</Typography>
                   <Box sx={{ position: 'relative', width: '100%', maxWidth: 800 }}>
-                    <img 
-                      src={task.algorithm_parameters.calibration.image_data} 
+                    <img
+                      src={task.algorithm_parameters.calibration.image_data}
                       alt="Detection Region"
                       style={{ width: '100%', height: 'auto' }}
                     />
@@ -256,10 +262,10 @@ function Tasks() {
                             // 设置canvas尺寸与图像一致
                             canvas.width = task.algorithm_parameters.detection_region.frame_size.width;
                             canvas.height = task.algorithm_parameters.detection_region.frame_size.height;
-                            
+
                             // 绘制图像
                             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                            
+
                             // 绘制检测区域
                             const points = task.algorithm_parameters.detection_region.points;
                             if (points && points.length > 0) {
@@ -270,17 +276,17 @@ function Tasks() {
                                   ctx.lineTo(point.x, point.y);
                                 }
                               });
-                              
+
                               // 闭合路径
                               ctx.closePath();
-                              
+
                               // 填充和描边
                               ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
                               ctx.fill();
                               ctx.strokeStyle = 'yellow';
                               ctx.lineWidth = 2;
                               ctx.stroke();
-                              
+
                               // 绘制顶点
                               points.forEach(point => {
                                 ctx.beginPath();
@@ -329,8 +335,8 @@ function Tasks() {
                 <Grid item xs={12}>
                   <Typography gutterBottom>标定图像：</Typography>
                   <Box sx={{ position: 'relative', width: '100%', maxWidth: 800 }}>
-                    <img 
-                      src={task.algorithm_parameters.calibration.image_data} 
+                    <img
+                      src={task.algorithm_parameters.calibration.image_data}
                       alt="Calibration"
                       style={{ width: '100%', height: 'auto' }}
                     />
@@ -391,7 +397,7 @@ function Tasks() {
                 <Grid item xs={12}>
                   <Typography gutterBottom>标定图像：</Typography>
                   <Box sx={{ position: 'relative', width: '100%', maxWidth: 800 }}>
-                    <img 
+                    <img
                       src={task.algorithm_parameters.calibration.image_data}
                       alt="Calibration"
                       style={{ width: '100%', height: 'auto' }}
@@ -453,7 +459,7 @@ function Tasks() {
         return (
           <Grid container spacing={2}>
             <Grid item xs={12}>
-              <RegionSelectionTool 
+              <RegionSelectionTool
                 cameraId={formData.cameraId}
                 onSelect={handleRegionSelect}
                 existingRegion={formData.algorithm_parameters}
@@ -513,6 +519,7 @@ function Tasks() {
               <TableRow>
                 <TableCell>名称</TableCell>
                 <TableCell>视频源</TableCell>
+                <TableCell>边缘算力节点</TableCell>
                 <TableCell>模型</TableCell>
                 <TableCell>算法</TableCell>
                 <TableCell>状态</TableCell>
@@ -524,6 +531,7 @@ function Tasks() {
                 <TableRow key={task.id}>
                   <TableCell>{task.name}</TableCell>
                   <TableCell>{cameras.find(c => c.id === task.cameraId)?.name}</TableCell>
+                  <TableCell>{nodes.find(n => n.id === task.edge_node_id)?.name || "无"}</TableCell>
                   <TableCell>{models.find(m => m.id === task.modelId)?.name}</TableCell>
                   <TableCell>{algorithms.find(a => a.id === task.algorithm_id)?.name}</TableCell>
                   <TableCell>{task.status}</TableCell>
@@ -569,7 +577,7 @@ function Tasks() {
                 margin="normal"
               />
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
               <Select
                 fullWidth
@@ -619,6 +627,22 @@ function Tasks() {
             </Grid>
 
             <Grid item xs={12} md={6}>
+              <Select
+                fullWidth
+                value={formData.edge_node_id || ''}
+                onChange={(e) => setFormData({ ...formData, edge_node_id: e.target.value })}
+                displayEmpty
+              >
+                <MenuItem value="">选择下位机运算节点</MenuItem>
+                {nodes.map(node => (
+                  <MenuItem key={node.id} value={node.id}>
+                    {node.name} ({node.status === 'online' ? '🟢 在线' : '🔴 离线'})
+                  </MenuItem>
+                ))}
+              </Select>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
                 type="number"
@@ -651,13 +675,13 @@ function Tasks() {
                 label="启用通知"
               />
             </Grid>
-            
+
             {renderAlgorithmSpecificParams()}
 
             <Grid item xs={12}>
               {renderCalibrationTool()}
             </Grid>
-            
+
           </Grid>
         </DialogContent>
         <DialogActions>
@@ -669,8 +693,8 @@ function Tasks() {
       </Dialog>
 
       {/* 详情对话框 */}
-      <Dialog 
-        open={openDetailDialog} 
+      <Dialog
+        open={openDetailDialog}
         onClose={() => setOpenDetailDialog(false)}
         maxWidth="md"
         fullWidth
@@ -715,7 +739,7 @@ function Tasks() {
                   </Grid>
                 </Grid>
               </Grid>
-              
+
               <Grid item xs={12}>
                 <Typography variant="subtitle1">算法参数</Typography>
                 <Divider sx={{ my: 1 }} />

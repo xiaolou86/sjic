@@ -12,6 +12,7 @@ import Training from './pages/Training';
 import Alerts from './pages/Alerts';
 import Algorithms from './pages/Algorithms';
 import Settings from './pages/Settings';
+import Nodes from './pages/Nodes';
 
 const theme = createTheme({
   palette: {
@@ -43,6 +44,13 @@ function App() {
             <PrivateRoute>
               <Layout>
                 <VideoStreams />
+              </Layout>
+            </PrivateRoute>
+          } />
+          <Route path="/nodes" element={
+            <PrivateRoute>
+              <Layout>
+                <Nodes />
               </Layout>
             </PrivateRoute>
           } />

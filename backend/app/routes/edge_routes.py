@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request, current_app
 from app.extensions import db, socketio
-from app.models import Alert
+from app.models import Alert, EdgeNode
+from app.middleware.auth import token_required
 import os
 from datetime import datetime
 from config import Config
@@ -86,4 +87,50 @@ def receive_alert():
 
     except Exception as e:
         current_app.logger.error(f"Error receiving edge alert: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@edge_bp.route('/api/nodes', methods=['GET'])
+@token_required
+def get_nodes():
+    """获取所有边缘节点列表"""
+    try:
+        nodes = EdgeNode.query.all()
+        return jsonify({
+            "success": True,
+            "data": [node.to_dict() for node in nodes]
+        }), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@edge_bp.route('/api/nodes/<int:node_id>', methods=['PUT'])
+@token_required
+def update_node(node_id):
+    """更新边缘节点信息(如改名)"""
+    try:
+        node = EdgeNode.query.get(node_id)
+        if not node:
+            return jsonify({"success": False, "error": "Node not found"}), 404
+            
+        data = request.json
+        if 'name' in data:
+            node.name = data['name']
+            
+        db.session.commit()
+        return jsonify({"success": True, "data": node.to_dict()}), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@edge_bp.route('/api/nodes/<int:node_id>', methods=['DELETE'])
+@token_required
+def delete_node(node_id):
+    """删除或强制下线边缘节点"""
+    try:
+        node = EdgeNode.query.get(node_id)
+        if not node:
+            return jsonify({"success": False, "error": "Node not found"}), 404
+            
+        db.session.delete(node)
+        db.session.commit()
+        return jsonify({"success": True, "message": "Node deleted"}), 200
+    except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
