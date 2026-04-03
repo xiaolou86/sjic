@@ -14,11 +14,21 @@ if os.path.exists(yaml_path):
 def get_cfg(section, key, default=None):
     return yaml_cfg.get(section, {}).get(key, default)
 
+# 强制 SQLite 无论终端在哪级目录启动，都落地到 backend/instance 目录下
+default_sqlite_path = os.path.join(base_dir, 'instance', 'app.db')
+# SQLite 标准协议要求绝对路径时为 sqlite://// 开头 (四道斜杠) 或者是 sqlite:///C:/... 的形式
+# 所以我们把绝对路径转化成通用安全 URL
+fallback_uri = f"sqlite:///{default_sqlite_path}".replace('\\', '/')
+
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or get_cfg('app', 'secret_key', 'your-secret-key')
     
-    # 动态支持 YAML 配置的 DB 或环境变量覆写
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or get_cfg('database', 'uri', 'sqlite:///app.db')
+    # 动态支持 YAML 配置的 DB 或环境变量覆写 (如果用sqlite，则默认固化到绝对路径防止丢失数据)
+    yaml_uri = get_cfg('database', 'uri')
+    if yaml_uri == 'sqlite:///app.db' or not yaml_uri:
+        yaml_uri = fallback_uri
+        
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or yaml_uri
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # --- 端边云对象存储与模型下发配置 ---

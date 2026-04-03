@@ -34,28 +34,24 @@ def preprocess_return_numpy(frame, new_h, new_w, top, bottom, left, right):
     return processed  # 返回 NumPy 数组
 
 def preprocess(frame, new_h, new_w, top, bottom, left, right):
+    """
+    预处理图像，进行 letterbox 变换。
+    注意：为了兼容不同后端（CPU/CUDA/Engine），此处仅返回 NumPy 数组。
+    Ultralytics YOLO 的 model(numpy_array) 会自动根据模型位置处理设备迁移。
+    """
     try:
-        # 1. 检查输入有效性
         if frame is None or frame.size == 0:
             return None
 
-        # 1. Resize 并添加灰边
+        # 1. Resize 并添加灰边 (Letterbox)
         resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
         padded = cv2.copyMakeBorder(
             resized, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(114, 114, 114)
         )
         
-        # 2. 转换为Tensor
-        padded = padded.transpose(2, 0, 1).astype(np.float32) / 255.0  # HWC -> CHW, 归一化
-        padded = np.ascontiguousarray(padded)       # 确保内存连续
-        # 转换为Tensor并添加批次维度
-        padded = torch.tensor(padded, dtype=torch.float32).unsqueeze(0).cuda()  # 转为张量并移至 GPU
-        #padded = torch.tensor(padded).unsqueeze(0).cuda()  # 转为张量并移至 GPU
-
-        print("预处理输出形状:", padded.shape)  # 应为 [1,3,640,640]
-        print("数据类型:", padded.dtype)     # 应为 float32
-        
-        return padded
+        # 返回原生 NumPy 数组，不在此处强行 .cuda()
+        # 这样即便没有 CUDA 的环境，YOLO 也能在 CPU 上跑
+        return padded 
     except Exception as e:
         print(f"Error in preprocess: {e}")
         return None

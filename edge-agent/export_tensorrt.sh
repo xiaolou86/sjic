@@ -1,0 +1,1 @@
+trtexec --onnx=/disk/input/model.onnx --saveEngine=/disk/output/model.engine --workspace=16384 --timingCacheFile=global_cache.cache

@@ -5,11 +5,8 @@ from app.models import Alert, Camera, DetectionModel, Task, EdgeNode
 import os
 from app.models.algorithm import Algorithm
 from config import Config
-import logging
 import requests
 from datetime import datetime
-
-logger = logging.getLogger(__name__)
 
 class DetectorService:
     def __init__(self):
@@ -115,14 +112,14 @@ class DetectorService:
             task.status = 'syncing'
             task.run_status = 'starting'
             
-            logger.info(f"Published task {task_id} to edge node {edge_node.mac_address}")
+            current_app.logger.info(f"Published task {task_id} to edge node {edge_node.mac_address}")
             db.session.commit()
             
             return {"success": True, "message": "Task start command sent to edge node"}
             
         except Exception as e:
             import traceback
-            logger.error(f"Error starting detection: {str(e)}\n{traceback.format_exc()}")
+            current_app.logger.error(f"Error starting detection: {str(e)}\n{traceback.format_exc()}")
             return {"success": False, "message": str(e)}
 
     def stop_detection(self, task_id):
@@ -144,7 +141,7 @@ class DetectorService:
             return {"success": True, "message": "Detection stop command sent"}
             
         except Exception as e:
-            logger.error(f"Error stopping detection: {str(e)}")
+            current_app.logger.error(f"Error stopping detection: {str(e)}")
             return {"success": False, "message": str(e)}
         
 

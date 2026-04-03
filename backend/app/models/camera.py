@@ -25,12 +25,28 @@ class Camera(db.Model):
         }
 
     def get_rtsp_url(self):
-        file = self.url
-        current_app.logger.info(f"File: {file}")
-        if file.startswith('rtsp://'):
-            return self.url
-        else:
+        file = str(self.url).strip()
+        current_app.logger.info(f"Camera Source: {file}")
+        
+        # 1. 常见流媒体协议 (RTSP / RTMP / HTTP 网络流)
+        if any(file.startswith(p) for p in ['rtsp://', 'rtmp://', 'http://', 'https://']):
+            return file
+            
+        # 2. 本地 USB 摄像头设备索引 (如 '0', '1')
+        if file.isdigit():
+            return int(file) # OpenCV 需要整型来进行本地设备采集
+            
+        # 3. Linux/边缘设备驱动路径 (如 '/dev/video0')
+        if file.startswith('/dev/'):
+            return file
+            
+        # 4. 保留兼容：如果是纯前端上传的裸文件名称（旧版云端推理遗留）
+        # 因现在是边缘推理，如果需要下发 MP4 建议输入边缘机器绝对路径，或使用网络流。
+        if not ('/' in file or '\\' in file):
             filename = secure_filename(file)
             file_path = os.path.join(Config.VIDEO_FOLDER, filename)
-            current_app.logger.info(f"File path: {file_path}")
+            # 注意: 如果发送给异地边缘端，边缘端是无法访问云端本机 C 盘/D 盘物理路径的。
+            # 这里保留仅为了容错或后续搭建回源代理。
             return file_path
+            
+        return file

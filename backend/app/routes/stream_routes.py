@@ -397,9 +397,13 @@ def mjpeg_stream(camera_id):
                     last_frame_time = current_time
 
                     # 生成 multipart 响应
-                    yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' +
-                           buffer.tobytes() + b'\r\n')
+                    try:
+                        yield (b'--frame\r\n'
+                               b'Content-Type: image/jpeg\r\n\r\n' +
+                               buffer.tobytes() + b'\r\n')
+                    except (GeneratorExit, ConnectionResetError):
+                        current_app.logger.info("Client closed stream - browser tab closed.")
+                        return  # 退出生成器，触发 finally 释放资源
             except Exception as e:
                 current_app.logger.error(f"Error in MJPEG stream: {str(e)}")
             finally:
