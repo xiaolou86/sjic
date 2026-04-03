@@ -2,15 +2,27 @@ import yaml
 import time
 import logging
 import psutil
+import uuid
 from mqtt_client import EdgeMqttClient
 from engine.task_manager import TaskManager
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('edge_main')
 
+def get_mac_address():
+    """获取设备的真实物理常驻 MAC 地址作为默认唯一硬件标识"""
+    mac_num = hex(uuid.getnode()).replace('0x', '').replace('L', '').zfill(12).upper()
+    return '-'.join(mac_num[i: i + 2] for i in range(0, 12, 2))
+
 def load_config(path='config.yaml'):
     with open(path, 'r') as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f)
+        
+    # 如果配置文件没有指定 edge_id，则自动读取本机的 MAC 地址作为默认 ID
+    if not config.get('edge_id') or config.get('edge_id') == "":
+        config['edge_id'] = get_mac_address()
+        
+    return config
 
 def get_hardware_status():
     """获取设备状态"""

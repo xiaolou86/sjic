@@ -2,12 +2,12 @@ import cv2
 import numpy as np
 from datetime import datetime
 import time
-from .base import EdgeBaseAlgorithm
+from .base import BaseAlgorithm
 
 # 注意：这里如果能引入 ultralytics 最好，如果在边缘端使用不同的推理引擎，
 # 这里可以切换为 rknn 或 onnxruntime 调用。这里保留和原先相似的逻辑做演示。
 
-class BeltBrokenAlgorithm(EdgeBaseAlgorithm):
+class BeltBrokenAlgorithm(BaseAlgorithm):
     """边缘端 - 皮带表面故障检测（解耦版）"""
 
     def process(self, camera_stream, config_dict, logger, stop_event, on_alert):

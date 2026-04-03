@@ -1,11 +1,11 @@
-from .base import EdgeBaseAlgorithm
+from .base import BaseAlgorithm
 import cv2
 import time
 from datetime import datetime
 from ultralytics import YOLO
 from utils.calc import transform_points_from_frontend_to_backend, get_letterbox_params, preprocess
 
-class ObjectDetectionAlgorithm(EdgeBaseAlgorithm):
+class ObjectDetectionAlgorithm(BaseAlgorithm):
     """边缘端目标检测算法"""
 
     def process(self, camera_stream, config_dict, logger, stop_event, on_alert):

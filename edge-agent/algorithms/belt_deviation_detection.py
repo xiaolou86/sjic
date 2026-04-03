@@ -1,4 +1,4 @@
-from .base import EdgeBaseAlgorithm
+from .base import BaseAlgorithm
 import cv2
 import numpy as np
 from datetime import datetime
@@ -8,7 +8,7 @@ from ultralytics import YOLO
 from utils.calc import transform_points_from_frontend_to_backend, get_letterbox_params, preprocess, preprocess_return_numpy
 import torch
 
-class BeltDeviationDetection(EdgeBaseAlgorithm):
+class BeltDeviationDetection(BaseAlgorithm):
     """边缘端：皮带跑偏检测算法"""
     
     def process(self, camera_stream, config_dict, logger, stop_event, on_alert):
@@ -79,18 +79,23 @@ class BeltDeviationDetection(EdgeBaseAlgorithm):
                 
                 # 分割掩码分析
                 if len(results) > 0 and hasattr(results[0], 'masks') and results[0].masks is not None:
+                    # 获取皮带的分割掩码
                     masks = results[0].masks
                     if len(masks) > 0:
                         belt_mask = masks[0].data.cpu().numpy()[0]
                         belt_mask = (belt_mask > 0.5).astype(np.uint8) * 255
                         
+                        # 找到皮带的轮廓
                         contours, _ = cv2.findContours(belt_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                         
                         if contours:
+                            # 获取最大的轮廓（假设是皮带）
                             belt_contour = max(contours, key=cv2.contourArea)
+                            
+                            # 创建皮带的多边形
                             belt_polygon = Polygon(belt_contour.reshape(-1, 2))
                             
-                            # 判断跑到边界外的交点
+                            # 检查皮带是否与边界线相交
                             is_deviation = False
                             for line in actual_lines:
                                 boundary_line = LineString(line)
@@ -103,13 +108,15 @@ class BeltDeviationDetection(EdgeBaseAlgorithm):
                                 logger.warning("!!! 检测到煤矿皮带跑偏 !!!")
                                 last_alert_time = datetime.now()
 
+                                # 创建一个副本用于可视化
                                 processed_numpy = preprocess_return_numpy(frame, new_h, new_w, top, bottom, left, right)               
                                 vis_frame = processed_numpy.copy()
                                 
-                                # 画图
+                                # 绘制边界线
                                 for line in actual_lines:
                                     cv2.line(vis_frame, line[0], line[1], (0, 0, 255), 2)
                                 
+                                # 在可视化图像上绘制皮带轮廓
                                 cv2.drawContours(vis_frame, [belt_contour], -1, (0, 255, 0), 2)
                                 
                                 # 触发告警抛到设备管理器

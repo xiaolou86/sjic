@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Box, Drawer, AppBar, Toolbar, List, Typography, Divider, ListItem, ListItemIcon, ListItemText, IconButton } from '@mui/material';
-import { Videocam, ModelTraining, Settings, Build, NotificationsActive, Task, Code, Logout } from '@mui/icons-material';
+import { Videocam, ModelTraining, Settings, Build, NotificationsActive, Task, Code, Logout, Computer } from '@mui/icons-material';
 
 const drawerWidth = 240;
 

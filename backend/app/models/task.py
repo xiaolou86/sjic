@@ -31,6 +31,8 @@ class Task(db.Model):
             'modelId': self.modelId,
             'cameraId': self.cameraId,
             'algorithm_id': self.algorithm_id,
+            'edge_node_id': self.edge_node_id,
+            'run_status': self.run_status,
             'algorithm_parameters': self.algorithm_parameters,
             'status': self.status,
             'created_at': self.created_at.isoformat()

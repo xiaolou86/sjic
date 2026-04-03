@@ -38,6 +38,7 @@ function Tasks() {
   });
   const [openDetailDialog, setOpenDetailDialog] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [filterNodeId, setFilterNodeId] = useState('all');
 
   useEffect(() => {
     fetchAll();
@@ -116,7 +117,7 @@ function Tasks() {
       name: '',
       modelId: '',
       cameraId: '',
-      edge_node_id: '',
+      edge_node_id: (filterNodeId !== 'all' && filterNodeId !== 'unassigned') ? filterNodeId : '',
       confidence: 0.5,
       alertThreshold: 3,
       notificationEnabled: true,
@@ -494,11 +495,33 @@ function Tasks() {
   };
 
 
+  const filteredTasks = filterNodeId === 'all'
+    ? tasks
+    : filterNodeId === 'unassigned'
+      ? tasks.filter(t => !t.edge_node_id)
+      : tasks.filter(t => t.edge_node_id === filterNodeId);
+
   return (
     <Grid container spacing={3}>
       <Grid item xs={12}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <Typography variant="h5">任务列表</Typography>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <Typography variant="h5">任务列表</Typography>
+            <Select
+              size="small"
+              value={filterNodeId}
+              onChange={(e) => setFilterNodeId(e.target.value)}
+              sx={{ minWidth: 200, bgcolor: 'background.paper' }}
+            >
+              <MenuItem value="all">查看所有节点的所有任务</MenuItem>
+              <MenuItem value="unassigned">查看未分配的任务</MenuItem>
+              {nodes.map(node => (
+                <MenuItem key={node.id} value={node.id}>
+                  {node.name} 的专属任务
+                </MenuItem>
+              ))}
+            </Select>
+          </div>
           <Button
             variant="contained"
             startIcon={<Add />}
@@ -519,7 +542,7 @@ function Tasks() {
               <TableRow>
                 <TableCell>名称</TableCell>
                 <TableCell>视频源</TableCell>
-                <TableCell>边缘算力节点</TableCell>
+                <TableCell>算力节点</TableCell>
                 <TableCell>模型</TableCell>
                 <TableCell>算法</TableCell>
                 <TableCell>状态</TableCell>
@@ -527,7 +550,7 @@ function Tasks() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {tasks.map((task) => (
+              {filteredTasks.map((task) => (
                 <TableRow key={task.id}>
                   <TableCell>{task.name}</TableCell>
                   <TableCell>{cameras.find(c => c.id === task.cameraId)?.name}</TableCell>
@@ -633,7 +656,7 @@ function Tasks() {
                 onChange={(e) => setFormData({ ...formData, edge_node_id: e.target.value })}
                 displayEmpty
               >
-                <MenuItem value="">选择下位机运算节点</MenuItem>
+                <MenuItem value="">选择运算节点</MenuItem>
                 {nodes.map(node => (
                   <MenuItem key={node.id} value={node.id}>
                     {node.name} ({node.status === 'online' ? '🟢 在线' : '🔴 离线'})

@@ -1,58 +1,29 @@
 from .base import BaseAlgorithm
-from app.models import Algorithm
-from flask import current_app
-from app.extensions import db
 import cv2
 import numpy as np
 import time
+from ultralytics import YOLO
 
-class BeltBrokenHighPrecision(BaseAlgorithm):
-    """皮带表面故障检测算法-纯rcnn检测版本"""
-    __tablename__ = 'algorithms'
-    __mapper_args__ = {
-        'polymorphic_identity': 'belt_broken_high_precision'
-    }
+class BeltBrokenRCNNAlgorithm(BaseAlgorithm):
+    """边缘端：皮带表面故障检测算法-纯rcnn检测版本"""
 
-    @classmethod
-    def register(cls):
-        """注册或更新算法"""
-        type_name = cls.__mapper_args__['polymorphic_identity']
-        current_app.logger.info(f"Registering algorithm: {type_name}")
-        
-        # 查找是否已存在同类型的算法
-        algorithm = Algorithm.query.filter_by(type=type_name).first()
-        
-        if algorithm:
-            # 如果算法已存在，则更新它
-            current_app.logger.info(f"Algorithm {type_name} already exists, updating")
-            algorithm.name = '皮带表面故障检测-高精度检测算法2'
-            algorithm.description = '皮带表面故障检测-高精度检测算法2'
-        else:
-            # 如果算法不存在，则创建新记录
-            current_app.logger.info(f"Algorithm {type_name} does not exist, creating new")
-            algorithm = cls(
-                name='皮带表面故障检测-高精度检测算法2',
-                type=type_name,
-                description='皮带表面故障检测-高精度检测算法2'
-            )
-            db.session.add(algorithm)
-        
-        # 提交更改
-        db.session.commit()
-        current_app.logger.info(f"Algorithm {type_name} registered successfully")
-
-    def process(self, camera, parameters):
+    def process(self, camera_stream, config_dict, logger, stop_event, on_alert):
         """处理图像"""
         try:
-            # 获取YOLO模型
-            yolo_model = parameters.get('model')
-            # 获取Faster R-CNN模型
-            rcnn_model = parameters.get('rcnn_model')
+            parameters = config_dict.get('parameters', {})
+            model_path = config_dict.get('model_local_path')
+            task_name = config_dict.get('task_id', 'unknown_task')
+            camera = camera_stream
             
+            # TODO: RCNN load? Assuming primary path is yolo
+            logger.info(f"Loading YOLO Model for RCNN fallback from: {model_path}")
+            yolo_model = YOLO(model_path)
+            
+            # fallback/mock for now if no independent node path configured for rcnn 
+            rcnn_model = None
+
             confidence = parameters.get('confidence', 0.5)
             algorithm_parameters = parameters.get('algorithm_parameters', {})
-            on_alert = parameters.get('on_alert')  # 获取告警处理回调
-            stop_event = parameters.get('stop_event')
             
             # 从标定数据计算像素到厘米的转换比例
             calibration = algorithm_parameters.get('calibration', {})
@@ -181,7 +152,7 @@ class BeltBrokenHighPrecision(BaseAlgorithm):
                                                 2
                                             )
                                 except Exception as e:
-                                    current_app.logger.error(f"Error in RCNN detection: {str(e)}")
+                                    logger.error(f"Error in RCNN detection: {str(e)}")
                         else:
                             # 在原图上标记这是YOLO检测结果
                             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
@@ -241,12 +212,8 @@ class BeltBrokenHighPrecision(BaseAlgorithm):
                             'models_used': list(set(r['model'] for r in defect_regions))
                         }
                 
-                # 如果没有检测到异常，返回原始帧
-                return {
-                    'frame': frame,
-                    'alert': False
-                }
-
+                time.sleep(0.01)
+                
         except Exception as e:
-            current_app.logger.error(f"Error in belt broken algorithm: {str(e)}")
+            logger.error(f"Error in belt broken rcnn algorithm: {str(e)}")
             raise

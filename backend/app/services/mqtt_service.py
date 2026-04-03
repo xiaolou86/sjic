@@ -63,23 +63,37 @@ class MqttService:
             mac = data.get('edge_id')
             if not mac:
                 return
-            node = EdgeNode.query.filter_by(mac_address=mac).first()
-            if not node:
-                # 自动注册新的边缘节点
-                node = EdgeNode(
-                    mac_address=mac,
-                    name=f"Edge-{mac[-5:]}",
-                    status='online',
-                    architecture=data.get('architecture', 'unknown'),
-                    ip_address=data.get('ip_address', '')
-                )
-                db.session.add(node)
-                logger.info(f"Auto-registered new edge node: {mac}")
             
-            node.status = 'online'
-            node.last_heartbeat = datetime.now()
-            node.hardware_status = data.get('hardware', {})
-            db.session.commit()
+            try:
+                node = EdgeNode.query.filter_by(mac_address=mac).first()
+                if not node:
+                    # 自动注册新的边缘节点
+                    node = EdgeNode(
+                        mac_address=mac,
+                        name=f"Edge-{mac[-5:]}",
+                        status='online',
+                        architecture=data.get('architecture', 'unknown'),
+                        ip_address=data.get('ip_address', '')
+                    )
+                    db.session.add(node)
+                    db.session.commit() # 提前 commit 防止不同步
+                    logger.info(f"Auto-registered new edge node: {mac}")
+                
+                node.status = 'online'
+                node.last_heartbeat = datetime.now()
+                node.hardware_status = data.get('hardware', {})
+                db.session.commit()
+            except Exception as e:
+                # 捕获并发心跳导致的并发插入冲突 (UNIQUE constraint failed)
+                db.session.rollback()
+                logger.warning(f"Concurrent insert constraint fallback for {mac}")
+                # 冲突说明已经被别的线程插入，退回纯更新模式
+                node = EdgeNode.query.filter_by(mac_address=mac).first()
+                if node:
+                    node.status = 'online'
+                    node.last_heartbeat = datetime.now()
+                    node.hardware_status = data.get('hardware', {})
+                    db.session.commit()
 
     def _handle_task_status(self, data):
         pass # TODO: 更新任务状态

@@ -6,7 +6,7 @@ from shapely.geometry import Point, Polygon
 import torch
 import numpy as np
 
-class EdgeBaseAlgorithm(ABC):
+class BaseAlgorithm(ABC):
     """边缘端算法纯净抽象基类，不依赖任何数据库和 Web 框架"""
 
     @abstractmethod
