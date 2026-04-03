@@ -114,13 +114,15 @@ class DetectorService:
 
             task.status = 'syncing'
             task.run_status = 'starting'
-            db.session.commit()
             
             logger.info(f"Published task {task_id} to edge node {edge_node.mac_address}")
+            db.session.commit()
+            
             return {"success": True, "message": "Task start command sent to edge node"}
             
         except Exception as e:
-            logger.error(f"Error starting detection: {str(e)}")
+            import traceback
+            logger.error(f"Error starting detection: {str(e)}\n{traceback.format_exc()}")
             return {"success": False, "message": str(e)}
 
     def stop_detection(self, task_id):

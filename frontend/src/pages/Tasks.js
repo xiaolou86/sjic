@@ -3,9 +3,9 @@ import {
   Grid, Paper, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, Button, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Switch, FormControlLabel, Select, MenuItem, IconButton,
-  Typography, Divider, Box
+  Typography, Divider, Box, InputAdornment
 } from '@mui/material';
-import { Add, Edit, Delete, PlayArrow, Stop, Info } from '@mui/icons-material';
+import { Add, Edit, Delete, PlayArrow, Stop, Info, Search } from '@mui/icons-material';
 import axios from '../utils/axios';
 import BeltCalibrationTool from '../components/BeltCalibrationTool';
 import BeltDeviationCalibrationTool from '../components/BeltDeviationCalibrationTool';
@@ -38,7 +38,11 @@ function Tasks() {
   });
   const [openDetailDialog, setOpenDetailDialog] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
+
+  // Filtering States
   const [filterNodeId, setFilterNodeId] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     fetchAll();
@@ -495,33 +499,25 @@ function Tasks() {
   };
 
 
-  const filteredTasks = filterNodeId === 'all'
-    ? tasks
-    : filterNodeId === 'unassigned'
-      ? tasks.filter(t => !t.edge_node_id)
-      : tasks.filter(t => t.edge_node_id === filterNodeId);
+  const filteredTasks = tasks.filter(t => {
+    // 1. By Node
+    if (filterNodeId === 'unassigned' && t.edge_node_id) return false;
+    if (filterNodeId !== 'all' && filterNodeId !== 'unassigned' && t.edge_node_id !== filterNodeId) return false;
+
+    // 2. By Status
+    if (filterStatus !== 'all' && t.status !== filterStatus) return false;
+
+    // 3. By Search Query
+    if (searchQuery && !t.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+
+    return true;
+  });
 
   return (
     <Grid container spacing={3}>
       <Grid item xs={12}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <Typography variant="h5">任务列表</Typography>
-            <Select
-              size="small"
-              value={filterNodeId}
-              onChange={(e) => setFilterNodeId(e.target.value)}
-              sx={{ minWidth: 200, bgcolor: 'background.paper' }}
-            >
-              <MenuItem value="all">查看所有节点的所有任务</MenuItem>
-              <MenuItem value="unassigned">查看未分配的任务</MenuItem>
-              {nodes.map(node => (
-                <MenuItem key={node.id} value={node.id}>
-                  {node.name} 的专属任务
-                </MenuItem>
-              ))}
-            </Select>
-          </div>
+          <Typography variant="h5" sx={{ fontWeight: 'bold' }}>调度任务中心</Typography>
           <Button
             variant="contained"
             startIcon={<Add />}
@@ -530,9 +526,56 @@ function Tasks() {
               setOpenDialog(true);
             }}
           >
-            添加任务
+            添加新任务
           </Button>
         </div>
+
+        {/* 高级过滤栏 */}
+        <Paper sx={{ p: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+          <TextField
+            size="small"
+            placeholder="搜索任务名称..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+            sx={{ flexGrow: 1, minWidth: 200 }}
+          />
+
+          <Select
+            size="small"
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            displayEmpty
+            sx={{ minWidth: 150 }}
+          >
+            <MenuItem value="all">运行状态 (全部)</MenuItem>
+            <MenuItem value="stopped">🔴 已停止 (Stopped)</MenuItem>
+            <MenuItem value="starting">🟡 启动中 (Starting)</MenuItem>
+            <MenuItem value="running">🟢 运行中 (Running)</MenuItem>
+          </Select>
+
+          <Select
+            size="small"
+            value={filterNodeId}
+            onChange={(e) => setFilterNodeId(e.target.value)}
+            displayEmpty
+            sx={{ minWidth: 220 }}
+          >
+            <MenuItem value="all">部署节点 (全平台)</MenuItem>
+            <MenuItem value="unassigned">⚠️ 尚未分配节点的任务</MenuItem>
+            {nodes.map(node => (
+              <MenuItem key={node.id} value={node.id}>
+                🖥️ {node.name}
+              </MenuItem>
+            ))}
+          </Select>
+        </Paper>
       </Grid>
 
       <Grid item xs={12}>

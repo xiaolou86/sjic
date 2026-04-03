@@ -36,12 +36,24 @@ class StorageService:
                 config=Config(signature_version='s3v4'),
                 region_name='us-east-1' # 标准的 fallback
             )
+            raw_bucket_path = current_app.config['STORAGE_BUCKET']
             
+            # 智能解析: 如果用户填入了类似 dev/sjic/models 的包含虚拟目录的路径
+            if '/' in raw_bucket_path:
+                parts = raw_bucket_path.strip('/').split('/', 1)
+                real_bucket = parts[0]
+                # 拼接目录前缀和文件名
+                prefix = parts[1].strip('/')
+                real_key = f"{prefix}/{filename}" if prefix else filename
+            else:
+                real_bucket = raw_bucket_path
+                real_key = filename
+                
             url = s3_client.generate_presigned_url(
                 ClientMethod='get_object',
                 Params={
-                    'Bucket': current_app.config['STORAGE_BUCKET'],
-                    'Key': filename
+                    'Bucket': real_bucket,
+                    'Key': real_key
                 },
                 ExpiresIn=expires_in_seconds
             )

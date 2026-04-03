@@ -1,0 +1,35 @@
+# ---------------------------------------------------------
+# SJIC Cloud Platform Configuration
+# ---------------------------------------------------------
+
+app:
+  secret_key: "your-secret-key"
+  
+database:
+  # 如果要切回 SQLite，填入 sqlite:///app.db 即可
+  # 生产环境推荐：mysql+pymysql://root:123456@127.0.0.1:3306/sjic_db?charset=utf8mb4
+  uri: "sqlite:///app.db"
+
+storage:
+  # 端边云对象存储与模型下发配置
+  # 支持: 'MINIO', 'OBS', 'NGINX'
+  type: "MINIO"
+  
+  # ---------- 针对 Nginx 配置 ----------
+  nginx_static_base_url: "http://127.0.0.1/static-models"
+  download_secure_key: "my-super-secret-key-for-nginx"
+
+  # ---------- 针对 S3/MinIO 配置 ----------
+  endpoint: "https://minio-api.nm.ljyun.cn"
+  access_key: "zdVLmnfYFK8KtoMbTVEA"
+  secret_key: "qcyJQhNt6tZwYptfM2VnzWltegvOoA845F9QcRq8"
+  bucket: "dev/sjic/models"
+
+fs:
+  # 【重要隐私配置】告警产生的原始图片存放处
+  # 如果为空，默认存储在 backend/alerts/
+  # 私有化NAS挂载示例: "/mnt/nas/factory_alerts"
+  alert_storage_path: ""
+
+security:
+  cors_origins: "*"
