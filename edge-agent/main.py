@@ -1,13 +1,19 @@
 import yaml
 import time
+import os
 import logging
 import psutil
 import uuid
+
+# 设置环境变量，优化 OpenCV FFmpeg 读取性能，防止出现 grabFrame packet read max attempts exceeded
+os.environ["OPENCV_FFMPEG_READ_ATTEMPTS"] = "16384"
+
 from mqtt_client import EdgeMqttClient
 from engine.task_manager import TaskManager
+# 修改日志格式：使用标准的层级化日志
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - [%(name)s] - %(levelname)s - %(message)s')
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger('edge_main')
+logger = logging.getLogger('edge')
 
 def get_mac_address():
     """获取设备的真实物理常驻 MAC 地址作为默认唯一硬件标识"""

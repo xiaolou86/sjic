@@ -6,7 +6,7 @@ import os
 import cv2
 from algorithms import get_algorithm
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('engine.task')
 
 class TaskManager:
     def __init__(self, config):
@@ -115,15 +115,20 @@ class TaskManager:
             task_config['model_local_path'] = model_path
 
             # 定义告警回调
-            def handle_alert(alert_type, confidence, frame):
-                self._upload_alert(task_config['camera']['id'], alert_type, confidence, image_frame=frame)
+            def handle_alert(alert_type, confidence, image_frame):
+                self._upload_alert(task_config['camera']['id'], alert_type, confidence, image_frame=image_frame)
 
             # 让纯业务代码接管！彻底剥离调度！
             logger.info(f"Handing over stream {rtsp_url} to algorithm: {algo_type}")
+            
+            # 为该任务创建一个专用的子日志器
+            # 这样算法里每一行打印都会带上 [engine.task.Task-4.object_detection] 的前缀
+            task_logger = logger.getChild(f"Task-{task_id}.{algo_type}")
+            
             algo_instance.process(
                 camera_stream=cap,
                 config_dict=task_config,
-                logger=logger,
+                logger=task_logger,
                 stop_event=stop_event,
                 on_alert=handle_alert
             )

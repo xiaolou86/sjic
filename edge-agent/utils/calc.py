@@ -40,6 +40,7 @@ def preprocess(frame, new_h, new_w, top, bottom, left, right):
     Ultralytics YOLO 的 model(numpy_array) 会自动根据模型位置处理设备迁移。
     """
     try:
+        # 1. 检查输入有效性
         if frame is None or frame.size == 0:
             return None
 

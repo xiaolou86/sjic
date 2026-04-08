@@ -102,7 +102,7 @@ class DetectorService:
                 "parameters": {
                     "confidence": task.confidence,
                     "alertThreshold": task.alertThreshold,
-                    **(task.algorithm_parameters or {})
+                    "algorithm_parameters": task.algorithm_parameters,
                 }
             }
 

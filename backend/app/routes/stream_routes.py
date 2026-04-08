@@ -338,7 +338,7 @@ def mjpeg_stream(camera_id):
     try:
         # 获取摄像头
         camera = Camera.query.get_or_404(camera_id)
-        rtsp_url = camera.url
+        rtsp_url = camera.get_rtsp_url()
         current_app.logger.info(f"Starting MJPEG stream for camera {camera_id}: {rtsp_url}")
 
         # 设置响应头

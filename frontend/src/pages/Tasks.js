@@ -45,25 +45,38 @@ function Tasks() {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    fetchAll();
+    fetchMetadata();
+    fetchTasks();
+    // 5秒轮询一次，仅更新任务状态，减少不必要的元数据请求
+    const timer = setInterval(() => {
+      fetchTasks();
+    }, 5000);
+    return () => clearInterval(timer);
   }, []);
 
-  const fetchAll = async () => {
+  const fetchMetadata = async () => {
     try {
-      const [tasksRes, modelsRes, camerasRes, algorithmsRes, nodesRes] = await Promise.all([
-        axios.get('/api/tasks'),
+      const [modelsRes, camerasRes, algorithmsRes, nodesRes] = await Promise.all([
         axios.get('/api/models'),
         axios.get('/api/cameras'),
         axios.get('/api/algorithms'),
         axios.get('/api/nodes')
       ]);
-      setTasks(tasksRes || []);
       setModels(modelsRes || []);
       setCameras(camerasRes || []);
       setAlgorithms(algorithmsRes || []);
       setNodes(nodesRes.data || []);
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('Error fetching metadata:', error);
+    }
+  };
+
+  const fetchTasks = async () => {
+    try {
+      const tasksRes = await axios.get('/api/tasks');
+      setTasks(tasksRes || []);
+    } catch (error) {
+      console.error('Error fetching tasks:', error);
     }
   };
 
@@ -82,7 +95,7 @@ function Tasks() {
       await axios.put(`/api/tasks/${editingTask.id}`, formData);
       setOpenDialog(false);
       resetForm();
-      fetchAll();
+      fetchTasks();
     } catch (error) {
       console.error('Error updating task:', error);
     }
@@ -91,7 +104,7 @@ function Tasks() {
   const handleDelete = async (id) => {
     try {
       await axios.delete(`/api/tasks/${id}`);
-      fetchAll();
+      fetchTasks();
     } catch (error) {
       console.error('Error deleting task:', error);
     }
@@ -153,7 +166,7 @@ function Tasks() {
         }
       });
       task.status = 'running';
-      fetchAll();
+      fetchTasks();
     } catch (error) {
       console.error('Error starting detection:', error);
     }
@@ -165,7 +178,7 @@ function Tasks() {
         task_id: task.id
       });
       task.status = 'stopped';
-      fetchAll();
+      fetchTasks();
     } catch (error) {
       console.error('Error stopping detection:', error);
     }

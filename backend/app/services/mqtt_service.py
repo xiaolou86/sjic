@@ -6,6 +6,7 @@ import os
 from flask import current_app
 from app.extensions import db
 from app.models.edge_node import EdgeNode
+from app.models.task import Task
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -96,7 +97,40 @@ class MqttService:
                     db.session.commit()
 
     def _handle_task_status(self, data):
-        pass # TODO: 更新任务状态
+        """更新任务在云端的运行状态反馈"""
+        if not self.app:
+            return
+            
+        with self.app.app_context():
+            task_id = data.get('task_id')
+            status = data.get('status') # running, stopped, error
+            message = data.get('message', '')
+            
+            if not task_id:
+                return
+                
+            try:
+                task = Task.query.get(task_id)
+                if task:
+                    task.run_status = status
+                    # 同时更新主状态，确保 UI 反应一致
+                    task.status = status 
+                    db.session.commit()
+                    logger.info(f"Task {task_id} status updated to {status}: {message}")
+                    
+                    # 如果有 SocketIO，这里可以实时推给前端刷新列表状态
+                    try:
+                        from app.extensions import socketio
+                        socketio.emit('task_status_change', {
+                            "task_id": task_id,
+                            "run_status": status,
+                            "message": message
+                        })
+                    except ImportError:
+                        pass
+            except Exception as e:
+                db.session.rollback()
+                logger.error(f"Error updating task status: {str(e)}")
 
     def publish_task_start(self, mac_address, task_payload):
         """下发任务配置到盒子"""

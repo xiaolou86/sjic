@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Grid, Card, CardContent, Typography, Button, Dialog, DialogTitle, 
-  DialogContent, DialogActions, TextField, Alert, Table, TableBody, 
-  TableCell, TableContainer, TableHead, TableRow, Paper, IconButton 
+import {
+  Grid, Card, CardContent, Typography, Button, Dialog, DialogTitle,
+  DialogContent, DialogActions, TextField, Alert, Table, TableBody,
+  TableCell, TableContainer, TableHead, TableRow, Paper, IconButton
 } from '@mui/material';
 import { Add, Visibility, Delete, Close } from '@mui/icons-material';
 import axios, { getBaseUrl, getWebSocketUrl } from '../utils/axios';
@@ -95,15 +95,15 @@ function VideoStreams() {
                     <TableCell>{stream.status ? '在线' : '离线'}</TableCell>
                     <TableCell>{new Date(stream.created_at).toLocaleString()}</TableCell>
                     <TableCell>
-                      <IconButton 
-                        color="primary" 
+                      <IconButton
+                        color="primary"
                         onClick={() => handlePreview(stream)}
                         title="预览"
                       >
                         <Visibility />
                       </IconButton>
-                      <IconButton 
-                        color="error" 
+                      <IconButton
+                        color="error"
                         onClick={() => handleDelete(stream.id)}
                         title="删除"
                       >
@@ -184,16 +184,16 @@ function JSMpegPlayer({ cameraId, onError }) {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [useHttpFallback, setUseHttpFallback] = useState(false);
-  
+
   useEffect(() => {
     let player = null;
-    
+
     const initPlayer = () => {
       if (!canvasRef.current) return;
-      
+
       try {
         setLoading(true);
-        
+
         let url;
         if (useHttpFallback) {
           // 使用 HTTP 流作为备选方案
@@ -206,7 +206,7 @@ function JSMpegPlayer({ cameraId, onError }) {
           url = getWebSocketUrl(`/ws/stream/${cameraId}?token=${token}`);
           console.log('Connecting to WebSocket URL:', url);
         }
-        
+
         // 创建 JSMpeg 播放器
         const options = {
           canvas: canvasRef.current,
@@ -220,7 +220,7 @@ function JSMpegPlayer({ cameraId, onError }) {
           },
           onError: (err) => {
             console.error('JSMpeg error:', err);
-            
+
             // 如果 WebSocket 失败，尝试 HTTP 流
             if (!useHttpFallback) {
               console.log('Switching to HTTP fallback');
@@ -232,16 +232,16 @@ function JSMpegPlayer({ cameraId, onError }) {
             }
           }
         };
-        
+
         // 如果使用 WebSocket，添加协议选项
         if (!useHttpFallback) {
           options.protocols = ['binary'];
         }
-        
+
         player = new JSMpeg.Player(url, options);
         playerRef.current = player;
         console.log('JSMpeg player initialized');
-        
+
         // 添加超时检查
         setTimeout(() => {
           if (loading && !error && !useHttpFallback) {
@@ -256,10 +256,10 @@ function JSMpegPlayer({ cameraId, onError }) {
         if (onError) onError(err);
       }
     };
-    
+
     // 初始化播放器
     initPlayer();
-    
+
     // 清理函数
     return () => {
       console.log('Cleaning up JSMpeg player');
@@ -276,15 +276,15 @@ function JSMpegPlayer({ cameraId, onError }) {
       }
     };
   }, [cameraId, useHttpFallback, onError]);
-  
+
   return (
     <div className="video-container" style={{ textAlign: 'center' }}>
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
-          <Button 
-            color="inherit" 
-            size="small" 
+          <Button
+            color="inherit"
+            size="small"
             onClick={() => window.location.reload()}
             sx={{ ml: 2 }}
           >
@@ -299,14 +299,14 @@ function JSMpegPlayer({ cameraId, onError }) {
           </Typography>
         </div>
       )}
-      <canvas 
-        ref={canvasRef} 
+      <canvas
+        ref={canvasRef}
         width="640"
         height="360"
-        style={{ 
-          width: '100%', 
-          maxWidth: '800px', 
-          backgroundColor: '#000' 
+        style={{
+          width: '100%',
+          maxWidth: '800px',
+          backgroundColor: '#000'
         }}
       />
     </div>
@@ -318,20 +318,20 @@ function HttpStreamPlayer({ cameraId, onError }) {
   const playerRef = useRef(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
-  
+
   useEffect(() => {
     let player = null;
-    
+
     const initPlayer = () => {
       if (!canvasRef.current) return;
-      
+
       try {
         setLoading(true);
         // 使用 getBaseUrl 获取基础 URL
         const baseUrl = getBaseUrl();
         const url = `${baseUrl}/api/stream/${cameraId}`;
         console.log('Connecting to HTTP stream URL:', url);
-        
+
         // 创建 JSMpeg 播放器
         player = new JSMpeg.Player(url, {
           canvas: canvasRef.current,
@@ -351,10 +351,10 @@ function HttpStreamPlayer({ cameraId, onError }) {
             if (onError) onError(err);
           }
         });
-        
+
         playerRef.current = player;
         console.log('HTTP JSMpeg player initialized');
-        
+
         // 添加超时检查
         setTimeout(() => {
           if (loading && !error) {
@@ -370,10 +370,10 @@ function HttpStreamPlayer({ cameraId, onError }) {
         if (onError) onError(err);
       }
     };
-    
+
     // 初始化播放器
     initPlayer();
-    
+
     // 清理函数
     return () => {
       console.log('Cleaning up HTTP JSMpeg player');
@@ -390,15 +390,15 @@ function HttpStreamPlayer({ cameraId, onError }) {
       }
     };
   }, [cameraId, onError]);
-  
+
   return (
     <div className="video-container" style={{ textAlign: 'center' }}>
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
-          <Button 
-            color="inherit" 
-            size="small" 
+          <Button
+            color="inherit"
+            size="small"
             onClick={() => window.location.reload()}
             sx={{ ml: 2 }}
           >
@@ -413,14 +413,14 @@ function HttpStreamPlayer({ cameraId, onError }) {
           </Typography>
         </div>
       )}
-      <canvas 
-        ref={canvasRef} 
+      <canvas
+        ref={canvasRef}
         width="640"
         height="360"
-        style={{ 
-          width: '100%', 
-          maxWidth: '800px', 
-          backgroundColor: '#000' 
+        style={{
+          width: '100%',
+          maxWidth: '800px',
+          backgroundColor: '#000'
         }}
       />
     </div>
@@ -429,14 +429,14 @@ function HttpStreamPlayer({ cameraId, onError }) {
 
 function HLSPlayer({ cameraId }) {
   const videoRef = useRef(null);
-  
+
   useEffect(() => {
     if (videoRef.current) {
       // 使用 getBaseUrl 获取基础 URL
       const baseUrl = getBaseUrl();
       const hlsUrl = `${baseUrl}/api/hls/${cameraId}/playlist.m3u8`;
       console.log('Loading HLS stream from:', hlsUrl);
-      
+
       if (videoRef.current.canPlayType('application/vnd.apple.mpegurl')) {
         // 原生 HLS 支持 (Safari)
         videoRef.current.src = hlsUrl;
@@ -450,17 +450,17 @@ function HLSPlayer({ cameraId }) {
       }
     }
   }, [cameraId]);
-  
+
   return (
     <div className="video-container" style={{ textAlign: 'center' }}>
-      <video 
-        ref={videoRef} 
-        controls 
-        autoPlay 
-        style={{ 
-          width: '100%', 
-          maxWidth: '800px', 
-          backgroundColor: '#000' 
+      <video
+        ref={videoRef}
+        controls
+        autoPlay
+        style={{
+          width: '100%',
+          maxWidth: '800px',
+          backgroundColor: '#000'
         }}
       />
     </div>
@@ -471,47 +471,58 @@ function MJPEGPlayer({ cameraId }) {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const imgRef = useRef(null);
-  
+
+  // 构建 MJPEG 流 URL (提升至 useEffect 之前，修复初始化顺序问题)
+  const baseUrl = getBaseUrl();
+  const streamUrl = `${baseUrl}/api/mjpeg/${cameraId}`;
+
   useEffect(() => {
     // 图像加载完成时的处理
     const handleImageLoad = () => {
       setLoading(false);
     };
-    
+
     // 图像加载失败时的处理
     const handleImageError = () => {
-      setError('视频流加载失败');
-      setLoading(false);
+      // 只有在真的加载出错，且 src 不为空时才提示报错
+      if (imgRef.current && imgRef.current.src !== window.location.href && imgRef.current.src !== "") {
+        setError('视频流加载失败');
+        setLoading(false);
+      }
     };
-    
+
+    let mounted = true;
+
     // 添加事件监听器
     const imgElement = imgRef.current;
     if (imgElement) {
       imgElement.addEventListener('load', handleImageLoad);
       imgElement.addEventListener('error', handleImageError);
+
+      // 核心修复：在这里显式注入 URL，触发预览加载
+      imgElement.src = streamUrl;
     }
-    
+
     // 清理函数
     return () => {
+      mounted = false;
       if (imgElement) {
         imgElement.removeEventListener('load', handleImageLoad);
         imgElement.removeEventListener('error', handleImageError);
+        // 主动杀掉长连接：将 src 置为空，切断向后端的请求
+        imgElement.src = "";
       }
     };
-  }, [cameraId]);
-  
-  // 构建 MJPEG 流 URL
-  const baseUrl = getBaseUrl();
-  const streamUrl = `${baseUrl}/api/mjpeg/${cameraId}`;
-  
+  }, [cameraId, streamUrl]); // 强制监听 URL 变化防止渲染死锁
+
   return (
     <div className="video-container" style={{ textAlign: 'center' }}>
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
-          <Button 
-            color="inherit" 
-            size="small" 
+          <Button
+            color="inherit"
+            size="small"
             onClick={() => window.location.reload()}
             sx={{ ml: 2 }}
           >
@@ -526,13 +537,12 @@ function MJPEGPlayer({ cameraId }) {
           </Typography>
         </div>
       )}
-      <img 
+      <img
         ref={imgRef}
-        src={streamUrl}
         alt="Camera Stream"
-        style={{ 
-          width: '100%', 
-          maxWidth: '800px', 
+        style={{
+          width: '100%',
+          maxWidth: '800px',
           backgroundColor: '#000',
           display: error ? 'none' : 'block'
         }}
