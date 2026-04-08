@@ -15,12 +15,14 @@ class TaskManager:
         self.stop_events = {}     # task_id -> threading.Event()
         self.mqtt_client = None   # 将被注入
         self.api_base_url = self.config['platform']['api_base_url']
+        self.persistence_file = os.path.join(self.config['paths']['models_dir'], 'tasks.json')
         os.makedirs(self.config['paths']['models_dir'], exist_ok=True)
+        self.active_configs = {}  # task_id -> config dictionary for persistence
 
     def set_mqtt_client(self, client):
         self.mqtt_client = client
 
-    def start_task(self, task_config):
+    def start_task(self, task_config, save=True):
         """解析云端指令并启动推理流"""
         task_id = task_config.get('task_id')
         if not task_id:
@@ -50,13 +52,20 @@ class TaskManager:
             daemon=True
         )
         self.active_tasks[task_id] = thread
+        self.active_configs[task_id] = task_config
         thread.start()
         
+        if save:
+            self._save_tasks()
+
         self._report_status(task_id, "running", "Task started successfully")
 
     def stop_task(self, task_id):
         if task_id in self.stop_events:
             self.stop_events[task_id].set()
+            if task_id in self.active_configs:
+                del self.active_configs[task_id]
+                self._save_tasks()
             logger.info(f"Sent stop signal to task {task_id}")
             # 等待结束并在 _run_inference_loop 中清理字典
         else:
@@ -148,6 +157,35 @@ class TaskManager:
             del self.active_tasks[task_id]
         if task_id in self.stop_events:
             del self.stop_events[task_id]
+        # 注意：这里不清 self.active_configs，因为它决定了下次重启是否自启动
+        # 如果是因为 error 导致的退出，可能需要用户手动再点一次 start 或者由 reload 逻辑处理
+
+    def _save_tasks(self):
+        """持久化当前运行的任务配置"""
+        try:
+            import json
+            with open(self.persistence_file, 'w', encoding='utf-8') as f:
+                json.dump(list(self.active_configs.values()), f, indent=2, ensure_ascii=False)
+            logger.debug(f"Saved {len(self.active_configs)} task configs to {self.persistence_file}")
+        except Exception as e:
+            logger.error(f"Failed to save tasks: {str(e)}")
+
+    def reload_tasks(self):
+        """重启后重新加载任务"""
+        if not os.path.exists(self.persistence_file):
+            return
+        
+        try:
+            import json
+            with open(self.persistence_file, 'r', encoding='utf-8') as f:
+                configs = json.load(f)
+            
+            logger.info(f"Found {len(configs)} tasks to resume from persistence.")
+            for cfg in configs:
+                # 重新启动，但不立即再次保存文件
+                self.start_task(cfg, save=False)
+        except Exception as e:
+            logger.error(f"Failed to reload tasks: {str(e)}")
 
     def _report_status(self, task_id, status, message):
         """反向通知云端任务的真实执行状态"""

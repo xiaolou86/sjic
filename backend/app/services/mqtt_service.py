@@ -80,9 +80,25 @@ class MqttService:
                     db.session.commit() # 提前 commit 防止不同步
                     logger.info(f"Auto-registered new edge node: {mac}")
                 
-                node.status = 'online'
+                reported_status = data.get('status', 'online')
+                node.status = reported_status
                 node.last_heartbeat = datetime.now()
                 node.hardware_status = data.get('hardware', {})
+                
+                # 同步任务状态
+                reported_task_ids = [int(tid) for tid in data.get('running_tasks', [])]
+                db_running_tasks = Task.query.filter(
+                    Task.edge_node_id == node.id,
+                    Task.status.in_(['running', 'syncing', 'starting'])
+                ).all()
+                
+                for t in db_running_tasks:
+                    # 如果盒子显式汇报离线，或心跳列表里没这个任务，则视为停止
+                    if reported_status == 'offline' or t.id not in reported_task_ids:
+                        logger.warning(f"Task {t.id} stopped on node {mac} (Cause: {reported_status})")
+                        t.status = 'stopped'
+                        t.run_status = 'stopped'
+
                 db.session.commit()
             except Exception as e:
                 # 捕获并发心跳导致的并发插入冲突 (UNIQUE constraint failed)

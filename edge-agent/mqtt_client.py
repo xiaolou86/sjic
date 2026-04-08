@@ -18,6 +18,18 @@ class EdgeMqttClient:
 
         self.topic_prefix = f"sjic/edge/{self.edge_id}"
 
+        # 设置“遗嘱”消息 (LWT): 如果盒子异常断开，Broker 会自动发这条消息告知后端
+        self.client.will_set(
+            topic=f"{self.topic_prefix}/heartbeat",
+            payload=json.dumps({
+                "edge_id": self.edge_id,
+                "status": "offline",
+                "message": "MQTT connection lost (LWT triggered)"
+            }),
+            qos=1,
+            retain=True
+        )
+
     def start(self):
         try:
             self.client.connect(self.broker, self.port, self.config['mqtt']['keepalive'])

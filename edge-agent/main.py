@@ -50,8 +50,11 @@ def main():
     mqtt_client = EdgeMqttClient(config, task_manager)
     task_manager.set_mqtt_client(mqtt_client) # 反向注入以便发状态
     mqtt_client.start()
+    
+    # 3. 自动恢复重启前的任务
+    task_manager.reload_tasks()
 
-    # 3. 守护循环：周期推送心跳
+    # 4. 守护循环：周期推送心跳
     try:
         while True:
             # 构建心跳负荷

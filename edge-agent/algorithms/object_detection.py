@@ -60,13 +60,34 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                     return
                 logger.info(f"Transformed ROI Points for inference: {roi_points}")
 
+            # 设置 FFmpeg 读取容忍度（应对多流 RTMP）
+            import os
+            os.environ.setdefault('OPENCV_FFMPEG_READ_ATTEMPTS', '65536')
+            grab_fail_count = 0
+            max_grab_fails = 10  # 连续失败 10 次后触发重连
+
             while not stop_event.is_set():
-                # 策略升级：跳过旧贴，直接抓取缓冲区中【最新】的一帧 (Real-time Frame Grabbing)
-                # 这能有效解决矿井等高负载场景下因推理慢导致的“画面延迟”和“日志刷屏”
+                # 策略升级：跳过旧帧，直接抓取缓冲区中【最新】的一帧 (Real-time Frame Grabbing)
                 if not camera.grab(): 
-                    time.sleep(1)
+                    grab_fail_count += 1
+                    if grab_fail_count >= max_grab_fails:
+                        rtsp_url = config_dict['camera'].get('rtsp_url')
+                        logger.warning(f"Stream grab failed {grab_fail_count} times, reconnecting to {rtsp_url}...")
+                        camera.release()
+                        time.sleep(3)  # 等待流恢复
+                        camera = cv2.VideoCapture(rtsp_url)
+                        if not camera.isOpened():
+                            logger.error(f"Reconnect failed, will retry in 5s...")
+                            time.sleep(5)
+                            continue
+                        logger.info(f"Stream reconnected successfully.")
+                        grab_fail_count = 0
+                    else:
+                        time.sleep(0.5)
                     continue
-                    
+                
+                grab_fail_count = 0  # 成功 grab，重置计数器
+
                 # 成功 grab 后，只检索当前这帧
                 ret, frame = camera.retrieve()
                 if not ret:
