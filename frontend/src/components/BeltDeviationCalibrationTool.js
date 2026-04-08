@@ -3,15 +3,13 @@ import {
   Button, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Paper, Box, Grid
 } from '@mui/material';
-import axios from '../utils/axios';
-import { io } from 'socket.io-client';
+import axios, { getBaseUrl } from '../utils/axios';
 
 function BeltDeviationCalibrationTool({ cameraId, algorithm_parameters, onCalibrate}) {
   const [open, setOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState(null);
   const [lines, setLines] = useState([]); // 存储2条边界线，每条线由2个点组成
   const [isStreaming, setIsStreaming] = useState(false);
-  const [frameUrl, setFrameUrl] = useState(null);
   const [frameSize, setFrameSize] = useState({ width: 800, height: 600 });
   const [boundaryDistance, setBoundaryDistance] = useState(0); // 两条边界线之间的实际距离(cm)
   const [deviationThreshold, setDeviationThreshold] = useState(0); // 跑偏报警阈值(cm)
@@ -46,8 +44,20 @@ function BeltDeviationCalibrationTool({ cameraId, algorithm_parameters, onCalibr
   // 添加缺失的 refs
   const canvasRef = useRef(null);
   const imageRef = useRef(null);
-  const socketRef = useRef(null);
-  const lastFrameData = useRef(null);
+
+  // 计算缩放后的尺寸
+  const calculateAspectRatio = (originalWidth, originalHeight, maxWidth = 800) => {
+    const ratio = originalWidth / originalHeight;
+    let width = maxWidth;
+    let height = maxWidth / ratio;
+    return { width, height };
+  };
+
+  // 构建 MJPEG 流地址
+  const getMjpegUrl = () => {
+    const base = getBaseUrl();
+    return `${base}/api/mjpeg/${cameraId}`;
+  };
 
   // 开始视频流预览
   const startStreaming = () => {
@@ -63,100 +73,47 @@ function BeltDeviationCalibrationTool({ cameraId, algorithm_parameters, onCalibr
     }
     
     setIsStreaming(true);
-    
-    // 创建 Socket.IO 连接
-    socketRef.current = io(process.env.REACT_APP_API_URL, {
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      reconnectionAttempts: 5
-    });
-
-    // 连接成功后开始请求视频流
-    socketRef.current.on('connect', () => {
-      console.log('Connected to stream server');
-      socketRef.current.emit('start_stream', { camera_id: cameraId });
-    });
-
-    // 处理接收到的视频帧
-    socketRef.current.on('frame', (frameData) => {
-      drawFrame(frameData);
-    });
   };
 
-  // 处理视频帧
-  const drawFrame = (frameData) => {
-    const blob = new Blob([frameData], { type: 'image/jpeg' });
-    if (frameUrl) {
-      URL.revokeObjectURL(frameUrl);
-    }
-    const url = URL.createObjectURL(blob);
-    
-    // 获取图像实际尺寸
-    const img = new Image();
-    img.onload = () => {
-      const size = calculateAspectRatio(img.width, img.height);
-      setFrameSize(size);
-      URL.revokeObjectURL(img.src);
-    };
-    img.src = url;
-    
-    setFrameUrl(url);
-    lastFrameData.current = frameData;
-  };
-
-  // 停止视频流预览
-  const stopStreaming = () => {
-    if (socketRef.current) {
-      socketRef.current.disconnect();
-      socketRef.current = null;
-    }
-    // 如果有当前帧，保存为标定图像
-    if (lastFrameData.current) {
-      const blob = new Blob([lastFrameData.current], { type: 'image/jpeg' });
-      const url = URL.createObjectURL(blob);
-      setImageUrl(url);
-    }
-    if (frameUrl) {
-      URL.revokeObjectURL(frameUrl);
-      setFrameUrl(null);
-    }
+  // 停止预览并截取当前帧用于画线
+  const stopStreaming = async () => {
     setIsStreaming(false);
+    await captureFrameFromServer();
+  };
+
+  // 从服务端截取一帧静态图
+  const captureFrameFromServer = async () => {
+    try {
+      const response = await axios.post('/api/cameras/capture', {
+        camera_id: cameraId
+      }, {
+        responseType: 'blob'
+      });
+
+      const blob = response instanceof Blob ? response : new Blob([response], { type: 'image/jpeg' });
+      const url = URL.createObjectURL(blob);
+      
+      // 获取实际图像尺寸
+      const img = new Image();
+      img.onload = () => {
+        const size = calculateAspectRatio(img.width, img.height);
+        setFrameSize(size);
+      };
+      img.src = url;
+      
+      setImageUrl(url);
+    } catch (error) {
+      console.error('Error capturing frame:', error);
+    }
   };
 
   // 从视频流中截取当前帧
   const captureFrame = async () => {
-    if (isStreaming && lastFrameData.current) {
-      stopStreaming();
+    if (isStreaming) {
+      await stopStreaming();
     } else {
-      try {
-        const response = await axios.post('/api/cameras/capture', {
-          camera_id: cameraId
-        }, {
-          responseType: 'blob'
-        });
-
-        if (response instanceof Blob) {
-          const url = URL.createObjectURL(response);
-          setImageUrl(url);
-        } else {
-          const blob = new Blob([response], { type: 'image/jpeg' });
-          const url = URL.createObjectURL(blob);
-          setImageUrl(url);
-        }
-      } catch (error) {
-        console.error('Error capturing frame:', error);
-      }
+      await captureFrameFromServer();
     }
-  };
-
-  // 计算缩放后的尺寸
-  const calculateAspectRatio = (originalWidth, originalHeight, maxWidth = 800) => {
-    const ratio = originalWidth / originalHeight;
-    let width = maxWidth;
-    let height = maxWidth / ratio;
-    return { width, height };
   };
 
   // 处理画布点击
@@ -348,14 +305,9 @@ function BeltDeviationCalibrationTool({ cameraId, algorithm_parameters, onCalibr
   // 组件卸载时清理
   useEffect(() => {
     return () => {
-      stopStreaming();
       if (imageUrl) {
         URL.revokeObjectURL(imageUrl);
       }
-      if (frameUrl) {
-        URL.revokeObjectURL(frameUrl);
-      }
-      lastFrameData.current = null;
     };
   }, []);
 
@@ -433,7 +385,7 @@ function BeltDeviationCalibrationTool({ cameraId, algorithm_parameters, onCalibr
           </Paper>
 
           {/* 视频预览区域 */}
-          {isStreaming && !imageUrl && frameUrl && (
+          {isStreaming && !imageUrl && (
             <Box 
               mb={2} 
               sx={{ 
@@ -444,10 +396,10 @@ function BeltDeviationCalibrationTool({ cameraId, algorithm_parameters, onCalibr
               }}
             >
               <img
-                src={frameUrl}
-                width={frameSize.width}
-                height={frameSize.height}
+                src={getMjpegUrl()}
                 style={{ 
+                  width: '100%',
+                  height: 'auto',
                   border: '1px solid #ccc',
                   objectFit: 'contain'
                 }}
@@ -537,4 +489,4 @@ function BeltDeviationCalibrationTool({ cameraId, algorithm_parameters, onCalibr
   );
 }
 
-export default BeltDeviationCalibrationTool; 
+export default BeltDeviationCalibrationTool;

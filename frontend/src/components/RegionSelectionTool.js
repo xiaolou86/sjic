@@ -3,20 +3,16 @@ import {
   Button, Dialog, DialogTitle, DialogContent, DialogActions,
   Paper, Box, Typography
 } from '@mui/material';
-import { io } from 'socket.io-client';
-import axios from '../utils/axios';
+import axios, { getBaseUrl } from '../utils/axios';
 
 function RegionSelectionTool({ cameraId, onSelect, existingRegion }) {
   const [open, setOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState(null);
   const [points, setPoints] = useState([]);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [frameUrl, setFrameUrl] = useState(null);
   const [frameSize, setFrameSize] = useState({ width: 800, height: 600 });
   const [isDrawing, setIsDrawing] = useState(false);
   const canvasRef = useRef(null);
-  const socketRef = useRef(null);
-  const lastFrameData = useRef(null);
   const [currentPoint, setCurrentPoint] = useState(null);
   const [draggingPointIndex, setDraggingPointIndex] = useState(null);
   const [isComplete, setIsComplete] = useState(false);
@@ -52,6 +48,12 @@ function RegionSelectionTool({ cameraId, onSelect, existingRegion }) {
     return { width, height };
   };
 
+  // 构建 MJPEG 流地址
+  const getMjpegUrl = () => {
+    const base = getBaseUrl();
+    return `${base}/api/mjpeg/${cameraId}`;
+  };
+
   // 开始视频流预览
   const startStreaming = () => {
     if (!cameraId) return;
@@ -60,82 +62,50 @@ function RegionSelectionTool({ cameraId, onSelect, existingRegion }) {
       URL.revokeObjectURL(imageUrl);
       setImageUrl(null);
       setPoints([]);
+      setIsComplete(false);
     }
     
     setIsStreaming(true);
-    
-    socketRef.current = io(process.env.REACT_APP_API_URL, {
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      reconnectionAttempts: 5
-    });
-
-    socketRef.current.on('connect', () => {
-      console.log('Connected to stream server');
-      socketRef.current.emit('start_stream', { camera_id: cameraId });
-    });
-
-    socketRef.current.on('frame', (frameData) => {
-      drawFrame(frameData);
-    });
   };
 
-  const drawFrame = (frameData) => {
-    const blob = new Blob([frameData], { type: 'image/jpeg' });
-    if (frameUrl) {
-      URL.revokeObjectURL(frameUrl);
-    }
-    const url = URL.createObjectURL(blob);
-    
-    const img = new Image();
-    img.onload = () => {
-      const size = calculateAspectRatio(img.width, img.height);
-      setFrameSize(size);
-      URL.revokeObjectURL(img.src);
-    };
-    img.src = url;
-    
-    setFrameUrl(url);
-    lastFrameData.current = frameData;
-  };
-
-  const stopStreaming = () => {
-    if (socketRef.current) {
-      socketRef.current.disconnect();
-      socketRef.current = null;
-    }
-    if (lastFrameData.current) {
-      const blob = new Blob([lastFrameData.current], { type: 'image/jpeg' });
-      const url = URL.createObjectURL(blob);
-      setImageUrl(url);
-    }
-    if (frameUrl) {
-      URL.revokeObjectURL(frameUrl);
-      setFrameUrl(null);
-    }
+  // 停止预览并截取当前帧用于画线
+  const stopStreaming = async () => {
     setIsStreaming(false);
+    // 通过 HTTP 接口截取一帧作为标定底图
+    await captureFrameFromServer();
+  };
+
+  // 从服务端截取一帧静态图
+  const captureFrameFromServer = async () => {
+    try {
+      const response = await axios.post('/api/cameras/capture', {
+        camera_id: cameraId
+      }, {
+        responseType: 'blob'
+      });
+
+      const blob = response instanceof Blob ? response : new Blob([response], { type: 'image/jpeg' });
+      const url = URL.createObjectURL(blob);
+      
+      // 获取实际图像尺寸
+      const img = new Image();
+      img.onload = () => {
+        const size = calculateAspectRatio(img.width, img.height);
+        setFrameSize(size);
+      };
+      img.src = url;
+      
+      setImageUrl(url);
+    } catch (error) {
+      console.error('Error capturing frame:', error);
+    }
   };
 
   const captureFrame = async () => {
-    if (isStreaming && lastFrameData.current) {
-      stopStreaming();
+    if (isStreaming) {
+      await stopStreaming();
     } else {
-      try {
-        const response = await axios.post('/api/cameras/capture', {
-          camera_id: cameraId
-        }, {
-          responseType: 'blob'
-        });
-
-        const url = URL.createObjectURL(response instanceof Blob ? response : new Blob([response], { type: 'image/jpeg' }));
-        setImageUrl(url);
-        setIsStreaming(false);
-        drawCanvas();
-      } catch (error) {
-        console.error('Error capturing frame:', error);
-      }
+      await captureFrameFromServer();
     }
   };
 
@@ -311,6 +281,15 @@ function RegionSelectionTool({ cameraId, onSelect, existingRegion }) {
     }
   }, [imageUrl, points, currentPoint, isComplete, draggingPointIndex]);
 
+  // 组件卸载时清理
+  useEffect(() => {
+    return () => {
+      if (imageUrl) {
+        URL.revokeObjectURL(imageUrl);
+      }
+    };
+  }, []);
+
   return (
     <>
       <Button variant="outlined" onClick={() => setOpen(true)}>
@@ -362,9 +341,9 @@ function RegionSelectionTool({ cameraId, onSelect, existingRegion }) {
 
           {/* 视频预览/图像区域 */}
           <Box sx={{ width: '100%', maxWidth: 800, margin: '0 auto' }}>
-            {isStreaming && !imageUrl && frameUrl ? (
+            {isStreaming && !imageUrl ? (
               <img
-                src={frameUrl}
+                src={getMjpegUrl()}
                 alt="Video stream"
                 style={{ 
                   width: '100%',
@@ -414,4 +393,4 @@ function RegionSelectionTool({ cameraId, onSelect, existingRegion }) {
   );
 }
 
-export default RegionSelectionTool; 
+export default RegionSelectionTool;
