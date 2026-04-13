@@ -95,12 +95,10 @@ def get_nodes():
     """获取所有边缘节点列表"""
     try:
         nodes = EdgeNode.query.all()
-        return jsonify({
-            "success": True,
-            "data": [node.to_dict() for node in nodes]
-        }), 200
+        # 与前端约定：直接返回数组（axios 响应拦截器会返回 response.data）
+        return jsonify([node.to_dict() for node in nodes]), 200
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
 @edge_bp.route('/api/nodes/<int:node_id>', methods=['PUT'])
 @token_required
@@ -109,16 +107,34 @@ def update_node(node_id):
     try:
         node = EdgeNode.query.get(node_id)
         if not node:
-            return jsonify({"success": False, "error": "Node not found"}), 404
+            return jsonify({"error": "Node not found"}), 404
             
-        data = request.json
+        data = request.json or {}
         if 'name' in data:
             node.name = data['name']
-            
+        # 新版：节点可用视频源列表（多选）
+        if 'bound_camera_ids' in data:
+            ids = data.get('bound_camera_ids')
+            if ids in ("", None):
+                node.bound_cameras = None
+            elif not isinstance(ids, list):
+                return jsonify({"error": "bound_camera_ids 必须是数组"}), 400
+            else:
+                normalized = []
+                for x in ids:
+                    if x in ("", None):
+                        continue
+                    try:
+                        normalized.append(int(x))
+                    except Exception:
+                        return jsonify({"error": f"bound_camera_ids 包含非法值: {x}"}), 400
+                # 去重并排序，便于一致性展示
+                node.bound_cameras = sorted(list(set(normalized)))
+
         db.session.commit()
-        return jsonify({"success": True, "data": node.to_dict()}), 200
+        return jsonify(node.to_dict()), 200
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
 @edge_bp.route('/api/nodes/<int:node_id>', methods=['DELETE'])
 @token_required
@@ -127,10 +143,10 @@ def delete_node(node_id):
     try:
         node = EdgeNode.query.get(node_id)
         if not node:
-            return jsonify({"success": False, "error": "Node not found"}), 404
+            return jsonify({"error": "Node not found"}), 404
             
         db.session.delete(node)
         db.session.commit()
-        return jsonify({"success": True, "message": "Node deleted"}), 200
+        return '', 204
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"error": str(e)}), 500

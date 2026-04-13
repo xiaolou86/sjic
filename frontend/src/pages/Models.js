@@ -4,17 +4,21 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, 
   Paper, IconButton, Box, LinearProgress, Typography, Alert
 } from '@mui/material';
-import { Delete, Upload } from '@mui/icons-material';
+import { Delete, Upload, Edit } from '@mui/icons-material';
 import axios from '../utils/axios';
 
 function Models() {
   const [models, setModels] = useState([]);
   const [openUpload, setOpenUpload] = useState(false);
+  const [openEdit, setOpenEdit] = useState(false);
+  const [editingModel, setEditingModel] = useState(null);
   const [modelFile, setModelFile] = useState(null);
   const [modelName, setModelName] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
+  const [labelmapText, setLabelmapText] = useState('');
+  const [labelmapError, setLabelmapError] = useState(null);
 
   useEffect(() => {
     fetchModels();
@@ -86,6 +90,58 @@ function Models() {
     }
   };
 
+  const openLabelmapEditor = (model) => {
+    setEditingModel(model);
+    setLabelmapError(null);
+    setLabelmapText(model?.labelmap ? JSON.stringify(model.labelmap, null, 2) : '[]');
+    setOpenEdit(true);
+  };
+
+  const parseLabelmap = (text) => {
+    if (!text || !text.trim()) return null;
+    const parsed = JSON.parse(text);
+    if (parsed === null) return null;
+
+    // 允许两种格式：
+    // 1) [{id:0,name:"person"}, ...]
+    // 2) {"0":"person","1":"car"}  -> 转成数组
+    if (Array.isArray(parsed)) {
+      for (const item of parsed) {
+        if (typeof item !== 'object' || item === null) throw new Error('labelmap 数组元素必须是对象');
+        if (!Number.isInteger(item.id)) throw new Error('labelmap.id 必须是整数');
+        if (typeof item.name !== 'string' || !item.name.trim()) throw new Error('labelmap.name 必须是非空字符串');
+      }
+      return parsed.map(x => ({ id: x.id, name: x.name.trim() }));
+    }
+
+    if (typeof parsed === 'object') {
+      const arr = Object.entries(parsed).map(([k, v]) => ({
+        id: Number(k),
+        name: String(v).trim()
+      }));
+      for (const item of arr) {
+        if (!Number.isInteger(item.id)) throw new Error(`label id ${item.id} 不是整数`);
+        if (!item.name) throw new Error(`label id ${item.id} 的 name 不能为空`);
+      }
+      return arr.sort((a, b) => a.id - b.id);
+    }
+
+    throw new Error('labelmap 必须是数组或对象');
+  };
+
+  const handleSaveLabelmap = async () => {
+    try {
+      setLabelmapError(null);
+      const labelmap = parseLabelmap(labelmapText);
+      await axios.put(`/api/models/${editingModel.id}`, { labelmap });
+      setOpenEdit(false);
+      setEditingModel(null);
+      fetchModels();
+    } catch (e) {
+      setLabelmapError(e?.message || '保存失败');
+    }
+  };
+
   return (
     <Box>
       <Box sx={{ mb: 2 }}>
@@ -106,6 +162,7 @@ function Models() {
               <TableCell>名称</TableCell>
               <TableCell>路径</TableCell>
               <TableCell>描述</TableCell>
+              <TableCell>Label IDs</TableCell>
               <TableCell>创建时间</TableCell>
               <TableCell>操作</TableCell>
             </TableRow>
@@ -117,8 +174,18 @@ function Models() {
                 <TableCell>{model.name}</TableCell>
                 <TableCell>{model.path}</TableCell>
                 <TableCell>{model.description}</TableCell>
+                <TableCell>
+                  {Array.isArray(model.labelmap) ? `${model.labelmap.length} 类` : (model.labelmap ? '已配置' : '未配置')}
+                </TableCell>
                 <TableCell>{new Date(model.created_at).toLocaleString()}</TableCell>
                 <TableCell>
+                  <IconButton
+                    color="primary"
+                    onClick={() => openLabelmapEditor(model)}
+                    title="编辑 Label IDs"
+                  >
+                    <Edit />
+                  </IconButton>
                   <IconButton
                     color="error"
                     onClick={() => handleDelete(model.id)}
@@ -174,6 +241,34 @@ function Models() {
             disabled={!modelFile || uploading}
           >
             {uploading ? '上传中...' : '上传'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openEdit} onClose={() => setOpenEdit(false)} maxWidth="md" fullWidth>
+        <DialogTitle>编辑模型 Label IDs</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+            推荐格式：数组 <code>[{"{"}"id":0,"name":"person"{"}"},{"{"}"id":1,"name":"car"{"}"}]</code>，或对象 <code>{"{"}"0":"person","1":"car"{"}"}</code>
+          </Typography>
+          <TextField
+            fullWidth
+            multiline
+            minRows={10}
+            value={labelmapText}
+            onChange={(e) => setLabelmapText(e.target.value)}
+            placeholder='[{"id":0,"name":"person"}]'
+          />
+          {labelmapError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {labelmapError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenEdit(false)}>取消</Button>
+          <Button onClick={handleSaveLabelmap} variant="contained" disabled={!editingModel}>
+            保存
           </Button>
         </DialogActions>
       </Dialog>

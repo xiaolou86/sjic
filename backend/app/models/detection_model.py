@@ -8,6 +8,9 @@ class DetectionModel(db.Model):
     name = db.Column(db.String(100), nullable=False)
     path = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text)
+    # labelmap: 绑定模型输出类别的 ID->名称 映射
+    # 推荐格式：[{ "id": 0, "name": "person" }, ...]
+    labelmap = db.Column(db.JSON, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
@@ -16,5 +19,6 @@ class DetectionModel(db.Model):
             'name': self.name,
             'path': self.path,
             'description': self.description,
+            'labelmap': self.labelmap,
             'created_at': self.created_at.isoformat()
         }

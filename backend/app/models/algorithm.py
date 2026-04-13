@@ -9,6 +9,8 @@ class Algorithm(db.Model):
     type = db.Column(db.String(50), nullable=False)  # 算法类型标识
     description = db.Column(db.Text)
     parameter_schema = db.Column(db.JSON)  # 参数的schema定义
+    model_id = db.Column(db.Integer, db.ForeignKey('detection_models.id'), nullable=True)
+    labels = db.Column(db.JSON, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # 删除 SQLAlchemy 的多态映射，因为后端现在纯粹只做数据中台，不再需要分别派生子类。
@@ -21,6 +23,8 @@ class Algorithm(db.Model):
             'type': self.type,
             'description': self.description,
             'parameter_schema': self.parameter_schema,
+            'model_id': self.model_id,
+            'labels': self.labels,
             'created_at': self.created_at.isoformat()
         }
 

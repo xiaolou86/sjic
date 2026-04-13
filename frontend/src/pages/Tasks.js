@@ -3,7 +3,7 @@ import {
   Grid, Paper, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, Button, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Switch, FormControlLabel, Select, MenuItem, IconButton,
-  Typography, Divider, Box, InputAdornment
+  Typography, Divider, Box, InputAdornment, Alert, Autocomplete, Chip
 } from '@mui/material';
 import { Add, Edit, Delete, PlayArrow, Stop, Info, Search } from '@mui/icons-material';
 import axios from '../utils/axios';
@@ -28,6 +28,7 @@ function Tasks() {
     notificationEnabled: true,
     algorithm_id: '',
     algorithm_parameters: {
+      labels: [],
       min_area_cm2: 100,
       calibration: {
         belt_width: 0,
@@ -54,6 +55,25 @@ function Tasks() {
     return () => clearInterval(timer);
   }, []);
 
+  // 当选择了节点且未显式选择视频源时，自动回填节点绑定的视频源（最佳实践：降低重复配置）
+  useEffect(() => {
+    if (!formData.edge_node_id) return;
+    if (formData.cameraId) return;
+    const node = nodes.find(n => n.id === formData.edge_node_id);
+    const ids = Array.isArray(node?.bound_camera_ids) ? node.bound_camera_ids : [];
+    // 仅当节点只绑定了 1 个视频源时才自动回填；否则改为提示 + 过滤列表，避免误选
+    if (ids.length === 1) {
+      setFormData(prev => ({ ...prev, cameraId: ids[0] }));
+    }
+  }, [formData.edge_node_id, formData.cameraId, nodes]);
+
+  const getNodeBoundCameraIds = () => {
+    if (!formData.edge_node_id) return null;
+    const node = nodes.find(n => n.id === formData.edge_node_id);
+    const ids = Array.isArray(node?.bound_camera_ids) ? node.bound_camera_ids : [];
+    return ids;
+  };
+
   const fetchMetadata = async () => {
     try {
       const [modelsRes, camerasRes, algorithmsRes, nodesRes] = await Promise.all([
@@ -65,7 +85,7 @@ function Tasks() {
       setModels(modelsRes || []);
       setCameras(camerasRes || []);
       setAlgorithms(algorithmsRes || []);
-      setNodes(nodesRes.data || []);
+      setNodes(nodesRes || []);
     } catch (error) {
       console.error('Error fetching metadata:', error);
     }
@@ -140,6 +160,7 @@ function Tasks() {
       notificationEnabled: true,
       algorithm_id: '',
       algorithm_parameters: {
+        labels: [],
         min_area_cm2: 100,
         calibration: {
           belt_width: 0,
@@ -252,217 +273,242 @@ function Tasks() {
     const algorithm = algorithms.find(a => a.id === task.algorithm_id);
     if (!algorithm) return null;
 
-    switch (algorithm.type) {
-      case 'object_detection':
-        console.log('Detection region data:', task.algorithm_parameters?.detection_region);
-        console.log('Points:', task.algorithm_parameters?.detection_region?.points);
-        console.log('Frame size:', task.algorithm_parameters?.detection_region?.frame_size);
+    const taskModel = models.find(m => m.id === task.modelId);
+    const selectedLabels = taskModel?.labelmap?.filter(l => (task.algorithm_parameters?.labels || []).includes(l.id)) || [];
+    
+    const labelsUI = selectedLabels.length > 0 ? (
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid item xs={12}>
+          <Typography variant="subtitle2" gutterBottom>关注的检测目标：</Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            {selectedLabels.map(l => (
+              <Chip key={l.id} label={l.name || String(l.id)} variant="outlined" size="small" color="primary" />
+            ))}
+          </Box>
+        </Grid>
+      </Grid>
+    ) : null;
 
-        return (
-          <>
-            <Typography variant="subtitle2" gutterBottom>目标检测参数：</Typography>
-            <Grid container spacing={2}>
-              {task.algorithm_parameters?.detection_region && task.algorithm_parameters.calibration && (
-                <Grid item xs={12}>
-                  <Typography gutterBottom>检测区域：</Typography>
-                  <Box sx={{ position: 'relative', width: '100%', maxWidth: 800 }}>
-                    <img
-                      src={task.algorithm_parameters.calibration.image_data}
-                      alt="Detection Region"
-                      style={{ width: '100%', height: 'auto' }}
-                    />
-                    <canvas
-                      ref={(canvas) => {
-                        if (canvas && task.algorithm_parameters?.detection_region?.points) {
-                          const ctx = canvas.getContext('2d');
-                          const img = new Image();
-                          img.onload = () => {
-                            // 设置canvas尺寸与图像一致
-                            canvas.width = task.algorithm_parameters.detection_region.frame_size.width;
-                            canvas.height = task.algorithm_parameters.detection_region.frame_size.height;
+    const specificContent = (() => {
+      switch (algorithm.type) {
+        case 'object_detection':
+          console.log('Detection region data:', task.algorithm_parameters?.detection_region);
+          console.log('Points:', task.algorithm_parameters?.detection_region?.points);
+          console.log('Frame size:', task.algorithm_parameters?.detection_region?.frame_size);
 
-                            // 绘制图像
-                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          return (
+            <>
+              <Typography variant="subtitle2" gutterBottom>目标检测参数：</Typography>
+              <Grid container spacing={2}>
+                {task.algorithm_parameters?.detection_region && task.algorithm_parameters.calibration && (
+                  <Grid item xs={12}>
+                    <Typography gutterBottom>检测区域：</Typography>
+                    <Box sx={{ position: 'relative', width: '100%', maxWidth: 800 }}>
+                      <img
+                        src={task.algorithm_parameters.calibration.image_data}
+                        alt="Detection Region"
+                        style={{ width: '100%', height: 'auto' }}
+                      />
+                      <canvas
+                        ref={(canvas) => {
+                          if (canvas && task.algorithm_parameters?.detection_region?.points) {
+                            const ctx = canvas.getContext('2d');
+                            const img = new Image();
+                            img.onload = () => {
+                              // 设置canvas尺寸与图像一致
+                              canvas.width = task.algorithm_parameters.detection_region.frame_size.width;
+                              canvas.height = task.algorithm_parameters.detection_region.frame_size.height;
 
-                            // 绘制检测区域
-                            const points = task.algorithm_parameters.detection_region.points;
-                            if (points && points.length > 0) {
-                              ctx.beginPath();
-                              ctx.moveTo(points[0].x, points[0].y);
-                              points.forEach((point, index) => {
-                                if (index > 0) {
-                                  ctx.lineTo(point.x, point.y);
-                                }
-                              });
+                              // 绘制图像
+                              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-                              // 闭合路径
-                              ctx.closePath();
-
-                              // 填充和描边
-                              ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
-                              ctx.fill();
-                              ctx.strokeStyle = 'yellow';
-                              ctx.lineWidth = 2;
-                              ctx.stroke();
-
-                              // 绘制顶点
-                              points.forEach(point => {
+                              // 绘制检测区域
+                              const points = task.algorithm_parameters.detection_region.points;
+                              if (points && points.length > 0) {
                                 ctx.beginPath();
-                                ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
-                                ctx.fillStyle = 'red';
+                                ctx.moveTo(points[0].x, points[0].y);
+                                points.forEach((point, index) => {
+                                  if (index > 0) {
+                                    ctx.lineTo(point.x, point.y);
+                                  }
+                                });
+
+                                // 闭合路径
+                                ctx.closePath();
+
+                                // 填充和描边
+                                ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
                                 ctx.fill();
-                                ctx.strokeStyle = 'white';
+                                ctx.strokeStyle = 'yellow';
+                                ctx.lineWidth = 2;
                                 ctx.stroke();
-                              });
-                            }
-                          };
-                          img.src = task.algorithm_parameters.calibration.image_data;
-                        }
-                      }}
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        height: '100%',
-                        pointerEvents: 'none'
-                      }}
-                    />
-                  </Box>
-                </Grid>
-              )}
-            </Grid>
-          </>
-        );
-      case 'belt_broken':
-        return (
-          <>
-            <Typography variant="subtitle2" gutterBottom>皮带破损检测参数：</Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <Typography>
-                  最小异常面积：{task.algorithm_parameters.min_area_cm2} cm²
-                </Typography>
+
+                                // 绘制顶点
+                                points.forEach(point => {
+                                  ctx.beginPath();
+                                  ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
+                                  ctx.fillStyle = 'red';
+                                  ctx.fill();
+                                  ctx.strokeStyle = 'white';
+                                  ctx.stroke();
+                                });
+                              }
+                            };
+                            img.src = task.algorithm_parameters.calibration.image_data;
+                          }
+                        }}
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: '100%',
+                          pointerEvents: 'none'
+                        }}
+                      />
+                    </Box>
+                  </Grid>
+                )}
               </Grid>
-              <Grid item xs={12}>
-                <Typography>
-                  皮带宽度：{task.algorithm_parameters.calibration.belt_width} cm
-                </Typography>
-              </Grid>
-              {task.algorithm_parameters.calibration.image_data && (
+            </>
+          );
+        case 'belt_broken':
+          return (
+            <>
+              <Typography variant="subtitle2" gutterBottom>皮带破损检测参数：</Typography>
+              <Grid container spacing={2}>
                 <Grid item xs={12}>
-                  <Typography gutterBottom>标定图像：</Typography>
-                  <Box sx={{ position: 'relative', width: '100%', maxWidth: 800 }}>
-                    <img
-                      src={task.algorithm_parameters.calibration.image_data}
-                      alt="Calibration"
-                      style={{ width: '100%', height: 'auto' }}
-                    />
-                    {/* 绘制标定点 */}
-                    <svg
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        height: '100%',
-                        pointerEvents: 'none'
-                      }}
-                    >
-                      {task.algorithm_parameters.calibration.points.map((point, index) => (
-                        <circle
-                          key={index}
-                          cx={`${point.x * 100 / task.algorithm_parameters.calibration.frame_size.width}%`}
-                          cy={`${point.y * 100 / task.algorithm_parameters.calibration.frame_size.height}%`}
-                          r="5"
-                          fill="red"
-                          stroke="white"
-                        />
-                      ))}
-                      {task.algorithm_parameters.calibration.points.length === 2 && (
-                        <line
-                          x1={`${task.algorithm_parameters.calibration.points[0].x * 100 / task.algorithm_parameters.calibration.frame_size.width}%`}
-                          y1={`${task.algorithm_parameters.calibration.points[0].y * 100 / task.algorithm_parameters.calibration.frame_size.height}%`}
-                          x2={`${task.algorithm_parameters.calibration.points[1].x * 100 / task.algorithm_parameters.calibration.frame_size.width}%`}
-                          y2={`${task.algorithm_parameters.calibration.points[1].y * 100 / task.algorithm_parameters.calibration.frame_size.height}%`}
-                          stroke="red"
-                          strokeWidth="2"
-                        />
-                      )}
-                    </svg>
-                  </Box>
+                  <Typography>
+                    最小异常面积：{task.algorithm_parameters.min_area_cm2} cm²
+                  </Typography>
                 </Grid>
-              )}
-            </Grid>
-          </>
-        );
-      case 'belt_deviation_detecion':
-        return (
-          <>
-            <Typography variant="subtitle2" gutterBottom>检测参数：</Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <Typography>
-                  边界线间距离：{task.algorithm_parameters.calibration.boundary_distance} cm
-                </Typography>
-              </Grid>
-              <Grid item xs={12}>
-                <Typography>
-                  跑偏报警阈值：{task.algorithm_parameters.calibration.deviation_threshold} cm
-                </Typography>
-              </Grid>
-              {task.algorithm_parameters.calibration.image_data && (
                 <Grid item xs={12}>
-                  <Typography gutterBottom>标定图像：</Typography>
-                  <Box sx={{ position: 'relative', width: '100%', maxWidth: 800 }}>
-                    <img
-                      src={task.algorithm_parameters.calibration.image_data}
-                      alt="Calibration"
-                      style={{ width: '100%', height: 'auto' }}
-                    />
-                    {/* 绘制标定线 */}
-                    <svg
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        height: '100%',
-                        pointerEvents: 'none'
-                      }}
-                    >
-                      {task.algorithm_parameters.calibration.boundary_lines.map((line, index) => (
-                        <g key={index}>
+                  <Typography>
+                    皮带宽度：{task.algorithm_parameters.calibration.belt_width} cm
+                  </Typography>
+                </Grid>
+                {task.algorithm_parameters.calibration.image_data && (
+                  <Grid item xs={12}>
+                    <Typography gutterBottom>标定图像：</Typography>
+                    <Box sx={{ position: 'relative', width: '100%', maxWidth: 800 }}>
+                      <img
+                        src={task.algorithm_parameters.calibration.image_data}
+                        alt="Calibration"
+                        style={{ width: '100%', height: 'auto' }}
+                      />
+                      {/* 绘制标定点 */}
+                      <svg
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: '100%',
+                          pointerEvents: 'none'
+                        }}
+                      >
+                        {task.algorithm_parameters.calibration.points.map((point, index) => (
+                          <circle
+                            key={index}
+                            cx={`${point.x * 100 / task.algorithm_parameters.calibration.frame_size.width}%`}
+                            cy={`${point.y * 100 / task.algorithm_parameters.calibration.frame_size.height}%`}
+                            r="5"
+                            fill="red"
+                            stroke="white"
+                          />
+                        ))}
+                        {task.algorithm_parameters.calibration.points.length === 2 && (
                           <line
-                            x1={`${line[0].x * 100 / task.algorithm_parameters.calibration.frame_size.width}%`}
-                            y1={`${line[0].y * 100 / task.algorithm_parameters.calibration.frame_size.height}%`}
-                            x2={`${line[1].x * 100 / task.algorithm_parameters.calibration.frame_size.width}%`}
-                            y2={`${line[1].y * 100 / task.algorithm_parameters.calibration.frame_size.height}%`}
-                            stroke={index === 0 ? "blue" : "red"}
+                            x1={`${task.algorithm_parameters.calibration.points[0].x * 100 / task.algorithm_parameters.calibration.frame_size.width}%`}
+                            y1={`${task.algorithm_parameters.calibration.points[0].y * 100 / task.algorithm_parameters.calibration.frame_size.height}%`}
+                            x2={`${task.algorithm_parameters.calibration.points[1].x * 100 / task.algorithm_parameters.calibration.frame_size.width}%`}
+                            y2={`${task.algorithm_parameters.calibration.points[1].y * 100 / task.algorithm_parameters.calibration.frame_size.height}%`}
+                            stroke="red"
                             strokeWidth="2"
                           />
-                          {line.map((point, pointIndex) => (
-                            <circle
-                              key={pointIndex}
-                              cx={`${point.x * 100 / task.algorithm_parameters.calibration.frame_size.width}%`}
-                              cy={`${point.y * 100 / task.algorithm_parameters.calibration.frame_size.height}%`}
-                              r="5"
-                              fill="yellow"
-                              stroke="white"
-                            />
-                          ))}
-                        </g>
-                      ))}
-                    </svg>
-                  </Box>
+                        )}
+                      </svg>
+                    </Box>
+                  </Grid>
+                )}
+              </Grid>
+            </>
+          );
+        case 'belt_deviation_detecion':
+          return (
+            <>
+              <Typography variant="subtitle2" gutterBottom>检测参数：</Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  <Typography>
+                    边界线间距离：{task.algorithm_parameters.calibration.boundary_distance} cm
+                  </Typography>
                 </Grid>
-              )}
-            </Grid>
-          </>
-        );
-      default:
-        return null;
-    }
+                <Grid item xs={12}>
+                  <Typography>
+                    跑偏报警阈值：{task.algorithm_parameters.calibration.deviation_threshold} cm
+                  </Typography>
+                </Grid>
+                {task.algorithm_parameters.calibration.image_data && (
+                  <Grid item xs={12}>
+                    <Typography gutterBottom>标定图像：</Typography>
+                    <Box sx={{ position: 'relative', width: '100%', maxWidth: 800 }}>
+                      <img
+                        src={task.algorithm_parameters.calibration.image_data}
+                        alt="Calibration"
+                        style={{ width: '100%', height: 'auto' }}
+                      />
+                      {/* 绘制标定线 */}
+                      <svg
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: '100%',
+                          pointerEvents: 'none'
+                        }}
+                      >
+                        {task.algorithm_parameters.calibration.boundary_lines.map((line, index) => (
+                          <g key={index}>
+                            <line
+                              x1={`${line[0].x * 100 / task.algorithm_parameters.calibration.frame_size.width}%`}
+                              y1={`${line[0].y * 100 / task.algorithm_parameters.calibration.frame_size.height}%`}
+                              x2={`${line[1].x * 100 / task.algorithm_parameters.calibration.frame_size.width}%`}
+                              y2={`${line[1].y * 100 / task.algorithm_parameters.calibration.frame_size.height}%`}
+                              stroke={index === 0 ? "blue" : "red"}
+                              strokeWidth="2"
+                            />
+                            {line.map((point, pointIndex) => (
+                              <circle
+                                key={pointIndex}
+                                cx={`${point.x * 100 / task.algorithm_parameters.calibration.frame_size.width}%`}
+                                cy={`${point.y * 100 / task.algorithm_parameters.calibration.frame_size.height}%`}
+                                r="5"
+                                fill="yellow"
+                                stroke="white"
+                              />
+                            ))}
+                          </g>
+                        ))}
+                      </svg>
+                    </Box>
+                  </Grid>
+                )}
+              </Grid>
+            </>
+          );
+        default:
+          return null;
+      }
+    })();
+
+    return (
+      <>
+        {labelsUI}
+        {specificContent}
+      </>
+    );
   };
 
   // 渲染算法特定参数
@@ -674,6 +720,16 @@ function Tasks() {
             </Grid>
 
             <Grid item xs={12} md={6}>
+              {(() => {
+                const ids = getNodeBoundCameraIds();
+                if (!ids || ids.length === 0) return null;
+                const nodeName = nodes.find(n => n.id === formData.edge_node_id)?.name || '该节点';
+                return (
+                  <Alert severity="info" sx={{ mb: 1 }}>
+                    {nodeName} 已绑定 {ids.length} 个可用视频源；此处默认仅展示这些视频源（你仍可切换节点来改变范围）。
+                  </Alert>
+                );
+              })()}
               <Select
                 fullWidth
                 value={formData.cameraId}
@@ -681,11 +737,17 @@ function Tasks() {
                 displayEmpty
               >
                 <MenuItem value="">选择视频源</MenuItem>
-                {cameras.map(camera => (
-                  <MenuItem key={camera.id} value={camera.id}>
-                    {camera.name}
-                  </MenuItem>
-                ))}
+                {(() => {
+                  const boundIds = getNodeBoundCameraIds();
+                  const filtered = Array.isArray(boundIds) && boundIds.length > 0
+                    ? cameras.filter(c => boundIds.includes(c.id))
+                    : cameras;
+                  return filtered.map(camera => (
+                    <MenuItem key={camera.id} value={camera.id}>
+                      {camera.name}
+                    </MenuItem>
+                  ));
+                })()}
               </Select>
             </Grid>
 
@@ -693,7 +755,19 @@ function Tasks() {
               <Select
                 fullWidth
                 value={formData.algorithm_id}
-                onChange={(e) => setFormData({ ...formData, algorithm_id: e.target.value })}
+                onChange={(e) => {
+                  const algId = e.target.value;
+                  const selectedAlg = algorithms.find(a => a.id === algId);
+                  setFormData(prev => ({ 
+                    ...prev, 
+                    algorithm_id: algId,
+                    modelId: (selectedAlg && selectedAlg.model_id) ? selectedAlg.model_id : prev.modelId,
+                    algorithm_parameters: {
+                      ...prev.algorithm_parameters,
+                      labels: (selectedAlg && selectedAlg.labels && selectedAlg.labels.length > 0) ? selectedAlg.labels : []
+                    }
+                  }));
+                }}
                 displayEmpty
               >
                 <MenuItem value="">选择算法</MenuItem>
@@ -754,6 +828,46 @@ function Tasks() {
                 label="启用通知"
               />
             </Grid>
+
+            {(() => {
+              const selectedModel = models.find(m => String(m.id) === String(formData.modelId));
+              if (selectedModel && selectedModel.labelmap && Array.isArray(selectedModel.labelmap) && selectedModel.labelmap.length > 0) {
+                return (
+                  <Grid item xs={12}>
+                    <Autocomplete
+                      multiple
+                      options={selectedModel.labelmap}
+                      getOptionLabel={(option) => option.name || String(option.id)}
+                      value={selectedModel.labelmap.filter(l => (formData.algorithm_parameters?.labels || []).includes(l.id))}
+                      onChange={(event, newValue) => {
+                        setFormData({
+                          ...formData,
+                          algorithm_parameters: {
+                            ...formData.algorithm_parameters,
+                            labels: newValue.map(v => v.id)
+                          }
+                        });
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          variant="outlined"
+                          label="关注的检测目标 (不选则默认检测全部)"
+                          placeholder="选择目标标签"
+                        />
+                      )}
+                      renderTags={(value, getTagProps) =>
+                        value.map((option, index) => (
+                          <Chip variant="outlined" label={option.name || String(option.id)} {...getTagProps({ index })} />
+                        ))
+                      }
+                      isOptionEqualToValue={(option, value) => String(option.id) === String(value.id)}
+                    />
+                  </Grid>
+                );
+              }
+              return null;
+            })()}
 
             {renderAlgorithmSpecificParams()}
 

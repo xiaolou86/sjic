@@ -10,6 +10,7 @@ from config import Config
 import os
 import tempfile
 import shutil
+import json
 
 model_bp = Blueprint('model', __name__)
 
@@ -123,11 +124,21 @@ def upload_model():
             # 复制临时文件到目标位置
             shutil.copy2(temp_file, file_path)
 
+        # 可选：labelmap（与模型文件绑定）
+        labelmap_raw = request.form.get('labelmap')
+        labelmap = None
+        if labelmap_raw:
+            try:
+                labelmap = json.loads(labelmap_raw)
+            except Exception:
+                return jsonify({'error': 'labelmap 必须是合法 JSON'}), 400
+
         # 创建模型记录
         model = DetectionModel(
             name=name,
             path=filename,
-            description=request.form.get('description', '')
+            description=request.form.get('description', ''),
+            labelmap=labelmap
         )
 
         db.session.add(model)
@@ -170,3 +181,26 @@ def delete_model(model_id):
     db.session.delete(model)
     db.session.commit()
     return '', 204
+
+
+@model_bp.route('/api/models/<int:model_id>', methods=['PUT'])
+@token_required
+def update_model(model_id):
+    """更新模型元数据（名称/描述/labelmap）"""
+    try:
+        model = DetectionModel.query.get_or_404(model_id)
+        data = request.json or {}
+
+        if 'name' in data:
+            model.name = data['name']
+        if 'description' in data:
+            model.description = data['description']
+        if 'labelmap' in data:
+            model.labelmap = data['labelmap']
+
+        db.session.commit()
+        return jsonify(model.to_dict()), 200
+    except Exception as e:
+        current_app.logger.error(f"Error updating model: {str(e)}", exc_info=True)
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500

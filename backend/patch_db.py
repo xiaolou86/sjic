@@ -26,5 +26,19 @@ except sqlite3.OperationalError as e:
         print("run_status error:", e)
 
 conn.commit()
+
+try:
+    cursor.execute('ALTER TABLE algorithms ADD COLUMN model_id INTEGER')
+    print("Added model_id to algorithms.")
+except sqlite3.OperationalError as e:
+    print("model_id error:", e)
+
+try:
+    cursor.execute('ALTER TABLE algorithms ADD COLUMN labels TEXT')
+    print("Added labels to algorithms.")
+except sqlite3.OperationalError as e:
+    print("labels error:", e)
+
+conn.commit()
 conn.close()
 print("Database patched successfully!")

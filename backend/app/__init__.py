@@ -9,6 +9,7 @@ from flask import Flask
 from config import Config
 from app.extensions import db, migrate, socketio, cors, sock
 from app.logging_config import configure_logging
+from app.utils.db_compat import ensure_legacy_schema
 
 
 def create_app(config_class=Config):
@@ -90,6 +91,7 @@ def create_app(config_class=Config):
         from app.models import camera, detection_model, alert, task, log  # noqa: F401
         # 初始化数据库与基础预设算法列表（纯数据元信息）
         db.create_all()
+        ensure_legacy_schema(app)
         app.logger.info('Database tables created')
 
         from app.models.algorithm import Algorithm

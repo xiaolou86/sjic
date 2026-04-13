@@ -61,3 +61,28 @@ def create_algorithm():
     db.session.add(algorithm)
     db.session.commit()
     return jsonify(algorithm.to_dict()), 201
+
+
+@algorithm_bp.route('/api/algorithms/<int:alg_id>', methods=['PUT'])
+@token_required
+def update_algorithm(alg_id):
+    """更新算法模板"""
+    data = request.json
+    algorithm = Algorithm.query.get_or_404(alg_id)
+    
+    for key, value in data.items():
+        if hasattr(algorithm, key):
+            setattr(algorithm, key, value)
+            
+    db.session.commit()
+    return jsonify(algorithm.to_dict())
+
+
+@algorithm_bp.route('/api/algorithms/<int:alg_id>', methods=['DELETE'])
+@token_required
+def delete_algorithm(alg_id):
+    """删除算法模板"""
+    algorithm = Algorithm.query.get_or_404(alg_id)
+    db.session.delete(algorithm)
+    db.session.commit()
+    return '', 204
