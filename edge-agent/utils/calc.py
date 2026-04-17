@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-import torch
 
 def get_letterbox_params(h, w, target_size=640):
     try:
@@ -36,8 +35,8 @@ def preprocess_return_numpy(frame, new_h, new_w, top, bottom, left, right):
 def preprocess(frame, new_h, new_w, top, bottom, left, right):
     """
     预处理图像，进行 letterbox 变换。
-    注意：为了兼容不同后端（CPU/CUDA/Engine），此处仅返回 NumPy 数组。
-    Ultralytics YOLO 的 model(numpy_array) 会自动根据模型位置处理设备迁移。
+    注意：为了兼容不同后端（CPU/CUDA/MUSA/NPU），此处仅返回 NumPy 数组。
+    各 Runtime 会自动根据模型位置处理设备迁移。
     """
     try:
         # 1. 检查输入有效性
@@ -51,7 +50,7 @@ def preprocess(frame, new_h, new_w, top, bottom, left, right):
         )
         
         # 返回原生 NumPy 数组，不在此处强行 .cuda()
-        # 这样即便没有 CUDA 的环境，YOLO 也能在 CPU 上跑
+        # 这样即便没有 CUDA 的环境，任何 Runtime 都能正常使用
         return padded 
     except Exception as e:
         print(f"Error in preprocess: {e}")

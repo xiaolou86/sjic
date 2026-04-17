@@ -1,0 +1,17 @@
+# ============================================================
+# 瑞芯微 RK3588 专用 RKNN 推理环境
+# ============================================================
+-r requirements.txt
+
+# RKNN 推理引擎 (rknn-toolkit2 包含 rknnlite)
+# 需要从瑞芯微官方仓库安装:
+# pip install rknn-toolkit2 -f https://github.com/airockchip/rknn-toolkit2/releases
+# 或者仅安装轻量级部署库:
+# pip install rknnlite
+
+# 模型转换工具 (将 .onnx/.pt 转换为 .rknn, 仅在开发机上需要)
+# pip install rknn-toolkit2[full]
+
+# 注意: RK3588 不需要 ultralytics / torch，推理完全由 NPU 硬件加速
+# 如果需要在 RK3588 上做模型验证/对比，可选装:
+# torch>=2.0.0 --index-url https://download.pytorch.org/whl/cpu

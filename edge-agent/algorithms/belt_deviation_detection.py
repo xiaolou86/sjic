@@ -4,14 +4,13 @@ import numpy as np
 from datetime import datetime
 from shapely.geometry import LineString, Polygon
 import time
-from ultralytics import YOLO
 from utils.calc import transform_points_from_frontend_to_backend, get_letterbox_params, preprocess, preprocess_return_numpy
-import torch
+
 
 class BeltDeviationDetection(BaseAlgorithm):
     """边缘端：皮带跑偏检测算法"""
     
-    def process(self, camera_stream, config_dict, logger, stop_event, on_alert):
+    def process(self, camera_stream, config_dict, logger, stop_event, on_alert, runtime):
         """处理视频流"""
         try:
             # 获取基本参数
@@ -20,8 +19,9 @@ class BeltDeviationDetection(BaseAlgorithm):
             task_name = config_dict.get('task_id', 'unknown_task')
             camera = camera_stream
             
-            logger.info(f"Loading YOLO (Segmentation) model from: {model_path}")
-            model = YOLO(model_path)
+            # 通过 Runtime 抽象加载模型
+            logger.info(f"Loading Segmentation model via runtime: {model_path}")
+            runtime.load(model_path)
             
             confidence = float(parameters.get('confidence', 0.5))
             algorithm_parameters = parameters.get('algorithm_parameters', {})
@@ -74,58 +74,58 @@ class BeltDeviationDetection(BaseAlgorithm):
 
                 processed = preprocess(frame, new_h, new_w, top, bottom, left, right)               
                                 
-                # 使用边缘模型执行推理
-                results = model(processed, imgsz=640, verbose=False, conf=confidence)
+                # 通过 Runtime 抽象执行推理
+                result = runtime.infer(processed, conf=confidence, imgsz=640)
                 
                 # 分割掩码分析
-                if len(results) > 0 and hasattr(results[0], 'masks') and results[0].masks is not None:
+                if result.count > 0 and result.masks is not None and len(result.masks) > 0:
                     # 获取皮带的分割掩码
-                    masks = results[0].masks
-                    if len(masks) > 0:
-                        belt_mask = masks[0].data.cpu().numpy()[0]
-                        belt_mask = (belt_mask > 0.5).astype(np.uint8) * 255
+                    belt_mask = result.masks[0]
+                    if belt_mask.ndim == 3:
+                        belt_mask = belt_mask[0]
+                    belt_mask = (belt_mask > 0.5).astype(np.uint8) * 255
+                    
+                    # 找到皮带的轮廓
+                    contours, _ = cv2.findContours(belt_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    
+                    if contours:
+                        # 获取最大的轮廓（假设是皮带）
+                        belt_contour = max(contours, key=cv2.contourArea)
                         
-                        # 找到皮带的轮廓
-                        contours, _ = cv2.findContours(belt_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                        # 创建皮带的多边形
+                        belt_polygon = Polygon(belt_contour.reshape(-1, 2))
                         
-                        if contours:
-                            # 获取最大的轮廓（假设是皮带）
-                            belt_contour = max(contours, key=cv2.contourArea)
-                            
-                            # 创建皮带的多边形
-                            belt_polygon = Polygon(belt_contour.reshape(-1, 2))
-                            
-                            # 检查皮带是否与边界线相交
-                            is_deviation = False
-                            for line in actual_lines:
-                                boundary_line = LineString(line)
-                                if belt_polygon.intersects(boundary_line):
-                                    is_deviation = True
-                                    break
-                            
-                            # 如果跑偏
-                            if is_deviation and self.need_alert_again(last_alert_time, alertThreshold, logger):
-                                logger.warning("!!! 检测到煤矿皮带跑偏 !!!")
-                                last_alert_time = datetime.now()
+                        # 检查皮带是否与边界线相交
+                        is_deviation = False
+                        for line in actual_lines:
+                            boundary_line = LineString(line)
+                            if belt_polygon.intersects(boundary_line):
+                                is_deviation = True
+                                break
+                        
+                        # 如果跑偏
+                        if is_deviation and self.need_alert_again(last_alert_time, alertThreshold, logger):
+                            logger.warning("!!! 检测到煤矿皮带跑偏 !!!")
+                            last_alert_time = datetime.now()
 
-                                # 创建一个副本用于可视化
-                                processed_numpy = preprocess_return_numpy(frame, new_h, new_w, top, bottom, left, right)               
-                                vis_frame = processed_numpy.copy()
-                                
-                                # 绘制边界线
-                                for line in actual_lines:
-                                    cv2.line(vis_frame, line[0], line[1], (0, 0, 255), 2)
-                                
-                                # 在可视化图像上绘制皮带轮廓
-                                cv2.drawContours(vis_frame, [belt_contour], -1, (0, 255, 0), 2)
-                                
-                                # 触发告警抛到设备管理器
-                                if on_alert:
-                                    on_alert(
-                                        alert_type="belt_deviation_detection",
-                                        confidence=1.0,  # 图像分割交点确信度
-                                        image_frame=vis_frame
-                                    )
+                            # 创建一个副本用于可视化
+                            processed_numpy = preprocess_return_numpy(frame, new_h, new_w, top, bottom, left, right)               
+                            vis_frame = processed_numpy.copy()
+                            
+                            # 绘制边界线
+                            for line in actual_lines:
+                                cv2.line(vis_frame, line[0], line[1], (0, 0, 255), 2)
+                            
+                            # 在可视化图像上绘制皮带轮廓
+                            cv2.drawContours(vis_frame, [belt_contour], -1, (0, 255, 0), 2)
+                            
+                            # 触发告警抛到设备管理器
+                            if on_alert:
+                                on_alert(
+                                    alert_type="belt_deviation_detection",
+                                    confidence=1.0,
+                                    image_frame=vis_frame
+                                )
                 
                 time.sleep(0.01)
 

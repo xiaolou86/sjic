@@ -2,13 +2,12 @@ from .base import BaseAlgorithm
 import cv2
 import time
 from datetime import datetime
-from ultralytics import YOLO
 from utils.calc import transform_points_from_frontend_to_backend, get_letterbox_params, preprocess
 
 class ObjectDetectionAlgorithm(BaseAlgorithm):
     """边缘端目标检测算法"""
 
-    def process(self, camera_stream, config_dict, logger, stop_event, on_alert):
+    def process(self, camera_stream, config_dict, logger, stop_event, on_alert, runtime):
         """处理目标检测视频"""
         try:
             # 解析最新的边侧下发配置
@@ -22,9 +21,9 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
             logger.debug(f"task_name={task_name}")
             logger.debug(f"camera={camera}")
             
-            # 在边缘端加载 YOLOv8
-            logger.info(f"Loading YOLO model for object_detection from: {model_path}")
-            model = YOLO(model_path)
+            # 通过 Runtime 抽象加载模型（自动适配 Jetson/摩尔/RK3588）
+            logger.info(f"Loading model for object_detection via runtime: {model_path}")
+            runtime.load(model_path)
             
             confidence = float(parameters.get('confidence', 0.5))
             algorithm_parameters = parameters.get('algorithm_parameters', {})
@@ -100,35 +99,30 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                 if processed is None:
                     continue
 
-                # 推理 - 指定输入类别为人 (classes=[0])
-                results = model(processed, imgsz=640, verbose=False, conf=confidence, classes=[0])
+                # 通过 Runtime 推理 - 指定输入类别为人 (classes=[0])
+                result = runtime.infer(processed, conf=confidence, classes=[0], imgsz=640)
                 
-                total_detected = sum(len(r.boxes) for r in results)
+                total_detected = result.count
                 if total_detected > 0:
-                    logger.debug(f"YOLO detected {total_detected} human(s)")
+                    logger.debug(f"Detected {total_detected} human(s)")
                 else:
-                    # 每隔几十帧打印一次，避免刷屏，或者保持 debug 级别
                     logger.debug("No human detected in this frame")
+
                 # 检查是否有人员在检测区域内
                 is_exception = False
                 result_confidence = 0
                 
-                for r in results:
-                    boxes = r.boxes
-                    for box in boxes:
-                        x1, y1, x2, y2 = map(int, box.xyxy[0])
-                        # 人体脚部中心点作为判别点
-                        foot_center = ((x1 + x2) // 2, y2)
-                        
-                        logger.debug(f"Detected Human at foot_center: {foot_center}, Box: [{x1}, {y1}, {x2}, {y2}]")
+                for box in result.boxes:
+                    foot_center = box.foot_center
+                    logger.debug(f"Detected Human at foot_center: {foot_center}, Box: [{box.x1}, {box.y1}, {box.x2}, {box.y2}]")
 
-                        if roi_points:
-                            # 检查点是否在检测区域内
-                            if self.is_point_in_roi(foot_center, roi_points, logger):
-                                is_exception = True
-                                result_confidence = float(box.conf)
-                                logger.info(f"MATCH! Human detected in ROI! foot_center={foot_center}, Confidence: {result_confidence:.2f}")
-                                break
+                    if roi_points:
+                        # 检查点是否在检测区域内
+                        if self.is_point_in_roi(foot_center, roi_points, logger):
+                            is_exception = True
+                            result_confidence = box.confidence
+                            logger.info(f"MATCH! Human detected in ROI! foot_center={foot_center}, Confidence: {result_confidence:.2f}")
+                            break
                 
                 if total_detected > 0 and not is_exception:
                     logger.debug(f"Human(s) detected (counts={total_detected}), but none matched current ROI: {roi_points}")
@@ -138,7 +132,7 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                     last_alert_time = datetime.now()
                     
                     # 生成检测画面截图
-                    alert_frame = self.draw_and_get_frame(frame, results)
+                    alert_frame = self.draw_and_get_frame(frame, result)
         
                     # 如果有检测结果，将结果投送给 TaskManager 上传到云端
                     if on_alert:

@@ -1,0 +1,16 @@
+# ============================================================
+# 摩尔线程 E1000 (ARM64 MUSA) 专用推理环境
+# ============================================================
+-r requirements.txt
+
+# 推理引擎 (torch_musa 为 PyTorch 注册 "musa" 设备后端)
+ultralytics>=8.2.0
+torch>=2.5.0
+torchvision>=0.15.0
+# torch_musa 需要从摩尔官方源安装:
+# pip install torch_musa -f https://developer.mthreads.com/sdk/download/musa
+# 或参考: https://docs.mthreads.com/musa/musa-sdk
+
+# 模型转换工具 (将 .onnx 转换为 .mtnn)
+# mtnn-converter 需要从摩尔官方获取
+# pip install mtnn-converter

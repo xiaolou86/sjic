@@ -5,6 +5,7 @@ import requests
 import os
 import cv2
 from algorithms import get_algorithm
+from runtime import create_runtime
 
 logger = logging.getLogger('engine.task')
 
@@ -18,6 +19,10 @@ class TaskManager:
         self.persistence_file = os.path.join(self.config['paths']['models_dir'], 'tasks.json')
         os.makedirs(self.config['paths']['models_dir'], exist_ok=True)
         self.active_configs = {}  # task_id -> config dictionary for persistence
+
+        # 根据盒子平台类型创建对应的推理后端（全局共享）
+        self.runtime = create_runtime(config['architecture'])
+        logger.info(f"TaskManager initialized with runtime for architecture: {config['architecture']}")
 
     def set_mqtt_client(self, client):
         self.mqtt_client = client
@@ -131,15 +136,16 @@ class TaskManager:
             logger.info(f"Handing over stream {rtsp_url} to algorithm: {algo_type}")
             
             # 为该任务创建一个专用的子日志器
-            # 这样算法里每一行打印都会带上 [engine.task.Task-4.object_detection] 的前缀
             task_logger = logger.getChild(f"Task-{task_id}.{algo_type}")
             
+            # 将 runtime 注入算法 process 方法
             algo_instance.process(
                 camera_stream=cap,
                 config_dict=task_config,
                 logger=task_logger,
                 stop_event=stop_event,
-                on_alert=handle_alert
+                on_alert=handle_alert,
+                runtime=self.runtime
             )
 
             # 当 stop_event.is_set() 后，process 循环会退出
@@ -158,7 +164,6 @@ class TaskManager:
         if task_id in self.stop_events:
             del self.stop_events[task_id]
         # 注意：这里不清 self.active_configs，因为它决定了下次重启是否自启动
-        # 如果是因为 error 导致的退出，可能需要用户手动再点一次 start 或者由 reload 逻辑处理
 
     def _save_tasks(self):
         """持久化当前运行的任务配置"""
@@ -211,7 +216,7 @@ class TaskManager:
             # 如果内存里有帧（例如 cv2读取的）或者有本地存储的图片
             if image_path and os.path.exists(image_path):
                 files['image'] = open(image_path, 'rb')
-            elif getattr(image_frame, 'any', lambda: False)(): # numpy array
+            elif image_frame is not None and hasattr(image_frame, 'any') and image_frame.any():
                 import cv2
                 success, encoded_image = cv2.imencode('.jpg', image_frame)
                 if success:

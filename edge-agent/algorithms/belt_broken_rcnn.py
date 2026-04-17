@@ -2,12 +2,12 @@ from .base import BaseAlgorithm
 import cv2
 import numpy as np
 import time
-from ultralytics import YOLO
+
 
 class BeltBrokenRCNNAlgorithm(BaseAlgorithm):
     """边缘端：皮带表面故障检测算法-纯rcnn检测版本"""
 
-    def process(self, camera_stream, config_dict, logger, stop_event, on_alert):
+    def process(self, camera_stream, config_dict, logger, stop_event, on_alert, runtime):
         """处理图像"""
         try:
             parameters = config_dict.get('parameters', {})
@@ -15,9 +15,9 @@ class BeltBrokenRCNNAlgorithm(BaseAlgorithm):
             task_name = config_dict.get('task_id', 'unknown_task')
             camera = camera_stream
             
-            # TODO: RCNN load? Assuming primary path is yolo
-            logger.info(f"Loading YOLO Model for RCNN fallback from: {model_path}")
-            yolo_model = YOLO(model_path)
+            # 通过 Runtime 抽象加载主模型
+            logger.info(f"Loading Model for RCNN fallback via runtime: {model_path}")
+            runtime.load(model_path)
             
             # fallback/mock for now if no independent node path configured for rcnn 
             rcnn_model = None
@@ -57,29 +57,31 @@ class BeltBrokenRCNNAlgorithm(BaseAlgorithm):
                 if not ret:
                     continue
 
-                # 使用YOLO Segment检测异常
-                results = yolo_model(frame, conf=confidence)[0]
+                # 通过 Runtime 推理
+                result = runtime.infer(frame, conf=confidence)
                 
-                if len(results) > 0:
+                if result.count > 0:
                     defect_regions = []
                     total_defect_area_px = 0
                     
-                    # 处理每个检测到的异常区域
-                    for i in range(len(results.boxes)):
-                        # 获取检测框
-                        box = results.boxes[i]
-                        x1, y1, x2, y2 = map(int, box.xyxy[0])
-                        conf = float(box.conf[0])
+                    for i, box in enumerate(result.boxes):
+                        x1, y1, x2, y2 = box.x1, box.y1, box.x2, box.y2
+                        conf = box.confidence
                         
-                        # 获取分割掩码
-                        mask = results.masks[i].data[0].cpu().numpy()
+                        # 获取分割掩码（如果有）
+                        mask = None
+                        if result.masks is not None and i < len(result.masks):
+                            mask = result.masks[i]
+                            if mask.ndim == 3:
+                                mask = mask[0]
                         
-                        # 计算原始YOLO检测的异常区域面积（像素）
-                        yolo_area_px = np.sum(mask)
+                        # 计算原始检测的异常区域面积（像素）
+                        if mask is not None:
+                            area_px = np.sum(mask)
+                        else:
+                            area_px = box.area_px
                         
-                        # 使用的模型类型
                         model_used = 'yolo'
-                        area_px = yolo_area_px
 
                         # 一般情况下只需要有一处破损，我们就需要报警
                         if conf < 0.5:
@@ -154,63 +156,41 @@ class BeltBrokenRCNNAlgorithm(BaseAlgorithm):
                                 except Exception as e:
                                     logger.error(f"Error in RCNN detection: {str(e)}")
                         else:
-                            # 在原图上标记这是YOLO检测结果
                             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                            cv2.putText(
-                                frame,
-                                f'YOLO: {conf:.2f}',
-                                (x1, y1 - 10),
-                                cv2.FONT_HERSHEY_SIMPLEX,
-                                0.5,
-                                (0, 255, 0),
-                                2
-                            )
+                            cv2.putText(frame, f'YOLO: {conf:.2f}', (x1, y1 - 10),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                         
-                        # 累加总面积
                         total_defect_area_px += area_px
                         
-                        # 记录异常区域信息
                         defect_regions.append({
-                            'x': x1,
-                            'y': y1,
-                            'width': x2 - x1,
-                            'height': y2 - y1,
-                            'area_px': area_px,
-                            'confidence': conf,
+                            'x': x1, 'y': y1,
+                            'width': x2 - x1, 'height': y2 - y1,
+                            'area_px': area_px, 'confidence': conf,
                             'model': model_used
                         })
                         
                         # 在原图上绘制异常区域
-                        colored_mask = np.zeros_like(frame)
-                        colored_mask[mask == 1] = [0, 0, 255]  # 红色标记异常区域
-                        frame = cv2.addWeighted(frame, 1, colored_mask, 0.5, 0)
+                        if mask is not None:
+                            colored_mask = np.zeros_like(frame)
+                            binary_mask = (mask > 0.5).astype(np.uint8)
+                            # 确保 mask 尺寸与 frame 匹配
+                            if binary_mask.shape != frame.shape[:2]:
+                                binary_mask = cv2.resize(binary_mask, (frame.shape[1], frame.shape[0]))
+                            colored_mask[binary_mask == 1] = [0, 0, 255]
+                            frame = cv2.addWeighted(frame, 1, colored_mask, 0.5, 0)
                     
-                    # 计算总异常面积(cm²)
                     total_defect_area_cm2 = total_defect_area_px * (pixel_to_cm ** 2)
                     
-                    # 如果异常面积超过阈值，返回结果
                     if total_defect_area_cm2 >= min_area_cm2:
-                        # 添加文本说明
-                        text = f'Defect Area: {total_defect_area_cm2:.1f} cm²'
-                        cv2.putText(
-                            frame,
-                            text,
-                            (10, 30),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            1,
-                            (0, 0, 255),
-                            2
-                        )
+                        text = f'Defect Area: {total_defect_area_cm2:.1f} cm2'
+                        cv2.putText(frame, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                         
-                        return {
-                            'frame': frame,
-                            'defect_area': total_defect_area_cm2,
-                            'defect_regions': defect_regions,
-                            'alert': True,
-                            'alert_type': 'belt_broken',
-                            'confidence': max(r['confidence'] for r in defect_regions),
-                            'models_used': list(set(r['model'] for r in defect_regions))
-                        }
+                        if on_alert:
+                            on_alert(
+                                alert_type="belt_broken",
+                                confidence=max(r['confidence'] for r in defect_regions),
+                                image_frame=frame
+                            )
                 
                 time.sleep(0.01)
                 

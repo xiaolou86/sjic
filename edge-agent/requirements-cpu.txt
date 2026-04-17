@@ -3,7 +3,10 @@
 # ============================================================
 -r requirements.txt
 
-# 常用 CPU 推理加速
+# 推理引擎 (CPU 模式的 ultralytics)
+ultralytics>=8.2.0
+torch>=2.6.0
+torchvision>=0.15.0
+
+# 常用 CPU 推理加速（可选）
 onnxruntime>=1.15.0
-openvino>=2023.1.0 
-cpu-only-inference-monitor>=1.0.0

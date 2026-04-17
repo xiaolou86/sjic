@@ -10,6 +10,8 @@ os.environ["OPENCV_FFMPEG_READ_ATTEMPTS"] = "16384"
 
 from mqtt_client import EdgeMqttClient
 from engine.task_manager import TaskManager
+from platforms import get_platform_info
+
 # 修改日志格式：使用标准的层级化日志
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - [%(name)s] - %(levelname)s - %(message)s')
 
@@ -30,18 +32,20 @@ def load_config(path='config.yaml'):
         
     return config
 
-def get_hardware_status():
-    """获取设备状态"""
-    return {
+def get_hardware_status(architecture):
+    """获取设备状态（支持多平台硬件信息采集）"""
+    base = {
         "cpu_usage": psutil.cpu_percent(),
         "mem_usage": psutil.virtual_memory().percent,
-        # TODO: 读取特定平台的温度或 NPU 占用，如 Rk3588 cat /sys/class/thermal/thermal_zone0/temp
-        "temperature": 50.0 
     }
+    # 合并平台特定的硬件信息（温度、NPU 状态等）
+    base.update(get_platform_info(architecture))
+    return base
 
 def main():
     config = load_config()
-    logger.info(f"Starting SJIC Edge Agent [{config['edge_id']}]")
+    arch = config.get('architecture', 'x86')
+    logger.info(f"Starting SJIC Edge Agent [{config['edge_id']}] on platform: {arch}")
 
     # 1. 实例化任务管理器 (负责 AI 推理全生命周期)
     task_manager = TaskManager(config)
@@ -61,9 +65,9 @@ def main():
             heartbeat_payload = {
                 "timestamp": int(time.time()),
                 "edge_id": config['edge_id'],
-                "architecture": config['architecture'],
+                "architecture": arch,
                 "status": "online",
-                "hardware": get_hardware_status(),
+                "hardware": get_hardware_status(arch),
                 "running_tasks": list(task_manager.active_tasks.keys())
             }
             mqtt_client.publish_heartbeat(heartbeat_payload)

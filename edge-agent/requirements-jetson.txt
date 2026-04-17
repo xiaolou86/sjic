@@ -3,11 +3,16 @@
 # ============================================================
 -r requirements.txt
 
-# 1. 核心导出与加速库
+# 推理引擎
+ultralytics>=8.2.0
+torch>=2.6.0
+torchvision>=0.15.0
+
+# 导出与加速库 (可选)
 onnx>=1.15.0
 onnxsim>=0.4.33
 # onnxruntime-gpu 在 Jetson 上通常需要特定的 NVIDIA 官方 .whl，直接 pip 会报找不到版本
 # onnxruntime-gpu>=1.16.0 
 
-# 2. TensorRT Python SDK (注意：如果您在 Jetson 上，请优先确保已安装 JetPack)
+# TensorRT Python SDK (注意：如果您在 Jetson 上，请优先确保已安装 JetPack)
 # https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048
