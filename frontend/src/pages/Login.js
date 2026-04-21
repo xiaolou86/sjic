@@ -19,6 +19,8 @@ function Login() {
     try {
       const response = await axios.post('/api/login', formData);
       localStorage.setItem('token', response.token);
+      localStorage.setItem('user_role', response.role);
+      localStorage.setItem('username', response.username);
       navigate('/');
     } catch (error) {
       setError('用户名或密码错误');

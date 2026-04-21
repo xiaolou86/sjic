@@ -46,7 +46,7 @@ class Config:
 
     # 文件存储配置 (基础路径魔法变量)
     UPLOAD_FOLDER = os.path.join(base_dir, 'models')
-    ALLOWED_EXTENSIONS = {'pt', 'pth', 'weights', 'engine', 'onnx'}
+    ALLOWED_EXTENSIONS = {'pt', 'pth', 'weights', 'engine', 'onnx', 'rknn', 'mtnn'}
     # 模型文件
     MODEL_FOLDER = os.path.join(base_dir, 'models')
     # 视频源

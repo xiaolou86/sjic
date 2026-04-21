@@ -8,7 +8,7 @@ const drawerWidth = 240;
 const menuItems = [
   { text: '边缘节点', icon: <Computer />, path: '/nodes' },
   { text: '视频源', icon: <Videocam />, path: '/streams' },
-  { text: '模型管理', icon: <ModelTraining />, path: '/models' },
+  { text: '模型管理', icon: <ModelTraining />, path: '/models', role: 'vendor' },
   { text: '算法清单', icon: <Code />, path: '/algorithms' },
   { text: '任务', icon: <Task />, path: '/tasks' },
   { text: '模型训练', icon: <Build />, path: '/training' },
@@ -22,8 +22,16 @@ function Layout({ children }) {
 
   const handleLogout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('user_role');
+    localStorage.removeItem('username');
     navigate('/login');
   };
+
+  const userRole = localStorage.getItem('user_role');
+  const filteredMenuItems = menuItems.filter(item => {
+    if (item.role && item.role !== userRole) return false;
+    return true;
+  });
 
   return (
     <Box sx={{ display: 'flex' }}>
@@ -51,7 +59,7 @@ function Layout({ children }) {
         <Toolbar />
         <Box sx={{ overflow: 'auto' }}>
           <List>
-            {menuItems.map((item) => (
+            {filteredMenuItems.map((item) => (
               <ListItem
                 button
                 key={item.text}

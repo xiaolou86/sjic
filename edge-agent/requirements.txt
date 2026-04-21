@@ -5,7 +5,7 @@ paho-mqtt==1.6.1
 pydantic>=2.4.2
 PyYAML==6.0.1
 requests==2.31.0
-opencv-python-headless>=4.8.1.78
+opencv-python-headless==4.8.0.76
 numpy>=1.23.5
 psutil>=5.9.5
 shapely>=2.0.1

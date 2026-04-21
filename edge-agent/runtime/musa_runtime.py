@@ -1,81 +1,170 @@
 """
-摩尔 E1000 (MUSA) 推理后端
+摩尔 E1000 (MUSA/MTNN) 推理后端
 适用平台: 摩尔线程 E1000 ARM64 NPU
-依赖: torch, torch_musa, ultralytics
-支持模型格式: .pt (通过 torch_musa 加速), .mtnn (待原厂 SDK 完善后扩展)
+支持模型格式: .mtnn (通过 mtnn_api 推理)
 
-原理: torch_musa 为 PyTorch 注册了 "musa" 设备后端，
-      ultralytics YOLO 的 model.predict(device='musa') 可直接走 MUSA 加速。
+说明: 
+本后端专为摩尔线程 NPU 设计，直接调用官方 mtnn_api 执行推理。
 """
 from .base_runtime import BaseRuntime, DetectionResult, DetectionBox
+import numpy as np
+import cv2
+import time
 import logging
 
 logger = logging.getLogger('runtime.musa')
 
+def xywh2xyxy(x):
+    """(x, y, w, h) -> (x1, y1, x2, y2)"""
+    y = np.copy(x)
+    y[..., 0] = x[..., 0] - x[..., 2] / 2
+    y[..., 1] = x[..., 1] - x[..., 3] / 2
+    y[..., 2] = x[..., 0] + x[..., 2] / 2
+    y[..., 3] = x[..., 1] + x[..., 3] / 2
+    return y
+
+def compute_iou(box, boxes):
+    """计算单个 box 与一组 boxes 的 IoU"""
+    xmin = np.maximum(box[0], boxes[:, 0])
+    ymin = np.maximum(box[1], boxes[:, 1])
+    xmax = np.minimum(box[2], boxes[:, 2])
+    ymax = np.minimum(box[3], boxes[:, 3])
+    intersection_area = np.maximum(0, xmax - xmin) * np.maximum(0, ymax - ymin)
+    box_area = (box[2] - box[0]) * (box[3] - box[1])
+    boxes_area = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+    union_area = box_area + boxes_area - intersection_area
+    return intersection_area / union_area
+
+def nms(boxes, scores, iou_threshold):
+    """非极大值抑制 (NMS)"""
+    sorted_indices = np.argsort(scores)[::-1]
+    keep_boxes = []
+    while sorted_indices.size > 0:
+        box_id = sorted_indices[0]
+        keep_boxes.append(box_id)
+        ious = compute_iou(boxes[box_id, :], boxes[sorted_indices[1:], :])
+        keep_indices = np.where(ious < iou_threshold)[0]
+        sorted_indices = sorted_indices[keep_indices + 1]
+    return keep_boxes
+
 
 class MusaRuntime(BaseRuntime):
-    """基于 torch_musa + ultralytics 的推理后端（摩尔 E1000）"""
+    """纯 NPU 推理后端"""
 
     def __init__(self):
-        self.model = None
+        self.session = None
         self._model_path = None
-        self._musa_available = False
-        self._init_musa()
-
-    def _init_musa(self):
-        """检测 MUSA 环境是否可用，若不可用直接报错"""
-        try:
-            import torch
-            import torch_musa
-            if torch.musa.is_available():
-                logger.info(f"[MusaRuntime] MUSA device detected: {torch.musa.get_device_name(0)}")
-                self._musa_available = True
-            else:
-                raise RuntimeError("MUSA device found but is_available() is False. Please check MTHREADS driver.")
-        except ImportError as e:
-            raise ImportError(f"torch_musa not installed: {e}. Cannot run Moore E1000 platform without it.")
-        except Exception as e:
-            raise RuntimeError(f"MUSA initialization failed: {e}")
+        self.input_width = 640
+        self.input_height = 640
 
     def load(self, model_path: str, **kwargs):
-        from ultralytics import YOLO
-        import torch
         self._model_path = model_path
-        self.model = YOLO(model_path)
+        
+        try:
+            # 只支持加载摩尔官方 mtnn 模型
+            import mtnn_api
+            logger.info(f"[MusaRuntime] Loading MTNN model via mtnn_api: {model_path}")
+            self.session = mtnn_api.MTNNSession(model_path)
+        except ImportError as e:
+            raise ImportError(f"mtnn_api not found. Please install Moore Threads SDK: {e}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to initialize MTNN session: {e}")
 
-        # 强制将模型迁移到 MUSA 设备，若失败会在此报错
-        self.model.to('musa')
-        logger.info(f"[MusaRuntime] Model loaded on MUSA device: {model_path}")
+    def _letterbox(self, img, target_size=640):
+        """
+        Letterbox 预处理：等比缩放 + 灰色填充，保持原始宽高比不变。
+        与 ultralytics 内部预处理方式一致，避免拉伸变形导致检测框位置偏移。
+        
+        :return: (padded_img, scale, pad_top, pad_left)
+        """
+        h, w = img.shape[:2]
+        scale = min(target_size / h, target_size / w)
+        new_h, new_w = int(h * scale), int(w * scale)
+
+        resized = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+        dh = target_size - new_h
+        dw = target_size - new_w
+        top = dh // 2
+        left = dw // 2
+
+        padded = cv2.copyMakeBorder(
+            resized, top, dh - top, left, dw - left,
+            cv2.BORDER_CONSTANT, value=(114, 114, 114)
+        )
+        return padded, scale, top, left
 
     def infer(self, frame, conf=0.5, classes=None, imgsz=640) -> DetectionResult:
-        if self.model is None:
+        if self.session is None:
             raise RuntimeError("Model not loaded. Call load() first.")
 
-        # 强制使用 musa 设备进行推理
-        kwargs = dict(imgsz=imgsz, verbose=False, conf=conf, device='musa')
+        # 1. Letterbox 预处理（等比缩放 + 灰边填充，保持宽高比）
+        h_orig, w_orig = frame.shape[:2]
+        letterboxed, scale, pad_top, pad_left = self._letterbox(frame, target_size=imgsz)
+
+        input_img = cv2.cvtColor(letterboxed, cv2.COLOR_BGR2RGB)
+        input_img = input_img / 255.0
+        input_img = input_img.transpose(2, 0, 1)
+        input_tensor = input_img[np.newaxis, :, :, :].astype(np.float32)
+
+        # 2. 推理 (MTNN 官方 Session 运行方式)
+        start_time = time.perf_counter()
+        outputs = self.session.run({0: input_tensor})
+        latency = (time.perf_counter() - start_time) * 1000
+        logger.debug(f"[MusaRuntime] NPU Inference latency: {latency:.2f} ms")
+
+        # 3. 后处理 (针对 YOLOv8 输出格式 [1, 84, 8400])
+        output = outputs[0]
+        predictions = np.squeeze(output).T  # [8400, 84]
+        
+        boxes = predictions[:, :4]    # (cx, cy, w, h) 在 640x640 letterbox 空间
+        scores = predictions[:, 4:]   # 各类别概率
+        
+        max_scores = np.max(scores, axis=1)
+        
+        # 应用置信度阈值
+        valid_indices = max_scores > conf
+        
+        # 类别过滤
         if classes is not None:
-            kwargs['classes'] = classes
-
-        raw_results = self.model(frame, **kwargs)
-
-        # 转换为统一格式（与 UltralyticsRuntime 逻辑一致）
-        boxes = []
-        masks_data = None
-
-        if len(raw_results) > 0:
-            r = raw_results[0]
-            for box in r.boxes:
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
-                boxes.append(DetectionBox(
-                    x1=x1, y1=y1, x2=x2, y2=y2,
-                    confidence=float(box.conf[0]),
-                    class_id=int(box.cls[0])
-                ))
-            if hasattr(r, 'masks') and r.masks is not None:
-                masks_data = r.masks.data.cpu().numpy()
-
-        return DetectionResult(boxes=boxes, masks=masks_data, _raw=raw_results)
+            max_classes = np.argmax(scores, axis=1)
+            class_indices = np.isin(max_classes, classes)
+            valid_indices = valid_indices & class_indices
+            
+        if not np.any(valid_indices):
+            return DetectionResult(boxes=[])
+            
+        valid_boxes = boxes[valid_indices]
+        valid_scores = max_scores[valid_indices]
+        valid_class_ids = np.argmax(scores[valid_indices], axis=1)
+        
+        # xywh 转 xyxy（仍在 640x640 letterbox 空间）
+        valid_boxes = xywh2xyxy(valid_boxes)
+        
+        # ★ 关键修复：逆向还原坐标到原始帧尺寸 ★
+        # 第一步：减去灰边偏移量（从 letterbox 空间 → 缩放后的有效区域）
+        valid_boxes[:, [0, 2]] -= pad_left
+        valid_boxes[:, [1, 3]] -= pad_top
+        # 第二步：除以缩放比（从缩放空间 → 原始帧像素坐标）
+        valid_boxes /= scale
+        
+        # NMS 过滤
+        keep = nms(valid_boxes, valid_scores, iou_threshold=0.45)
+        
+        # 封装结果（坐标已在原始帧空间，可直接绘制）
+        final_boxes = []
+        for idx in keep:
+            final_boxes.append(DetectionBox(
+                x1=int(np.clip(valid_boxes[idx][0], 0, w_orig)),
+                y1=int(np.clip(valid_boxes[idx][1], 0, h_orig)),
+                x2=int(np.clip(valid_boxes[idx][2], 0, w_orig)),
+                y2=int(np.clip(valid_boxes[idx][3], 0, h_orig)),
+                confidence=float(valid_scores[idx]),
+                class_id=int(valid_class_ids[idx])
+            ))
+            
+        return DetectionResult(boxes=final_boxes)
 
     def release(self):
-        self.model = None
-        logger.info("[MusaRuntime] Released.")
+        self.session = None
+        logger.info("[MusaRuntime] MTNN Session released.")

@@ -54,15 +54,27 @@ def login():
     current_app.logger.info(f"Processing login for username: {username}")
 
     # 验证账号密码
-    if username == 'admin' and password == '123123':
+    role = None
+    if username == 'super_admin' and password == '123123':
+        role = 'vendor'
+    elif username == 'admin' and password == '123123':
+        role = 'customer'
+
+    if role:
         token = jwt.encode({
             'user': username,
+            'role': role,
             'exp': datetime.utcnow() + timedelta(hours=24)
         }, Config.SECRET_KEY, algorithm='HS256')
+        
+        # 兼容旧版本 PyJWT 的 bytes 返还值问题，如果是 bytes 就转换成字符串
+        if isinstance(token, bytes):
+            token = token.decode('utf-8')
 
         response = jsonify({
             'token': token,
-            'username': username
+            'username': username,
+            'role': role
         })
         return response
 

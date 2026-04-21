@@ -4,8 +4,16 @@ import {
   TableRow, Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Select, MenuItem, IconButton, Autocomplete, Chip, Box, Tooltip
 } from '@mui/material';
-import { Edit } from '@mui/icons-material';
+import { Edit, Delete, Add } from '@mui/icons-material';
 import axios from '../utils/axios';
+
+const ALGORITHM_TYPES = [
+  { value: 'object_detection', label: '通用目标检测 (Yolo)' },
+  { value: 'belt_broken', label: '皮带表面故障检测' },
+  { value: 'belt_deviation_detection', label: '皮带跑偏检测' },
+  { value: 'belt_broken_series', label: '皮带连续扫描' },
+  { value: 'other', label: '其他专用固化引擎' }
+];
 
 function Algorithms() {
   const [algorithms, setAlgorithms] = useState([]);
@@ -13,6 +21,8 @@ function Algorithms() {
   
   const [openDialog, setOpenDialog] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  
+  const isSuperAdmin = localStorage.getItem('user_role') === 'vendor';
   
   const [formData, setFormData] = useState({
     name: '',
@@ -39,9 +49,11 @@ function Algorithms() {
     }
   };
 
-  const handleUpdate = async () => {
+  const handleUpdateOrCreate = async () => {
     try {
       const payload = {
+        name: formData.name,
+        type: formData.type,
         description: formData.description,
         model_id: formData.model_id || null,
         labels: formData.labels || []
@@ -49,11 +61,22 @@ function Algorithms() {
       
       if (editingId) {
         await axios.put(`/api/algorithms/${editingId}`, payload);
+      } else {
+        await axios.post('/api/algorithms', payload);
       }
       setOpenDialog(false);
       fetchData();
     } catch (error) {
-      console.error('Error saving algorithm:', error);
+      console.error('Error saving algorithm/app:', error);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      await axios.delete(`/api/algorithms/${id}`);
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting algorithm/app:', error);
     }
   };
 
@@ -69,6 +92,11 @@ function Algorithms() {
     setOpenDialog(true);
   };
   
+  const resetForm = () => {
+    setEditingId(null);
+    setFormData({ name: '', type: '', description: '', model_id: '', labels: [] });
+  };
+  
   // 稳健查找对应的模型 (兼容 id 为 int 或 string 的情况)
   const selectedModel = models.find(m => String(m.id) === String(formData.model_id));
   
@@ -80,12 +108,20 @@ function Algorithms() {
     <Grid container spacing={3}>
       <Grid item xs={12}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="h5" gutterBottom>
-            基础算法配置
-          </Typography>
-          <Typography variant="body2" color="textSecondary">
-            系统内置的底层算法引擎底座，您可以为它们关联默认的适用模型和检测目标，以便在创建调度任务时快速带入。
-          </Typography>
+          <Box>
+            <Typography variant="h5" gutterBottom sx={{ userSelect: 'none' }}>
+              业务场景配置 (算法模板) 
+              {isSuperAdmin && <Chip size="small" color="primary" label="服务商超管" sx={{ ml: 2 }}/>}
+            </Typography>
+            <Typography variant="body2" color="textSecondary">
+              在这里查看和配置您的商业应用场景。
+            </Typography>
+          </Box>
+          {isSuperAdmin && (
+            <Button variant="contained" startIcon={<Add />} onClick={() => { resetForm(); setOpenDialog(true); }}>
+              添加业务场景
+            </Button>
+          )}
         </Box>
       </Grid>
       
@@ -96,7 +132,7 @@ function Algorithms() {
               <TableRow>
                 <TableCell>算法名称</TableCell>
                 <TableCell>底层算法标识 (Type)</TableCell>
-                <TableCell>默认关联模型</TableCell>
+                {isSuperAdmin && <TableCell>底层秘密投递模型</TableCell>}
                 <TableCell>关心的标签 (Labels)</TableCell>
                 <TableCell>操作</TableCell>
               </TableRow>
@@ -108,16 +144,21 @@ function Algorithms() {
                   <TableRow key={algorithm.id}>
                     <TableCell>{algorithm.name}</TableCell>
                     <TableCell><Chip label={algorithm.type} size="small" variant="outlined"/></TableCell>
-                    <TableCell>{amodel ? amodel.name : '无'}</TableCell>
+                    {isSuperAdmin && <TableCell>{amodel ? amodel.name : '等待绑定'}</TableCell>}
                     <TableCell>
                       {algorithm.labels && algorithm.labels.length > 0
                         ? algorithm.labels.join(', ')
                         : '默认全部'}
                     </TableCell>
                     <TableCell>
-                      <Tooltip title="配置默认参数">
+                      <Tooltip title={isSuperAdmin ? "配置参数/模型" : "查看模板详情"}>
                         <IconButton onClick={() => handleEdit(algorithm)}><Edit /></IconButton>
                       </Tooltip>
+                      {isSuperAdmin && (
+                        <Tooltip title="删除该业务场景">
+                          <IconButton onClick={() => handleDelete(algorithm.id)} color="error"><Delete /></IconButton>
+                        </Tooltip>
+                      )}
                     </TableCell>
                   </TableRow>
                 );
@@ -128,36 +169,49 @@ function Algorithms() {
       </Grid>
 
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>配置算法默认值：{formData.name}</DialogTitle>
+        <DialogTitle>{editingId ? `编辑业务场景：${formData.name}` : '添加新的业务场景'}</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
               <TextField
-                fullWidth label="底层算法标识 (只读)"
-                value={formData.type}
-                disabled
+                fullWidth label="应用场景名称 (如: 安全帽检查)"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
+            </Grid>
+            <Grid item xs={12}>
+              <Select
+                fullWidth value={formData.type} displayEmpty
+                onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                disabled={!!editingId}
+              >
+                <MenuItem value="" disabled>请选择底部调用的算法引擎 (Type)</MenuItem>
+                {ALGORITHM_TYPES.map(t => <MenuItem key={t.value} value={t.value}>{t.value} ({t.label})</MenuItem>)}
+              </Select>
             </Grid>
             <Grid item xs={12}>
               <TextField
                 fullWidth label="描 述"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                disabled={!isSuperAdmin}
               />
             </Grid>
             
-            <Grid item xs={12}>
-              <Typography variant="subtitle2" color="textSecondary" sx={{ mt: 1, mb: 1 }}>
-                关联推荐模型与标签 (可选，将在配置任务时作为模板自动填充)
-              </Typography>
-              <Select
-                fullWidth value={formData.model_id} displayEmpty
-                onChange={(e) => setFormData({ ...formData, model_id: e.target.value, labels: [] })}
-              >
-                <MenuItem value="">不关联具体模型</MenuItem>
-                {models.map(m => <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>)}
-              </Select>
-            </Grid>
+            {isSuperAdmin && (
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" color="error" sx={{ mt: 1, mb: 1 }}>
+                  [出厂配置] 绑定私密核心基座模型 (仅开发可视)
+                </Typography>
+                <Select
+                  fullWidth value={formData.model_id} displayEmpty
+                  onChange={(e) => setFormData({ ...formData, model_id: e.target.value, labels: [] })}
+                >
+                  <MenuItem value="">未绑定 (空缺必报错)</MenuItem>
+                  {models.map(m => <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>)}
+                </Select>
+              </Grid>
+            )}
 
             {selectedModel && selectedModel.labelmap && Array.isArray(selectedModel.labelmap) && selectedModel.labelmap.length > 0 && (
               <Grid item xs={12}>
@@ -178,6 +232,7 @@ function Algorithms() {
                     ))
                   }
                   isOptionEqualToValue={(option, value) => String(option.id) === String(value.id)}
+                  disabled={!isSuperAdmin}
                 />
               </Grid>
             )}
@@ -192,10 +247,12 @@ function Algorithms() {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenDialog(false)}>取消</Button>
-          <Button onClick={handleUpdate} variant="contained">
-            保存配置
-          </Button>
+          <Button onClick={() => setOpenDialog(false)}>{isSuperAdmin ? '取消' : '关闭'}</Button>
+          {isSuperAdmin && (
+            <Button onClick={handleUpdateOrCreate} variant="contained">
+              {editingId ? '保存配置' : '确定创建'}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 

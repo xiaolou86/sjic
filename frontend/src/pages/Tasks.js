@@ -645,7 +645,6 @@ function Tasks() {
                 <TableCell>名称</TableCell>
                 <TableCell>视频源</TableCell>
                 <TableCell>算力节点</TableCell>
-                <TableCell>模型</TableCell>
                 <TableCell>算法</TableCell>
                 <TableCell>状态</TableCell>
                 <TableCell>操作</TableCell>
@@ -657,7 +656,6 @@ function Tasks() {
                   <TableCell>{task.name}</TableCell>
                   <TableCell>{cameras.find(c => c.id === task.cameraId)?.name}</TableCell>
                   <TableCell>{nodes.find(n => n.id === task.edge_node_id)?.name || "无"}</TableCell>
-                  <TableCell>{models.find(m => m.id === task.modelId)?.name}</TableCell>
                   <TableCell>{algorithms.find(a => a.id === task.algorithm_id)?.name}</TableCell>
                   <TableCell>{task.status}</TableCell>
                   <TableCell>
@@ -701,22 +699,6 @@ function Tasks() {
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 margin="normal"
               />
-            </Grid>
-
-            <Grid item xs={12} md={6}>
-              <Select
-                fullWidth
-                value={formData.modelId}
-                onChange={(e) => setFormData({ ...formData, modelId: e.target.value })}
-                displayEmpty
-              >
-                <MenuItem value="">选择模型</MenuItem>
-                {models.map(model => (
-                  <MenuItem key={model.id} value={model.id}>
-                    {model.name}
-                  </MenuItem>
-                ))}
-              </Select>
             </Grid>
 
             <Grid item xs={12} md={6}>
@@ -829,46 +811,6 @@ function Tasks() {
               />
             </Grid>
 
-            {(() => {
-              const selectedModel = models.find(m => String(m.id) === String(formData.modelId));
-              if (selectedModel && selectedModel.labelmap && Array.isArray(selectedModel.labelmap) && selectedModel.labelmap.length > 0) {
-                return (
-                  <Grid item xs={12}>
-                    <Autocomplete
-                      multiple
-                      options={selectedModel.labelmap}
-                      getOptionLabel={(option) => option.name || String(option.id)}
-                      value={selectedModel.labelmap.filter(l => (formData.algorithm_parameters?.labels || []).includes(l.id))}
-                      onChange={(event, newValue) => {
-                        setFormData({
-                          ...formData,
-                          algorithm_parameters: {
-                            ...formData.algorithm_parameters,
-                            labels: newValue.map(v => v.id)
-                          }
-                        });
-                      }}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          variant="outlined"
-                          label="关注的检测目标 (不选则默认检测全部)"
-                          placeholder="选择目标标签"
-                        />
-                      )}
-                      renderTags={(value, getTagProps) =>
-                        value.map((option, index) => (
-                          <Chip variant="outlined" label={option.name || String(option.id)} {...getTagProps({ index })} />
-                        ))
-                      }
-                      isOptionEqualToValue={(option, value) => String(option.id) === String(value.id)}
-                    />
-                  </Grid>
-                );
-              }
-              return null;
-            })()}
-
             {renderAlgorithmSpecificParams()}
 
             <Grid item xs={12}>
@@ -908,11 +850,6 @@ function Tasks() {
                   <Grid item xs={12} md={6}>
                     <Typography>
                       视频源：{cameras.find(c => c.id === selectedTask.cameraId)?.name}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <Typography>
-                      模型：{models.find(m => m.id === selectedTask.modelId)?.name}
                     </Typography>
                   </Grid>
                   <Grid item xs={12} md={6}>

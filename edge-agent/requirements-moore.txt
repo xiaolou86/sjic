@@ -3,6 +3,11 @@
 # ============================================================
 -r requirements.txt
 
+# moore建议版本
+numpy==1.26.0
+
+opencv-python-headless==4.8.0.76
+
 # 推理引擎 (torch_musa 为 PyTorch 注册 "musa" 设备后端)
 ultralytics>=8.2.0
 torch>=2.5.0
