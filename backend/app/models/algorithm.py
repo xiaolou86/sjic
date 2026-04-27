@@ -49,11 +49,11 @@ class Algorithm(db.Model):
         """初始化系统默认支持的边缘端算法"""
         from flask import current_app
         algorithms_data = [
-            {'type': 'object_detection', 'name': '目标通用检测', 'desc': '标准 YOLO 系列通用目标检测'},
+            {'type': 'object_detection', 'name': '目标通用检测', 'desc': '标准通用目标检测'},
             {'type': 'belt_broken', 'name': '皮带表面故障检测', 'desc': '检测皮带表面破损划伤'},
             {'type': 'belt_deviation_detection', 'name': '皮带跑偏检测', 'desc': '基于边缘检测和截面分析的皮带跑偏监测'},
             {'type': 'belt_broken_series', 'name': '皮带撕裂与磨损检测', 'desc': '皮带连续撕裂检测'},
-            {'type': 'belt_broken_rcnn', 'name': '皮带撕裂检测 (RCNN)', 'desc': '高精度 RCNN 版表面撕裂检测'}
+            {'type': 'belt_broken_high', 'name': '高精度皮带表面撕裂检测', 'desc': '高精度皮带表面撕裂检测'}
         ]
         
         for data in algorithms_data:

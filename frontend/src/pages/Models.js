@@ -14,6 +14,7 @@ function Models() {
   const [editingModel, setEditingModel] = useState(null);
   const [modelFile, setModelFile] = useState(null);
   const [modelName, setModelName] = useState('');
+  const [modelDescription, setModelDescription] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
@@ -47,6 +48,7 @@ function Models() {
     const formData = new FormData();
     formData.append('file', modelFile);
     formData.append('name', modelName);
+    formData.append('description', modelDescription);
     
     console.log('FormData entries:');
     for (let pair of formData.entries()) {
@@ -73,6 +75,7 @@ function Models() {
       setOpenUpload(false);
       setModelFile(null);
       setModelName('');
+      setModelDescription('');
       fetchModels();
     } catch (error) {
       console.error('Error uploading model:', error);
@@ -92,6 +95,8 @@ function Models() {
 
   const openLabelmapEditor = (model) => {
     setEditingModel(model);
+    setModelName(model?.name || '');
+    setModelDescription(model?.description || '');
     setLabelmapError(null);
     setLabelmapText(model?.labelmap ? JSON.stringify(model.labelmap, null, 2) : '[]');
     setOpenEdit(true);
@@ -133,9 +138,15 @@ function Models() {
     try {
       setLabelmapError(null);
       const labelmap = parseLabelmap(labelmapText);
-      await axios.put(`/api/models/${editingModel.id}`, { labelmap });
+      await axios.put(`/api/models/${editingModel.id}`, {
+        name: modelName,
+        description: modelDescription,
+        labelmap
+      });
       setOpenEdit(false);
       setEditingModel(null);
+      setModelName('');
+      setModelDescription('');
       fetchModels();
     } catch (e) {
       setLabelmapError(e?.message || '保存失败');
@@ -210,6 +221,15 @@ function Models() {
             value={modelName}
             onChange={(e) => setModelName(e.target.value)}
           />
+          <TextField
+            margin="dense"
+            label="模型描述"
+            fullWidth
+            multiline
+            minRows={2}
+            value={modelDescription}
+            onChange={(e) => setModelDescription(e.target.value)}
+          />
           <input
             type="file"
             accept=".pt,.pth,.weights,.engine,.onnx"
@@ -246,8 +266,25 @@ function Models() {
       </Dialog>
 
       <Dialog open={openEdit} onClose={() => setOpenEdit(false)} maxWidth="md" fullWidth>
-        <DialogTitle>编辑模型 Label IDs</DialogTitle>
+        <DialogTitle>编辑模型</DialogTitle>
         <DialogContent>
+          <TextField
+            margin="dense"
+            label="模型名称"
+            fullWidth
+            value={modelName}
+            onChange={(e) => setModelName(e.target.value)}
+          />
+          <TextField
+            margin="dense"
+            label="模型描述"
+            fullWidth
+            multiline
+            minRows={2}
+            value={modelDescription}
+            onChange={(e) => setModelDescription(e.target.value)}
+            sx={{ mb: 2 }}
+          />
           <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
             推荐格式：数组 <code>[{"{"}"id":0,"name":"person"{"}"},{"{"}"id":1,"name":"car"{"}"}]</code>，或对象 <code>{"{"}"0":"person","1":"car"{"}"}</code>
           </Typography>

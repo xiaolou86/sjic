@@ -104,6 +104,54 @@ def delete_camera(camera_id):
     return '', 204
 
 
+@camera_bp.route('/api/cameras/<int:camera_id>', methods=['PUT'])
+@token_required
+def update_camera(camera_id):
+    """
+    更新摄像头
+    ---
+    tags:
+      - 摄像头管理 (Cameras)
+    summary: 修改指定摄像头的名称和地址
+    security:
+      - APIKeyHeader: []
+    parameters:
+      - name: camera_id
+        in: path
+        type: integer
+        required: true
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            name:
+              type: string
+            url:
+              type: string
+    responses:
+      200:
+        description: 更新成功
+    """
+    try:
+        camera = Camera.query.get_or_404(camera_id)
+        data = request.json or {}
+
+        if 'name' in data:
+            camera.name = data['name']
+        if 'url' in data:
+            camera.url = data['url']
+
+        db.session.commit()
+        current_app.logger.info(f"Camera updated successfully: id={camera.id}")
+        return jsonify(camera.to_dict()), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Failed to update camera {camera_id}: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
 @camera_bp.route('/api/cameras/capture', methods=['POST'])
 def capture_frame():
     """

@@ -14,7 +14,7 @@ graph TB
             od["object_detection.py"]
             bb["belt_broken.py"]
             bd["belt_deviation.py"]
-            brc["belt_broken_rcnn.py"]
+            brc["belt_broken_high.py"]
             bbs["belt_broken_series.py"]
         end
         
@@ -69,7 +69,7 @@ graph TB
 | `algorithms/object_detection.py` | `YOLO()` → `runtime.load()` + `runtime.infer()` |
 | `algorithms/belt_broken.py` | 同上 |
 | `algorithms/belt_deviation_detection.py` | 同上 + 掩码访问适配 `result.masks` |
-| `algorithms/belt_broken_rcnn.py` | 同上 |
+| `algorithms/belt_broken_high.py` | 同上 |
 | `algorithms/belt_broken_series.py` | 同上 |
 
 ### 清理文件

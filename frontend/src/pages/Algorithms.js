@@ -8,10 +8,11 @@ import { Edit, Delete, Add } from '@mui/icons-material';
 import axios from '../utils/axios';
 
 const ALGORITHM_TYPES = [
-  { value: 'object_detection', label: '通用目标检测 (Yolo)' },
+  { value: 'object_detection', label: '通用目标检测' },
   { value: 'belt_broken', label: '皮带表面故障检测' },
   { value: 'belt_deviation_detection', label: '皮带跑偏检测' },
-  { value: 'belt_broken_series', label: '皮带连续扫描' },
+  { value: 'belt_broken_series', label: '皮带撕裂与磨损检测' },
+  { value: 'belt_broken_high', label: '高精度皮带表面撕裂检测' },
   { value: 'other', label: '其他专用固化引擎' }
 ];
 
@@ -132,7 +133,7 @@ function Algorithms() {
               <TableRow>
                 <TableCell>算法名称</TableCell>
                 <TableCell>底层算法标识 (Type)</TableCell>
-                {isSuperAdmin && <TableCell>底层秘密投递模型</TableCell>}
+                {isSuperAdmin && <TableCell>算法模型</TableCell>}
                 <TableCell>关心的标签 (Labels)</TableCell>
                 <TableCell>操作</TableCell>
               </TableRow>

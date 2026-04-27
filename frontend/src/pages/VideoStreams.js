@@ -4,7 +4,7 @@ import {
   DialogContent, DialogActions, TextField, Alert, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Paper, IconButton
 } from '@mui/material';
-import { Add, Visibility, Delete, Close } from '@mui/icons-material';
+import { Add, Visibility, Delete, Close, Edit } from '@mui/icons-material';
 import axios, { getBaseUrl, getWebSocketUrl } from '../utils/axios';
 import VideoPlayer from '../components/VideoPlayer';
 import JSMpeg from '@cycjimmy/jsmpeg-player';
@@ -15,6 +15,7 @@ function VideoStreams() {
   const [openPreview, setOpenPreview] = useState(false);
   const [selectedStream, setSelectedStream] = useState(null);
   const [newStream, setNewStream] = useState({ name: '', url: '' });
+  const [editingStream, setEditingStream] = useState(null);
   const [error, setError] = useState(null);
   const [previewingCamera, setPreviewingCamera] = useState(null);
 
@@ -36,13 +37,41 @@ function VideoStreams() {
 
   const handleAddStream = async () => {
     try {
-      const response = await axios.post('/api/cameras', newStream);
+      await axios.post('/api/cameras', newStream);
       setOpenDialog(false);
       setNewStream({ name: '', url: '' });
       fetchStreams();
     } catch (error) {
       console.error('Error adding stream:', error);
     }
+  };
+
+  const handleEditStream = (stream) => {
+    setEditingStream(stream);
+    setNewStream({ name: stream.name || '', url: stream.url || '' });
+    setOpenDialog(true);
+  };
+
+  const handleSaveStream = async () => {
+    try {
+      if (editingStream) {
+        await axios.put(`/api/cameras/${editingStream.id}`, newStream);
+      } else {
+        await axios.post('/api/cameras', newStream);
+      }
+      setOpenDialog(false);
+      setEditingStream(null);
+      setNewStream({ name: '', url: '' });
+      fetchStreams();
+    } catch (error) {
+      console.error('Error saving stream:', error);
+    }
+  };
+
+  const handleCloseDialog = () => {
+    setOpenDialog(false);
+    setEditingStream(null);
+    setNewStream({ name: '', url: '' });
   };
 
   const handlePreview = (camera) => {
@@ -103,6 +132,13 @@ function VideoStreams() {
                         <Visibility />
                       </IconButton>
                       <IconButton
+                        color="primary"
+                        onClick={() => handleEditStream(stream)}
+                        title="修改"
+                      >
+                        <Edit />
+                      </IconButton>
+                      <IconButton
                         color="error"
                         onClick={() => handleDelete(stream.id)}
                         title="删除"
@@ -119,8 +155,8 @@ function VideoStreams() {
       </Grid>
 
       {/* 添加视频源对话框 */}
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)}>
-        <DialogTitle>添加视频源</DialogTitle>
+      <Dialog open={openDialog} onClose={handleCloseDialog}>
+        <DialogTitle>{editingStream ? '修改视频源' : '添加视频源'}</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
@@ -139,8 +175,10 @@ function VideoStreams() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenDialog(false)}>取消</Button>
-          <Button onClick={handleAddStream} color="primary">添加</Button>
+          <Button onClick={handleCloseDialog}>取消</Button>
+          <Button onClick={handleSaveStream} color="primary">
+            {editingStream ? '保存' : '添加'}
+          </Button>
         </DialogActions>
       </Dialog>
 

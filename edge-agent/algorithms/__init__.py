@@ -8,7 +8,7 @@ ALGORITHM_REGISTRY = {
     "belt_broken": BeltBrokenAlgorithm,
     "object_detection": ObjectDetectionAlgorithm,
     "belt_deviation_detection": BeltDeviationDetection,
-    "belt_broken_rcnn": BeltBrokenRCNNAlgorithm,
+    "belt_broken_high": BeltBrokenRCNNAlgorithm,
     "belt_broken_series": BeltBrokenSeriesAlgorithm
 }
 
