@@ -74,13 +74,16 @@ class MqttService:
                         name=data.get('edge_name', f"Edge-{mac[-5:]}"),
                         status='online',
                         architecture=data.get('architecture', '-'),
-                        ip_address=data.get('ip_address', '')
+                        ip_address=data.get('ip_address', '-')
                     )
                     db.session.add(node)
                     db.session.commit() # 提前 commit 防止不同步
                     logger.info(f"Auto-registered new edge node: {mac}")
                 
                 reported_status = data.get('status', 'online')
+                node.name = data.get('edge_name', node.name)
+                node.ip_address = data.get('ip_address', node.ip_address)
+                node.architecture = data.get('architecture', node.architecture)
                 node.status = reported_status
                 node.last_heartbeat = datetime.now()
                 node.hardware_status = data.get('hardware', {})

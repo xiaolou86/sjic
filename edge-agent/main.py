@@ -3,25 +3,22 @@ import time
 import os
 import logging
 import psutil
-import uuid
 import socket
+
+from utils.ip import get_mac_address, get_local_ip_address
+from mqtt_client import EdgeMqttClient
+from engine.task_manager import TaskManager
+from platforms import get_platform_info
 
 # 设置环境变量，优化 OpenCV FFmpeg 读取性能，防止出现 grabFrame packet read max attempts exceeded
 os.environ["OPENCV_FFMPEG_READ_ATTEMPTS"] = "16384"
 
-from mqtt_client import EdgeMqttClient
-from engine.task_manager import TaskManager
-from platforms import get_platform_info
 
 # 修改日志格式：使用标准的层级化日志
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - [%(name)s] - %(levelname)s - %(message)s')
 
 logger = logging.getLogger('edge')
 
-def get_mac_address():
-    """获取设备的真实物理常驻 MAC 地址作为默认唯一硬件标识"""
-    mac_num = hex(uuid.getnode()).replace('0x', '').replace('L', '').zfill(12).upper()
-    return '-'.join(mac_num[i: i + 2] for i in range(0, 12, 2))
 
 def load_config(path='config.yaml'):
     with open(path, 'r') as f:
@@ -72,6 +69,7 @@ def main():
                 "architecture": arch,
                 "status": "online",
                 "hardware": get_hardware_status(arch),
+                "ip_address": get_local_ip_address(),
                 "running_tasks": list(task_manager.active_tasks.keys())
             }
             mqtt_client.publish_heartbeat(heartbeat_payload)

@@ -16,14 +16,14 @@ def get_platform_info(architecture: str) -> dict:
     """
     arch = architecture.lower().strip()
 
-    if arch == 'jetson':
+    if arch.startswith('jetson'):
         return _get_jetson_info()
-    elif arch == 'rk3588':
+    elif arch.startswith('rk3588'):
         return _get_rk3588_info()
-    elif arch == 'moore_e1000':
+    elif arch.startswith('moore'):
         return _get_moore_info()
     else:
-        return {"temperature": -1.0}
+        raise ValueError(f"Unsupported architecture: {arch}")
 
 
 def _get_jetson_info() -> dict:

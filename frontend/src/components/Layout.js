@@ -6,7 +6,7 @@ import { Videocam, ModelTraining, Settings, Build, NotificationsActive, Task, Co
 const drawerWidth = 240;
 
 const menuItems = [
-  { text: '边缘节点', icon: <Computer />, path: '/nodes' },
+  { text: '节点', icon: <Computer />, path: '/nodes' },
   { text: '视频源', icon: <Videocam />, path: '/streams' },
   { text: '模型管理', icon: <ModelTraining />, path: '/models', role: 'vendor' },
   { text: '算法清单', icon: <Code />, path: '/algorithms' },

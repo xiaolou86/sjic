@@ -49,8 +49,8 @@ function Nodes() {
     const handleUpdate = async () => {
         try {
             await axios.put(`/api/nodes/${editingNode.id}`, {
-              name: formData.name,
-              bound_camera_ids: formData.bound_camera_ids
+                name: formData.name,
+                bound_camera_ids: formData.bound_camera_ids
             });
             setOpenDialog(false);
             fetchNodes();
@@ -84,7 +84,7 @@ function Nodes() {
         <Grid container spacing={3}>
             <Grid item xs={12}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                    <Typography variant="h5">边缘算力节点(Edge Node)</Typography>
+                    <Typography variant="h5">节点</Typography>
                 </div>
             </Grid>
 
@@ -95,11 +95,11 @@ function Nodes() {
                             <TableRow>
                                 <TableCell>状态</TableCell>
                                 <TableCell>名称</TableCell>
-                                <TableCell>MAC地址 / 唯一凭据</TableCell>
+                                <TableCell>机器码</TableCell>
                                 <TableCell>IP 地址</TableCell>
-                                <TableCell>软硬件架构</TableCell>
+                                <TableCell>机器型号</TableCell>
                                 <TableCell>绑定视频源</TableCell>
-                                <TableCell>最后心跳时间</TableCell>
+                                <TableCell>心跳时间</TableCell>
                                 <TableCell>操作</TableCell>
                             </TableRow>
                         </TableHead>
@@ -108,7 +108,7 @@ function Nodes() {
                                 const statusColor = getStatusColor(node.status, node.last_heartbeat);
                                 const boundIds = Array.isArray(node.bound_camera_ids) ? node.bound_camera_ids : [];
                                 const boundNames = boundIds
-                                  .map(id => cameras.find(c => c.id === id)?.name || `ID=${id}`);
+                                    .map(id => cameras.find(c => c.id === id)?.name || `ID=${id}`);
                                 return (
                                     <TableRow key={node.id}>
                                         <TableCell>
@@ -122,18 +122,18 @@ function Nodes() {
                                         </TableCell>
                                         <TableCell><b>{node.name}</b></TableCell>
                                         <TableCell>{node.mac_address}</TableCell>
-                                        <TableCell>{node.ip_address || "未知"}</TableCell>
-                                        <TableCell>{node.architecture || "未知"}</TableCell>
+                                        <TableCell>{node.ip_address || "-"}</TableCell>
+                                        <TableCell>{node.architecture || "-"}</TableCell>
                                         <TableCell>
-                                          {boundNames.length === 0 ? '未绑定' : (
-                                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                              {boundNames.map((name, idx) => (
-                                                <Chip key={`${node.id}-${idx}`} size="small" label={name} variant="outlined" />
-                                              ))}
-                                            </Box>
-                                          )}
+                                            {boundNames.length === 0 ? '-' : (
+                                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                                    {boundNames.map((name, idx) => (
+                                                        <Chip key={`${node.id}-${idx}`} size="small" label={name} variant="outlined" />
+                                                    ))}
+                                                </Box>
+                                            )}
                                         </TableCell>
-                                        <TableCell>{node.last_heartbeat || "暂无数据"}</TableCell>
+                                        <TableCell>{node.last_heartbeat || "-"}</TableCell>
                                         <TableCell>
                                             <IconButton onClick={() => handleEdit(node)} color="primary">
                                                 <Edit />
@@ -176,19 +176,19 @@ function Nodes() {
                                 multiple
                                 value={formData.bound_camera_ids}
                                 onChange={(e) => {
-                                  const value = e.target.value;
-                                  setFormData(prev => ({ ...prev, bound_camera_ids: typeof value === 'string' ? value.split(',') : value }));
+                                    const value = e.target.value;
+                                    setFormData(prev => ({ ...prev, bound_camera_ids: typeof value === 'string' ? value.split(',') : value }));
                                 }}
                                 displayEmpty
                                 input={<OutlinedInput />}
                                 renderValue={(selected) => {
-                                  if (!selected || selected.length === 0) return '未绑定视频源（全部可选）';
-                                  const names = selected.map(id => cameras.find(c => c.id === id)?.name || `ID=${id}`);
-                                  return names.join(', ');
+                                    if (!selected || selected.length === 0) return '未绑定视频源（全部可选）';
+                                    const names = selected.map(id => cameras.find(c => c.id === id)?.name || `ID=${id}`);
+                                    return names.join(', ');
                                 }}
                             >
                                 <MenuItem disabled value="">
-                                  未绑定视频源（全部可选）
+                                    未绑定视频源（全部可选）
                                 </MenuItem>
                                 {cameras.map((camera) => (
                                     <MenuItem key={camera.id} value={camera.id}>
