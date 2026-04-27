@@ -23,12 +23,17 @@ fallback_uri = f"sqlite:///{default_sqlite_path}".replace('\\', '/')
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or get_cfg('app', 'secret_key', 'your-secret-key')
     
-    # 动态支持 YAML 配置的 DB 或环境变量覆写 (如果用sqlite，则默认固化到绝对路径防止丢失数据)
+    # 动态支持 YAML 配置的 DB 或环境变量覆写
+    # 重要：如果使用 `sqlite:///app.db`（相对路径），会随着工作目录变化而“重启像是丢数据”。
+    # 因此无论来自 YAML 还是环境变量，只要是 sqlite:///app.db 或空值，都强制落地到 backend/instance/app.db。
     yaml_uri = get_cfg('database', 'uri')
-    if yaml_uri == 'sqlite:///app.db' or not yaml_uri:
-        yaml_uri = fallback_uri
-        
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or yaml_uri
+    env_uri = os.environ.get('DATABASE_URL')
+    chosen_uri = env_uri or yaml_uri
+
+    if (not chosen_uri) or chosen_uri.strip() == '' or chosen_uri.strip() == 'sqlite:///app.db':
+        chosen_uri = fallback_uri
+
+    SQLALCHEMY_DATABASE_URI = chosen_uri
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # --- 端边云对象存储与模型下发配置 ---

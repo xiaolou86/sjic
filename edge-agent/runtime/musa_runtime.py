@@ -75,24 +75,29 @@ class MusaRuntime(BaseRuntime):
         Letterbox 预处理：等比缩放 + 灰色填充，保持原始宽高比不变。
         与 ultralytics 内部预处理方式一致，避免拉伸变形导致检测框位置偏移。
         
-        :return: (padded_img, scale, pad_top, pad_left)
+        :return: (padded_img, ratio, pad_w, pad_h)
         """
         h, w = img.shape[:2]
-        scale = min(target_size / h, target_size / w)
-        new_h, new_w = int(h * scale), int(w * scale)
+        ratio = min(target_size / h, target_size / w)
+        new_w, new_h = int(round(w * ratio)), int(round(h * ratio))
 
         resized = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
 
-        dh = target_size - new_h
         dw = target_size - new_w
-        top = dh // 2
-        left = dw // 2
+        dh = target_size - new_h
+        pad_w = dw / 2.0
+        pad_h = dh / 2.0
+
+        left = int(round(pad_w - 0.1))
+        right = int(round(pad_w + 0.1))
+        top = int(round(pad_h - 0.1))
+        bottom = int(round(pad_h + 0.1))
 
         padded = cv2.copyMakeBorder(
-            resized, top, dh - top, left, dw - left,
+            resized, top, bottom, left, right,
             cv2.BORDER_CONSTANT, value=(114, 114, 114)
         )
-        return padded, scale, top, left
+        return padded, ratio, pad_w, pad_h
 
     def infer(self, frame, conf=0.5, classes=None, imgsz=640) -> DetectionResult:
         if self.session is None:
@@ -100,7 +105,7 @@ class MusaRuntime(BaseRuntime):
 
         # 1. Letterbox 预处理（等比缩放 + 灰边填充，保持宽高比）
         h_orig, w_orig = frame.shape[:2]
-        letterboxed, scale, pad_top, pad_left = self._letterbox(frame, target_size=imgsz)
+        letterboxed, ratio, pad_w, pad_h = self._letterbox(frame, target_size=imgsz)
 
         input_img = cv2.cvtColor(letterboxed, cv2.COLOR_BGR2RGB)
         input_img = input_img / 255.0
@@ -115,7 +120,17 @@ class MusaRuntime(BaseRuntime):
 
         # 3. 后处理 (针对 YOLOv8 输出格式 [1, 84, 8400])
         output = outputs[0]
-        predictions = np.squeeze(output).T  # [8400, 84]
+        predictions = np.squeeze(output)
+        # 兼容两种常见导出形状:
+        # - (84, 8400): 需转置
+        # - (8400, 84): 无需转置
+        if predictions.ndim == 3:
+            predictions = predictions[0]
+        if predictions.ndim != 2:
+            logger.warning(f"[MusaRuntime] Unexpected output shape: {predictions.shape}")
+            return DetectionResult(boxes=[])
+        if predictions.shape[0] < predictions.shape[1]:
+            predictions = predictions.T
         
         boxes = predictions[:, :4]    # (cx, cy, w, h) 在 640x640 letterbox 空间
         scores = predictions[:, 4:]   # 各类别概率
@@ -143,10 +158,10 @@ class MusaRuntime(BaseRuntime):
         
         # ★ 关键修复：逆向还原坐标到原始帧尺寸 ★
         # 第一步：减去灰边偏移量（从 letterbox 空间 → 缩放后的有效区域）
-        valid_boxes[:, [0, 2]] -= pad_left
-        valid_boxes[:, [1, 3]] -= pad_top
+        valid_boxes[:, [0, 2]] -= pad_w
+        valid_boxes[:, [1, 3]] -= pad_h
         # 第二步：除以缩放比（从缩放空间 → 原始帧像素坐标）
-        valid_boxes /= scale
+        valid_boxes /= ratio
         
         # NMS 过滤
         keep = nms(valid_boxes, valid_scores, iou_threshold=0.45)

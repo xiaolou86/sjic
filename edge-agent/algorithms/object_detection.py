@@ -132,7 +132,9 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                     last_alert_time = datetime.now()
                     
                     # 生成检测画面截图
-                    alert_frame = self.draw_and_get_frame(frame, result)
+                    # 注意：当前算法的 ROI 与检测框都在 preprocess 后的 letterbox 坐标系中，
+                    # 需在 processed 上绘制，避免将 letterbox 坐标误画到原始 frame 造成位置偏移。
+                    alert_frame = self.draw_and_get_frame(processed, result)
         
                     # 如果有检测结果，将结果投送给 TaskManager 上传到云端
                     if on_alert:

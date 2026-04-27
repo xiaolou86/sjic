@@ -1,4 +1,4 @@
-edge_id: "" # optional, Unique hardware identifier
+edge_name: "" # optional
 architecture: "moore_e1000"       # jetson / rk3588 / x86
 
 mqtt:

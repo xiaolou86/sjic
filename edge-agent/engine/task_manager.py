@@ -176,7 +176,7 @@ class TaskManager:
             logger.error(f"Failed to save tasks: {str(e)}")
 
     def reload_tasks(self):
-        """重启后重新加载任务"""
+        """重启后重新加载任务，通过与云端校验差集防留痕"""
         if not os.path.exists(self.persistence_file):
             return
         
@@ -185,10 +185,38 @@ class TaskManager:
             with open(self.persistence_file, 'r', encoding='utf-8') as f:
                 configs = json.load(f)
             
-            logger.info(f"Found {len(configs)} tasks to resume from persistence.")
+            logger.info(f"Loaded {len(configs)} tasks from persistence. Verifying with cloud...")
+            edge_id = self.config.get('edge_id')
+
+            valid_task_ids = None
+            if edge_id:
+                try:
+                    url = f"{self.api_base_url}/tasks/edge/{edge_id}"
+                    res = requests.get(url, timeout=5)
+                    if res.ok:
+                        data = res.json()
+                        if data.get('success'):
+                            valid_task_ids = set(str(tid) for tid in data.get('valid_task_ids', []))
+                            logger.info(f"Cloud reported {len(valid_task_ids)} valid tasks for this node.")
+                except Exception as e:
+                    logger.warning(f"Failed to verify tasks with cloud ({e}), falling back to loading all.")
+            
+            valid_configs = []
             for cfg in configs:
-                # 重新启动，但不立即再次保存文件
-                self.start_task(cfg, save=False)
+                task_id = str(cfg.get('task_id', ''))
+                
+                # 如果校验成功但任务ID不在云端返回的列表中，说明在离线期间被删除了
+                if valid_task_ids is not None and task_id not in valid_task_ids:
+                    logger.info(f"Task {task_id} no longer exists in cloud. Skipping resume.")
+                    continue
+                    
+                valid_configs.append(cfg)
+                self.start_task(cfg, save=False)  # 启动后不要立刻覆盖文件，等统一处理
+
+            # 将真正有效的配置文件写回，清理掉那些被删掉的过期幽灵任务
+            self.active_configs = {cfg.get('task_id'): cfg for cfg in valid_configs}
+            self._save_tasks()
+
         except Exception as e:
             logger.error(f"Failed to reload tasks: {str(e)}")
 

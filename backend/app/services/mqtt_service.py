@@ -71,9 +71,9 @@ class MqttService:
                     # 自动注册新的边缘节点
                     node = EdgeNode(
                         mac_address=mac,
-                        name=f"Edge-{mac[-5:]}",
+                        name=data.get('edge_name', f"Edge-{mac[-5:]}"),
                         status='online',
-                        architecture=data.get('architecture', 'unknown'),
+                        architecture=data.get('architecture', '-'),
                         ip_address=data.get('ip_address', '')
                     )
                     db.session.add(node)

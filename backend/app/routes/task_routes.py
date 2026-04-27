@@ -10,22 +10,40 @@ from app.utils.calibration import get_calibration_image
 task_bp = Blueprint('task', __name__)
 
 
+@task_bp.route('/api/tasks/edge/<mac_address>', methods=['GET'])
+def get_edge_tasks(mac_address):
+    """
+    边缘设备启动时查询分配给自己的有效任务。
+    面向边缘端提供，免去 @token_required 校验。
+    """
+    from app.models import EdgeNode
+    node = EdgeNode.query.filter_by(mac_address=mac_address).first()
+    if not node:
+        return jsonify({"success": False, "error": "Node not found"}), 404
+        
+    tasks = Task.query.filter_by(edge_node_id=node.id).all()
+    task_ids = [str(t.id) for t in tasks]
+    return jsonify({"success": True, "valid_task_ids": task_ids}), 200
+
+
 @task_bp.route('/api/tasks', methods=['GET'])
 @token_required
 def get_tasks():
     """
-    获取所有检测任务
-    ---
-    tags:
-      - 任务管理 (Tasks)
-    summary: 获取全量任务列表
-    security:
-      - APIKeyHeader: []
-    responses:
-      200:
-        description: 返回检测任务表
+    获取所有检测任务 (供前端控制台使用)
     """
-    tasks = Task.query.all()
+    # 也可以加上 query param 支持给前端过滤
+    mac_address = request.args.get('mac_address')
+    if mac_address:
+        from app.models import EdgeNode
+        node = EdgeNode.query.filter_by(mac_address=mac_address).first()
+        if node:
+            tasks = Task.query.filter_by(edge_node_id=node.id).all()
+        else:
+            tasks = []
+    else:
+        tasks = Task.query.all()
+        
     return jsonify([task.to_dict() for task in tasks])
 
 

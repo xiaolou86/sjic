@@ -4,6 +4,7 @@ import os
 import logging
 import psutil
 import uuid
+import socket
 
 # 设置环境变量，优化 OpenCV FFmpeg 读取性能，防止出现 grabFrame packet read max attempts exceeded
 os.environ["OPENCV_FFMPEG_READ_ATTEMPTS"] = "16384"
@@ -26,9 +27,11 @@ def load_config(path='config.yaml'):
     with open(path, 'r') as f:
         config = yaml.safe_load(f)
         
-    # 如果配置文件没有指定 edge_id，则自动读取本机的 MAC 地址作为默认 ID
-    if not config.get('edge_id') or config.get('edge_id') == "":
-        config['edge_id'] = get_mac_address()
+    # 如果配置文件没有指定 edge_name，则自动读取本机的hostname作为默认名称
+    if not config.get('edge_name') or config.get('edge_name') == "":
+        config['edge_name'] = socket.gethostname()
+
+    config['edge_id'] = get_mac_address()
         
     return config
 
@@ -45,7 +48,7 @@ def get_hardware_status(architecture):
 def main():
     config = load_config()
     arch = config.get('architecture', 'x86')
-    logger.info(f"Starting SJIC Edge Agent [{config['edge_id']}] on platform: {arch}")
+    logger.info(f"Starting SJIC Edge Agent [{config['edge_name']}] [{config['edge_id']}] on platform: {arch}")
 
     # 1. 实例化任务管理器 (负责 AI 推理全生命周期)
     task_manager = TaskManager(config)
@@ -65,6 +68,7 @@ def main():
             heartbeat_payload = {
                 "timestamp": int(time.time()),
                 "edge_id": config['edge_id'],
+                "edge_name": config['edge_name'],
                 "architecture": arch,
                 "status": "online",
                 "hardware": get_hardware_status(arch),
