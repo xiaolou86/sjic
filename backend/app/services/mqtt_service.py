@@ -81,7 +81,9 @@ class MqttService:
                     logger.info(f"Auto-registered new edge node: {mac}")
                 
                 reported_status = data.get('status', 'online')
-                node.name = data.get('edge_name', node.name)
+                # 不用心跳里的 edge_name 覆盖已存在节点名称，避免覆盖前端手工改名
+                if not node.name or not str(node.name).strip():
+                    node.name = data.get('edge_name', node.name)
                 node.ip_address = data.get('ip_address', node.ip_address)
                 node.architecture = data.get('architecture', node.architecture)
                 node.status = reported_status

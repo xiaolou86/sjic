@@ -1,5 +1,8 @@
 import socket
 import uuid
+import logging
+
+logger = logging.getLogger('ip')
 
 
 def get_mac_address():
@@ -19,6 +22,7 @@ def get_local_ip_address():
             s.connect(("8.8.8.8", 80))
             ip = s.getsockname()[0]
             if ip and not ip.startswith("127."):
+                logger.info(f"get_local_ip_address: {ip}")
                 return ip
     except Exception:
         pass
@@ -28,8 +32,10 @@ def get_local_ip_address():
         _, _, ips = socket.gethostbyname_ex(socket.gethostname())
         for ip in ips:
             if ip and not ip.startswith("127."):
+                logger.info(f"get_local_ip_address: {ip}")
                 return ip
     except Exception:
         pass
 
+    logger.info(f"get_local_ip_address: 127.0.0.1")
     return "127.0.0.1"

@@ -168,7 +168,7 @@ function VideoStreams() {
           />
           <TextField
             margin="dense"
-            label="RTSP地址"
+            label="视频流地址"
             fullWidth
             value={newStream.url}
             onChange={(e) => setNewStream({ ...newStream, url: e.target.value })}

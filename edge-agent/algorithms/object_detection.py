@@ -2,7 +2,9 @@ from .base import BaseAlgorithm
 import cv2
 import time
 from datetime import datetime
+from dataclasses import replace
 from utils.calc import transform_points_from_frontend_to_backend, get_letterbox_params, preprocess
+from runtime.base_runtime import DetectionResult
 
 class ObjectDetectionAlgorithm(BaseAlgorithm):
     """边缘端目标检测算法"""
@@ -111,6 +113,7 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                 # 检查是否有人员在检测区域内
                 is_exception = False
                 result_confidence = 0
+                roi_matched_boxes = []
                 
                 for box in result.boxes:
                     foot_center = box.foot_center
@@ -120,9 +123,15 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                         # 检查点是否在检测区域内
                         if self.is_point_in_roi(foot_center, roi_points, logger):
                             is_exception = True
-                            result_confidence = box.confidence
+                            roi_matched_boxes.append(box)
+                            # 告警置信度使用 ROI 内目标中的最大值
+                            result_confidence = max(result_confidence, box.confidence)
                             logger.info(f"MATCH! Human detected in ROI! foot_center={foot_center}, Confidence: {result_confidence:.2f}")
-                            break
+                    else:
+                        # 未配置 ROI 时，等价于整帧检测都算有效目标
+                        roi_matched_boxes.append(box)
+                        is_exception = True
+                        result_confidence = max(result_confidence, box.confidence)
                 
                 if total_detected > 0 and not is_exception:
                     logger.debug(f"Human(s) detected (counts={total_detected}), but none matched current ROI: {roi_points}")
@@ -134,7 +143,8 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                     # 生成检测画面截图
                     # 注意：当前算法的 ROI 与检测框都在 preprocess 后的 letterbox 坐标系中，
                     # 需在 processed 上绘制，避免将 letterbox 坐标误画到原始 frame 造成位置偏移。
-                    alert_frame = self.draw_and_get_frame(processed, result)
+                    alert_result = replace(result, boxes=roi_matched_boxes, _raw=None)
+                    alert_frame = self.draw_and_get_frame(processed, alert_result)
         
                     # 如果有检测结果，将结果投送给 TaskManager 上传到云端
                     if on_alert:

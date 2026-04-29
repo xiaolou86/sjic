@@ -27,6 +27,8 @@ const theme = createTheme({
 });
 
 function App() {
+  const isSuperAdmin = localStorage.getItem('user_role') === 'vendor';
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -71,7 +73,7 @@ function App() {
           <Route path="/training" element={
             <PrivateRoute>
               <Layout>
-                <Training />
+                {isSuperAdmin ? <Training /> : <Navigate to="/tasks" replace />}
               </Layout>
             </PrivateRoute>
           } />

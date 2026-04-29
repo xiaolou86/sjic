@@ -58,20 +58,24 @@ def main():
     # 3. 自动恢复重启前的任务
     task_manager.reload_tasks()
 
+    heartbeat_payload = {
+        "timestamp": int(time.time()),
+        "edge_id": config['edge_id'],
+        "edge_name": config['edge_name'],
+        "architecture": arch,
+        "status": "online",
+        "hardware": get_hardware_status(arch),
+        "ip_address": get_local_ip_address(),
+    }
+
     # 4. 守护循环：周期推送心跳
     try:
         while True:
             # 构建心跳负荷
-            heartbeat_payload = {
-                "timestamp": int(time.time()),
-                "edge_id": config['edge_id'],
-                "edge_name": config['edge_name'],
-                "architecture": arch,
-                "status": "online",
-                "hardware": get_hardware_status(arch),
-                "ip_address": get_local_ip_address(),
-                "running_tasks": list(task_manager.active_tasks.keys())
-            }
+            heartbeat_payload['timestamp'] = int(time.time())
+            heartbeat_payload['hardware'] = get_hardware_status(arch)
+            heartbeat_payload['status'] = "online"
+            heartbeat_payload['running_tasks'] = list(task_manager.active_tasks.keys())
             mqtt_client.publish_heartbeat(heartbeat_payload)
             logger.debug(f"Heartbeat sent.")
             time.sleep(30) # 每30秒发送一次心跳
