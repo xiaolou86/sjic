@@ -4,13 +4,20 @@ import axios from 'axios';
 export const getBaseUrl = () => {
   // 获取当前访问的域名和协议
   const { protocol, hostname } = window.location;
+  const origin = window.location.origin;
   const port = process.env.REACT_APP_BACKEND_PORT || '38881';
+  const explicitApiUrl = process.env.REACT_APP_API_URL;
+
+  if (explicitApiUrl) {
+    return explicitApiUrl;
+  }
+
   if (process.env.NODE_ENV === 'development') {
-    // 开发环境：优先使用环境变量，如果没有则回退到当前域名+端口
-    return process.env.REACT_APP_API_URL || `${protocol}//${hostname}:${port}`;
+    // 开发环境：默认走当前域名 + 后端端口
+    return `${protocol}//${hostname}:${port}`;
   } else {
-    // 生产环境：如果是同台服务器，通常直接使用当前域名
-    return process.env.REACT_APP_API_URL || `${protocol}//${hostname}:${port}`;
+    // 生产环境：默认同源，避免 NAT/反向代理场景下端口不可达导致 blocked:other
+    return origin;
   }
 };
 
