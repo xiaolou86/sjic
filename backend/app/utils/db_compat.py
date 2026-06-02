@@ -3,12 +3,8 @@ from sqlalchemy import inspect, text
 from app.extensions import db
 
 
-COMPAT_COLUMNS = [
-    # 节点可绑定多个视频源
-    ("edge_nodes", "bound_cameras", "TEXT"),
-    # 模型 labelmap
-    ("detection_models", "labelmap", "TEXT"),
-]
+# 历史列已由 Alembic revision 003 收编；此处保留空列表，仅供极老库应急。
+COMPAT_COLUMNS = []
 
 
 def ensure_legacy_schema(app):

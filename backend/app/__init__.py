@@ -9,7 +9,6 @@ from flask import Flask
 from config import Config
 from app.extensions import db, migrate, socketio, cors, sock
 from app.logging_config import configure_logging
-from app.utils.db_compat import ensure_legacy_schema
 
 
 def create_app(config_class=Config):
@@ -87,16 +86,31 @@ def create_app(config_class=Config):
         from app.routes import register_blueprints
         register_blueprints(app)
 
-        # 导入模型以确保表能被创建
-        from app.models import camera, detection_model, alert, task, log  # noqa: F401
-        # 初始化数据库与基础预设算法列表（纯数据元信息）
-        db.create_all()
-        ensure_legacy_schema(app)
-        app.logger.info('Database tables created')
+        # 注册全部 ORM 模型（供迁移 autogenerate 与运行时一致）
+        # 注意：勿写 `import app.models`，会与局部变量 app(Flask 实例) 冲突
+        from app import models as _orm_models  # noqa: F401
 
+        if app.config.get('AUTO_CREATE_DB'):
+            app.logger.warning(
+                'AUTO_CREATE_DB is enabled; calling db.create_all(). '
+                'Prefer: flask db upgrade'
+            )
+            db.create_all()
+        else:
+            app.logger.info(
+                'Skipping create_all; apply schema with: '
+                'FLASK_APP=run.py flask db upgrade'
+            )
+
+        from sqlalchemy import inspect as sa_inspect
         from app.models.algorithm import Algorithm
-        Algorithm.initialize_default_algorithms()
-        app.logger.info('Algorithms metadata initialized')
+        if sa_inspect(db.engine).has_table('algorithms'):
+            Algorithm.initialize_default_algorithms()
+            app.logger.info('Algorithms metadata initialized')
+        else:
+            app.logger.info(
+                'Skip algorithm seed: run flask db upgrade first'
+            )
 
         # 注册错误处理器
         _register_error_handlers(app)

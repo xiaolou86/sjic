@@ -17,8 +17,8 @@ install:
 
 # 初始化数据库
 init-db:
-	@echo "Initializing database..."
-	cd $(BACKEND_DIR) && $(PYTHON) -c "from app import app, db; app.app_context().push(); db.create_all()"
+	@echo "Applying database migrations..."
+	cd $(BACKEND_DIR) && export FLASK_APP=run.py && $(FLASK) db upgrade
 
 # 数据库迁移
 migrate:

@@ -156,16 +156,22 @@ class BeltBrokenRCNNAlgorithm(BaseAlgorithm):
                                 except Exception as e:
                                     logger.error(f"Error in RCNN detection: {str(e)}")
                         else:
+                            # 在原图上标记这是YOLO检测结果
                             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                            cv2.putText(frame, f'YOLO: {conf:.2f}', (x1, y1 - 10),
+                            cv2.putText(frame, f'Result: {conf:.2f}', (x1, y1 - 10),
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                         
+                        # 累加总面积
                         total_defect_area_px += area_px
                         
+                        # 记录异常区域信息
                         defect_regions.append({
-                            'x': x1, 'y': y1,
-                            'width': x2 - x1, 'height': y2 - y1,
-                            'area_px': area_px, 'confidence': conf,
+                            'x': x1,
+                            'y': y1,
+                            'width': x2 - x1,
+                            'height': y2 - y1,
+                            'area_px': area_px,
+                            'confidence': conf,
                             'model': model_used
                         })
                         
@@ -179,8 +185,10 @@ class BeltBrokenRCNNAlgorithm(BaseAlgorithm):
                             colored_mask[binary_mask == 1] = [0, 0, 255]
                             frame = cv2.addWeighted(frame, 1, colored_mask, 0.5, 0)
                     
+                    # 计算总异常面积(cm²)
                     total_defect_area_cm2 = total_defect_area_px * (pixel_to_cm ** 2)
                     
+                    # 如果异常面积超过阈值，返回结果
                     if total_defect_area_cm2 >= min_area_cm2:
                         text = f'Defect Area: {total_defect_area_cm2:.1f} cm2'
                         cv2.putText(frame, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)

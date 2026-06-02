@@ -24,8 +24,11 @@ cd ..\frontend && npm install
 GOTO end
 
 :init-db
-echo Initializing database...
-cd backend && python -c "from app import app, db; app.app_context().push(); db.create_all()"
+echo Applying database migrations...
+cd backend
+set FLASK_APP=run.py
+flask db upgrade
+cd ..
 GOTO end
 
 :backend

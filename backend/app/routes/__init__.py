@@ -7,7 +7,10 @@ from app.routes.model_routes import model_bp
 from app.routes.detection_routes import detection_bp
 from app.routes.alert_routes import alert_bp
 from app.routes.task_routes import task_bp
-from app.routes.training_routes import training_bp
+try:
+    from app.routes.training_routes import training_bp
+except ImportError:
+    training_bp = None
 from app.routes.stream_routes import stream_bp, create_error_image
 from app.routes.setting_routes import setting_bp
 from app.routes.algorithm_routes import algorithm_bp
@@ -23,7 +26,8 @@ def register_blueprints(app):
     app.register_blueprint(detection_bp)
     app.register_blueprint(alert_bp)
     app.register_blueprint(task_bp)
-    app.register_blueprint(training_bp)
+    if training_bp is not None:
+        app.register_blueprint(training_bp)
     app.register_blueprint(stream_bp)
     app.register_blueprint(setting_bp)
     app.register_blueprint(algorithm_bp)

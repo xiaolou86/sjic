@@ -35,6 +35,9 @@ class Config:
 
     SQLALCHEMY_DATABASE_URI = chosen_uri
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # 仅开发应急：为 true 时启动时 db.create_all()（生产务必 false，改用 flask db upgrade）
+    AUTO_CREATE_DB = os.environ.get('AUTO_CREATE_DB', 'false').lower() in ('1', 'true', 'yes')
     
     # --- 端边云对象存储与模型下发配置 ---
     STORAGE_TYPE = os.environ.get('STORAGE_TYPE') or get_cfg('storage', 'type', 'NGINX')

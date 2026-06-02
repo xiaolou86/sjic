@@ -53,9 +53,10 @@ function Install {
 }
 
 function InitDb {
-    Write-Host "Initializing database..."
+    Write-Host "Applying database migrations..."
     Set-Location backend
-    python -c "from app import app, db; app.app_context().push(); db.create_all()"
+    $env:FLASK_APP = "run.py"
+    flask db upgrade
     Set-Location ..
 }
 
