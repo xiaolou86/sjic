@@ -17,6 +17,7 @@ from app.routes.algorithm_routes import algorithm_bp
 from app.routes.log_routes import log_bp
 from app.routes.auth_routes import auth_bp
 from app.routes.edge_routes import edge_bp
+from app.routes.license_routes import license_bp
 
 
 def register_blueprints(app):
@@ -34,6 +35,7 @@ def register_blueprints(app):
     app.register_blueprint(log_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(edge_bp)
+    app.register_blueprint(license_bp)
 
     # 在应用启动时创建错误图像
     create_error_image()

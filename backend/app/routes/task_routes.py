@@ -3,9 +3,10 @@
 """
 from flask import Blueprint, jsonify, request, current_app
 from app.extensions import db
-from app.models import Task
+from app.models import Task, Algorithm
 from app.middleware.auth import token_required
 from app.utils.calibration import get_calibration_image
+from app.services.license_service import license_service
 
 task_bp = Blueprint('task', __name__)
 
@@ -68,8 +69,22 @@ def create_tasks():
       201:
         description: 任务创建成功
     """
+    ok, reason = license_service.ensure_valid()
+    if not ok:
+      return jsonify({'error': f'License invalid: {reason}'}), 403
+
     data = request.json
     current_app.logger.info(f"Creating new task: {data}")
+
+    algorithm_id = data.get('algorithm_id')
+    if algorithm_id:
+      algorithm = Algorithm.query.get(algorithm_id)
+      if not algorithm:
+        return jsonify({'error': 'Algorithm not found'}), 400
+      allowed, deny_reason = license_service.is_algorithm_allowed(algorithm.type)
+      if not allowed:
+        return jsonify({'error': f'Algorithm not allowed by license: {deny_reason}'}), 403
+
     task = Task(**data)
     task.save_calibration_image()
     db.session.add(task)
@@ -103,8 +118,21 @@ def update_tasks(task_id):
         description: 任务更新成功
     """
     try:
+      ok, reason = license_service.ensure_valid()
+      if not ok:
+        return jsonify({'error': f'License invalid: {reason}'}), 403
+
         data = request.json
         task = Task.query.get_or_404(task_id)
+
+      next_algorithm_id = data.get('algorithm_id', task.algorithm_id)
+      if next_algorithm_id:
+        algorithm = Algorithm.query.get(next_algorithm_id)
+        if not algorithm:
+          return jsonify({'error': 'Algorithm not found'}), 400
+        allowed, deny_reason = license_service.is_algorithm_allowed(algorithm.type)
+        if not allowed:
+          return jsonify({'error': f'Algorithm not allowed by license: {deny_reason}'}), 403
 
         for key, value in data.items():
             if hasattr(task, key):

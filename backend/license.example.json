@@ -1,0 +1,12 @@
+{
+  "edition": "official",
+  "customer_id": "demo-customer",
+  "machine_code": "REPLACE_WITH_BACKEND_MACHINE_CODE",
+  "max_cameras": 16,
+  "allowed_algorithms": [
+    "object_detection",
+    "belt_broken",
+    "belt_deviation_detection"
+  ],
+  "expires_at": "2027-12-31T23:59:59+00:00"
+}

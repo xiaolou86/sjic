@@ -33,3 +33,7 @@ fs:
 
 security:
   cors_origins: "*"
+
+license:
+  # 无 license.json 时启用试用版，默认从首次运行起 30 天
+  trial_max_cameras: 4

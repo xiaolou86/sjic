@@ -7,6 +7,7 @@ from app.models.algorithm import Algorithm
 from config import Config
 import requests
 from datetime import datetime
+from app.services.license_service import license_service
 
 class DetectorService:
     def __init__(self):
@@ -54,6 +55,10 @@ class DetectorService:
     def start_detection(self, task_id):
         """启动检测任务（下发给边缘计算节点）"""
         try:
+            ok, reason = license_service.ensure_valid()
+            if not ok:
+                return {"success": False, "message": f"License invalid: {reason}"}
+
             task = Task.query.get(task_id)
             if not task:
                 return {"success": False, "message": f"Task with id {task_id} not found"}
@@ -62,6 +67,10 @@ class DetectorService:
             algorithm = Algorithm.query.get(task.algorithm_id)
             if not algorithm:
                 return {"success": False, "message": "Algorithm not found"}
+
+            allowed, deny_reason = license_service.is_algorithm_allowed(algorithm.type)
+            if not allowed:
+                return {"success": False, "message": f"Algorithm not allowed by license: {deny_reason}"}
 
             # 获取摄像头
             camera = Camera.query.get(task.cameraId)

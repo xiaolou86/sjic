@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify, request
 from app.extensions import db
 from app.models import Algorithm
 from app.middleware.auth import token_required
+from app.services.license_service import license_service
 
 algorithm_bp = Blueprint('algorithm', __name__)
 
@@ -24,7 +25,17 @@ def get_algorithms():
       200:
         description: 算法配置列表
     """
+    ok, reason = license_service.ensure_valid()
+    if not ok:
+      return jsonify({'error': f'License invalid: {reason}'}), 403
+
+    status = license_service.get_status()
+    allowed_types = status.get('allowed_algorithms') or []
+
     algorithms = Algorithm.query.all()
+    if allowed_types:
+      algorithms = [a for a in algorithms if a.type in allowed_types]
+
     return jsonify([algorithm.to_dict() for algorithm in algorithms])
 
 
@@ -56,7 +67,16 @@ def create_algorithm():
       201:
         description: 创建成功
     """
+    ok, reason = license_service.ensure_valid()
+    if not ok:
+      return jsonify({'error': f'License invalid: {reason}'}), 403
+
     data = request.json
+    algorithm_type = data.get('type')
+    allowed, deny_reason = license_service.is_algorithm_allowed(algorithm_type)
+    if not allowed:
+      return jsonify({'error': f'Algorithm not allowed by license: {deny_reason}'}), 403
+
     algorithm = Algorithm(**data)
     db.session.add(algorithm)
     db.session.commit()

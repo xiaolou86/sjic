@@ -3,8 +3,10 @@
 """
 from flask import Blueprint, jsonify, request, Response, current_app
 from app.extensions import db
-from app.models import Camera
+from app.models import Camera, Task, EdgeNode
 from app.middleware.auth import token_required
+from app.services.mqtt_service import mqtt_service
+from app.services.license_service import license_service
 import cv2
 
 camera_bp = Blueprint('camera', __name__)
@@ -61,8 +63,21 @@ def create_camera():
         description: 摄像头创建成功
     """
     try:
+      ok, reason = license_service.ensure_valid()
+      if not ok:
+        return jsonify({'error': f'License invalid: {reason}'}), 403
+
         data = request.json
         current_app.logger.info(f"Creating new camera: {data}")
+
+      current_count = Camera.query.count()
+      can_add, quota_reason, status = license_service.can_add_camera(current_count)
+      if not can_add:
+        return jsonify({
+          'error': f"License camera quota check failed: {quota_reason}",
+          'max_cameras': status.get('max_cameras', 0),
+          'current_cameras': current_count
+        }), 403
 
         camera = Camera(
             name=data['name'],
@@ -99,8 +114,24 @@ def delete_camera(camera_id):
         description: 删除成功
     """
     camera = Camera.query.get_or_404(camera_id)
-    db.session.delete(camera)
-    db.session.commit()
+    related_tasks = Task.query.filter_by(cameraId=camera_id).all()
+
+    try:
+      # Delete cloud task records and proactively stop edge runtime tasks.
+      for task in related_tasks:
+        if task.edge_node_id:
+          edge_node = EdgeNode.query.get(task.edge_node_id)
+          if edge_node:
+            mqtt_service.publish_task_stop(edge_node.mac_address, task.id)
+        db.session.delete(task)
+
+      db.session.delete(camera)
+      db.session.commit()
+    except Exception as e:
+      db.session.rollback()
+      current_app.logger.error(f"Failed to delete camera {camera_id}: {str(e)}", exc_info=True)
+      return jsonify({'error': str(e)}), 500
+
     return '', 204
 
 
