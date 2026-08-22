@@ -8,6 +8,7 @@ import { Delete, Upload, Edit } from '@mui/icons-material';
 import axios from '../utils/axios';
 
 function Models() {
+  const isSuperAdmin = localStorage.getItem('user_role') === 'vendor';
   const [models, setModels] = useState([]);
   const [openUpload, setOpenUpload] = useState(false);
   const [openEdit, setOpenEdit] = useState(false);
@@ -22,8 +23,10 @@ function Models() {
   const [labelmapError, setLabelmapError] = useState(null);
 
   useEffect(() => {
-    fetchModels();
-  }, []);
+    if (isSuperAdmin) {
+      fetchModels();
+    }
+  }, [isSuperAdmin]);
 
   const fetchModels = async () => {
     try {
@@ -155,6 +158,13 @@ function Models() {
 
   return (
     <Box>
+      {!isSuperAdmin && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          当前账号无权访问模型资产管理。
+        </Alert>
+      )}
+
+      {isSuperAdmin && (
       <Box sx={{ mb: 2 }}>
         <Button
           variant="contained"
@@ -164,6 +174,7 @@ function Models() {
           上传模型
         </Button>
       </Box>
+      )}
 
       <TableContainer component={Paper}>
         <Table>
@@ -190,6 +201,7 @@ function Models() {
                 </TableCell>
                 <TableCell>{new Date(model.created_at).toLocaleString()}</TableCell>
                 <TableCell>
+                  {isSuperAdmin && (
                   <IconButton
                     color="primary"
                     onClick={() => openLabelmapEditor(model)}
@@ -197,6 +209,8 @@ function Models() {
                   >
                     <Edit />
                   </IconButton>
+                  )}
+                  {isSuperAdmin && (
                   <IconButton
                     color="error"
                     onClick={() => handleDelete(model.id)}
@@ -204,6 +218,7 @@ function Models() {
                   >
                     <Delete />
                   </IconButton>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
@@ -211,7 +226,7 @@ function Models() {
         </Table>
       </TableContainer>
 
-      <Dialog open={openUpload} onClose={() => setOpenUpload(false)}>
+      <Dialog open={isSuperAdmin && openUpload} onClose={() => setOpenUpload(false)}>
         <DialogTitle>上传模型</DialogTitle>
         <DialogContent>
           <TextField
@@ -265,7 +280,7 @@ function Models() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={openEdit} onClose={() => setOpenEdit(false)} maxWidth="md" fullWidth>
+      <Dialog open={isSuperAdmin && openEdit} onClose={() => setOpenEdit(false)} maxWidth="md" fullWidth>
         <DialogTitle>编辑模型</DialogTitle>
         <DialogContent>
           <TextField

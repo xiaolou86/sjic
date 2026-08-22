@@ -3,7 +3,7 @@ import {
   Grid, Paper, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, Button, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Switch, FormControlLabel, Select, MenuItem, IconButton,
-  Typography, Divider, Box, InputAdornment, Alert, Autocomplete, Chip
+  Typography, Divider, Box, InputAdornment, Alert, Chip
 } from '@mui/material';
 import { Add, Edit, Delete, PlayArrow, Stop, Info, Search } from '@mui/icons-material';
 import axios from '../utils/axios';
@@ -13,7 +13,6 @@ import RegionSelectionTool from '../components/RegionSelectionTool';
 
 function Tasks() {
   const [tasks, setTasks] = useState([]);
-  const [models, setModels] = useState([]);
   const [cameras, setCameras] = useState([]);
   const [algorithms, setAlgorithms] = useState([]);
   const [nodes, setNodes] = useState([]);
@@ -21,7 +20,6 @@ function Tasks() {
   const [editingTask, setEditingTask] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
-    modelId: '',
     cameraId: '',
     edge_node_id: '',
     confidence: 0.5,
@@ -76,13 +74,11 @@ function Tasks() {
 
   const fetchMetadata = async () => {
     try {
-      const [modelsRes, camerasRes, algorithmsRes, nodesRes] = await Promise.all([
-        axios.get('/api/models'),
+      const [camerasRes, algorithmsRes, nodesRes] = await Promise.all([
         axios.get('/api/cameras'),
         axios.get('/api/algorithms'),
         axios.get('/api/nodes')
       ]);
-      setModels(modelsRes || []);
       setCameras(camerasRes || []);
       setAlgorithms(algorithmsRes || []);
       setNodes(nodesRes || []);
@@ -135,7 +131,6 @@ function Tasks() {
       id: task.id,
       name: task.name,
       cameraId: task.cameraId,
-      modelId: task.modelId,
       algorithm_id: task.algorithm_id,
       edge_node_id: task.edge_node_id || '',
       confidence: task.confidence,
@@ -152,7 +147,6 @@ function Tasks() {
     setEditingTask(null);
     setFormData({
       name: '',
-      modelId: '',
       cameraId: '',
       edge_node_id: (filterNodeId !== 'all' && filterNodeId !== 'unassigned') ? filterNodeId : '',
       confidence: 0.5,
@@ -174,17 +168,7 @@ function Tasks() {
   const handleStartDetection = async (task) => {
     try {
       await axios.post('/api/detection/start', {
-        camera_id: task.cameraId,
-        model_id: task.modelId,
-        task_id: task.id,
-        settings: {
-          confidence: task.confidence,
-          alert_threshold: task.alertThreshold,
-          regions: task.regions,
-          notification_enabled: task.notificationEnabled,
-          algorithm_id: task.algorithm_id,
-          algorithm_parameters: task.algorithm_parameters
-        }
+        task_id: task.id
       });
       task.status = 'running';
       fetchTasks();
@@ -273,8 +257,7 @@ function Tasks() {
     const algorithm = algorithms.find(a => a.id === task.algorithm_id);
     if (!algorithm) return null;
 
-    const taskModel = models.find(m => m.id === task.modelId);
-    const selectedLabels = taskModel?.labelmap?.filter(l => (task.algorithm_parameters?.labels || []).includes(l.id)) || [];
+    const selectedLabels = task.algorithm_parameters?.labels || [];
     
     const labelsUI = selectedLabels.length > 0 ? (
       <Grid container spacing={2} sx={{ mb: 2 }}>
@@ -282,7 +265,7 @@ function Tasks() {
           <Typography variant="subtitle2" gutterBottom>关注的检测目标：</Typography>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
             {selectedLabels.map(l => (
-              <Chip key={l.id} label={l.name || String(l.id)} variant="outlined" size="small" color="primary" />
+              <Chip key={String(l)} label={String(l)} variant="outlined" size="small" color="primary" />
             ))}
           </Box>
         </Grid>
@@ -743,7 +726,6 @@ function Tasks() {
                   setFormData(prev => ({ 
                     ...prev, 
                     algorithm_id: algId,
-                    modelId: (selectedAlg && selectedAlg.model_id) ? selectedAlg.model_id : prev.modelId,
                     algorithm_parameters: {
                       ...prev.algorithm_parameters,
                       labels: (selectedAlg && selectedAlg.labels && selectedAlg.labels.length > 0) ? selectedAlg.labels : []

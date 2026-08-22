@@ -77,8 +77,13 @@ class DetectorService:
             if not camera:
                 return {"success": False, "message": "Camera not found"}
 
-            # 获取模型
-            model = DetectionModel.query.get(task.modelId)
+            # 模型由算法绑定，任务不再直绑 modelId
+            if not algorithm.model_id:
+                return {"success": False, "message": f"Algorithm {algorithm.name} is not bound to a model"}
+
+            model = DetectionModel.query.get(algorithm.model_id)
+            if not model:
+                return {"success": False, "message": "Bound model not found"}
             
             # TODO: 如果还是希望在云端跑（没有edge_node_id的情况），可以保留原逻辑。或者强迫下发。
             if not task.edge_node_id:

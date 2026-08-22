@@ -4,7 +4,7 @@
 from flask import Blueprint, jsonify, request, current_app
 from app.extensions import db
 from app.models import DetectionModel
-from app.middleware.auth import token_required
+from app.middleware.auth import token_required, role_required
 from werkzeug.utils import secure_filename
 from config import Config
 import os
@@ -24,6 +24,7 @@ def allowed_file(filename):
 
 @model_bp.route('/api/models', methods=['GET'])
 @token_required
+@role_required('vendor')
 def get_models():
     """
     获取所有模型
@@ -43,6 +44,7 @@ def get_models():
 
 @model_bp.route('/api/models/upload', methods=['POST'])
 @token_required
+@role_required('vendor')
 def upload_model():
     """
     上传模型文件
@@ -158,6 +160,7 @@ def upload_model():
 
 @model_bp.route('/api/models/<int:model_id>', methods=['DELETE'])
 @token_required
+@role_required('vendor')
 def delete_model(model_id):
     """
     删除模型
@@ -185,6 +188,7 @@ def delete_model(model_id):
 
 @model_bp.route('/api/models/<int:model_id>', methods=['PUT'])
 @token_required
+@role_required('vendor')
 def update_model(model_id):
     """更新模型元数据（名称/描述/labelmap）"""
     try:

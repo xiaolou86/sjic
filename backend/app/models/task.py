@@ -28,7 +28,6 @@ class Task(db.Model):
             'confidence': self.confidence,
             'alertThreshold': self.alertThreshold,
             'notificationEnabled': self.notificationEnabled,
-            'modelId': self.modelId,
             'cameraId': self.cameraId,
             'algorithm_id': self.algorithm_id,
             'edge_node_id': self.edge_node_id,

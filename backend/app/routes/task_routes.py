@@ -71,18 +71,26 @@ def create_tasks():
     """
     ok, reason = license_service.ensure_valid()
     if not ok:
-      return jsonify({'error': f'License invalid: {reason}'}), 403
+        return jsonify({'error': f'License invalid: {reason}'}), 403
 
-    data = request.json
+    data = request.json or {}
     current_app.logger.info(f"Creating new task: {data}")
 
+    # 任务不再接收 modelId，模型由 algorithm.model_id 决定
+    data.pop('modelId', None)
+
     algorithm_id = data.get('algorithm_id')
-    if algorithm_id:
-      algorithm = Algorithm.query.get(algorithm_id)
-      if not algorithm:
+    if not algorithm_id:
+        return jsonify({'error': 'algorithm_id is required'}), 400
+
+    algorithm = Algorithm.query.get(algorithm_id)
+    if not algorithm:
         return jsonify({'error': 'Algorithm not found'}), 400
-      allowed, deny_reason = license_service.is_algorithm_allowed(algorithm.type)
-      if not allowed:
+    if not algorithm.model_id:
+        return jsonify({'error': 'Algorithm has no published model. Please publish algorithm version first.'}), 400
+
+    allowed, deny_reason = license_service.is_algorithm_allowed(algorithm.type)
+    if not allowed:
         return jsonify({'error': f'Algorithm not allowed by license: {deny_reason}'}), 403
 
     task = Task(**data)
@@ -118,21 +126,26 @@ def update_tasks(task_id):
         description: 任务更新成功
     """
     try:
-      ok, reason = license_service.ensure_valid()
-      if not ok:
-        return jsonify({'error': f'License invalid: {reason}'}), 403
+        ok, reason = license_service.ensure_valid()
+        if not ok:
+            return jsonify({'error': f'License invalid: {reason}'}), 403
 
-        data = request.json
+        data = request.json or {}
+        # 任务更新忽略 modelId，模型由算法绑定决定
+        data.pop('modelId', None)
+
         task = Task.query.get_or_404(task_id)
 
-      next_algorithm_id = data.get('algorithm_id', task.algorithm_id)
-      if next_algorithm_id:
-        algorithm = Algorithm.query.get(next_algorithm_id)
-        if not algorithm:
-          return jsonify({'error': 'Algorithm not found'}), 400
-        allowed, deny_reason = license_service.is_algorithm_allowed(algorithm.type)
-        if not allowed:
-          return jsonify({'error': f'Algorithm not allowed by license: {deny_reason}'}), 403
+        next_algorithm_id = data.get('algorithm_id', task.algorithm_id)
+        if next_algorithm_id:
+            algorithm = Algorithm.query.get(next_algorithm_id)
+            if not algorithm:
+                return jsonify({'error': 'Algorithm not found'}), 400
+            if not algorithm.model_id:
+                return jsonify({'error': 'Algorithm has no published model. Please publish algorithm version first.'}), 400
+            allowed, deny_reason = license_service.is_algorithm_allowed(algorithm.type)
+            if not allowed:
+                return jsonify({'error': f'Algorithm not allowed by license: {deny_reason}'}), 403
 
         for key, value in data.items():
             if hasattr(task, key):
