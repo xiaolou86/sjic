@@ -68,6 +68,10 @@ class DetectorService:
             if not algorithm:
                 return {"success": False, "message": "Algorithm not found"}
 
+            publish_meta = (algorithm.parameter_schema or {}).get('publish_meta', {})
+            if not bool(publish_meta.get('published', False)):
+                return {"success": False, "message": "Algorithm is not published"}
+
             allowed, deny_reason = license_service.is_algorithm_allowed(algorithm.type)
             if not allowed:
                 return {"success": False, "message": f"Algorithm not allowed by license: {deny_reason}"}

@@ -1,20 +1,34 @@
 """
 算法管理路由蓝图
 """
-from flask import Blueprint, jsonify, request
-from app.extensions import db
-from app.models import Algorithm, DetectionModel
-from app.middleware.auth import token_required, role_required, get_token_payload
-from app.services.license_service import license_service
 from datetime import datetime, timezone
+
+from flask import Blueprint, jsonify, request
+
+from app.extensions import db
+from app.middleware.auth import get_token_payload, role_required, token_required
+from app.models import Algorithm
+from app.services.license_service import license_service
 
 algorithm_bp = Blueprint('algorithm', __name__)
 
 
+def _is_published(algorithm):
+    schema = algorithm.parameter_schema or {}
+    publish_meta = schema.get('publish_meta', {})
+    return bool(publish_meta.get('published', False))
+
+
 def _serialize_algorithm(algorithm, include_internal=False):
     data = algorithm.to_dict()
+    schema = algorithm.parameter_schema or {}
+    publish_meta = schema.get('publish_meta', {})
+    data['published'] = bool(publish_meta.get('published', False))
+    data['published_at'] = publish_meta.get('published_at')
+
     if not include_internal:
         data.pop('model_id', None)
+
     return data
 
 
@@ -45,44 +59,26 @@ def get_algorithms():
         algorithms = [a for a in algorithms if a.type in allowed_types]
 
     payload = get_token_payload() or {}
-    include_internal = payload.get('role') == 'vendor'
-    return jsonify([_serialize_algorithm(algorithm, include_internal=include_internal) for algorithm in algorithms])
+    is_vendor = payload.get('role') == 'vendor'
+    if not is_vendor:
+        algorithms = [a for a in algorithms if _is_published(a)]
+
+    return jsonify([
+        _serialize_algorithm(algorithm, include_internal=is_vendor)
+        for algorithm in algorithms
+    ])
 
 
 @algorithm_bp.route('/api/algorithms', methods=['POST'])
 @token_required
 @role_required('vendor')
 def create_algorithm():
-    """
-    创建新算法定义
-    ---
-    tags:
-      - 算法管理 (Algorithms)
-    summary: 注册新的算法类型
-    security:
-      - APIKeyHeader: []
-    parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          properties:
-            name:
-              type: string
-            type:
-              type: string
-            description:
-              type: string
-    responses:
-      201:
-        description: 创建成功
-    """
+    """创建新算法定义"""
     ok, reason = license_service.ensure_valid()
     if not ok:
         return jsonify({'error': f'License invalid: {reason}'}), 403
 
-    data = request.json
+    data = request.json or {}
     algorithm_type = data.get('type')
     allowed, deny_reason = license_service.is_algorithm_allowed(algorithm_type)
     if not allowed:
@@ -98,14 +94,14 @@ def create_algorithm():
 @token_required
 @role_required('vendor')
 def update_algorithm(alg_id):
-    """更新算法模板"""
-    data = request.json
+    """更新算法模板（含模型绑定）。"""
+    data = request.json or {}
     algorithm = Algorithm.query.get_or_404(alg_id)
-    
+
     for key, value in data.items():
         if hasattr(algorithm, key):
             setattr(algorithm, key, value)
-            
+
     db.session.commit()
     return jsonify(_serialize_algorithm(algorithm, include_internal=True))
 
@@ -124,39 +120,24 @@ def delete_algorithm(alg_id):
 @algorithm_bp.route('/api/algorithms/<int:alg_id>/publish', methods=['POST'])
 @token_required
 @role_required('vendor')
-def publish_algorithm_version(alg_id):
-    """
-    发布算法版本：把算法绑定到指定模型并更新默认 labels。
-    """
-    data = request.json or {}
-    model_id = data.get('model_id')
-    labels = data.get('labels')
-
-    if not model_id:
-        return jsonify({'error': 'model_id is required'}), 400
-
+def publish_algorithm(alg_id):
+    """发布算法：发布后才对客户与任务可见。"""
     algorithm = Algorithm.query.get_or_404(alg_id)
-    model = DetectionModel.query.get(model_id)
-    if not model:
-        return jsonify({'error': 'Model not found'}), 400
 
-    algorithm.model_id = model.id
-    if labels is not None:
-        algorithm.labels = labels
+    if not algorithm.model_id:
+        return jsonify({'error': 'Please bind a model in edit before publish'}), 400
 
-    # 记录发布信息，便于追溯当前生效版本。
     schema = algorithm.parameter_schema or {}
-    schema['release_meta'] = {
+    schema['publish_meta'] = {
+        'published': True,
         'published_at': datetime.now(timezone.utc).isoformat(),
-        'model_id': model.id,
-        'model_name': model.name,
     }
     algorithm.parameter_schema = schema
 
     db.session.commit()
 
     return jsonify({
-        'message': 'Algorithm version published',
+        'message': 'Algorithm published',
         'algorithm': _serialize_algorithm(algorithm, include_internal=True),
-        'release_meta': schema['release_meta']
+        'publish_meta': schema['publish_meta'],
     }), 200

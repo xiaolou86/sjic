@@ -11,6 +11,12 @@ from app.services.license_service import license_service
 task_bp = Blueprint('task', __name__)
 
 
+def _is_algorithm_published(algorithm):
+    schema = algorithm.parameter_schema or {}
+    publish_meta = schema.get('publish_meta', {})
+    return bool(publish_meta.get('published', False))
+
+
 @task_bp.route('/api/tasks/edge/<mac_address>', methods=['GET'])
 def get_edge_tasks(mac_address):
     """
@@ -86,8 +92,10 @@ def create_tasks():
     algorithm = Algorithm.query.get(algorithm_id)
     if not algorithm:
         return jsonify({'error': 'Algorithm not found'}), 400
+    if not _is_algorithm_published(algorithm):
+        return jsonify({'error': 'Algorithm is not published'}), 400
     if not algorithm.model_id:
-        return jsonify({'error': 'Algorithm has no published model. Please publish algorithm version first.'}), 400
+        return jsonify({'error': 'Algorithm has no bound model. Please bind a model in edit first.'}), 400
 
     allowed, deny_reason = license_service.is_algorithm_allowed(algorithm.type)
     if not allowed:
@@ -126,42 +134,44 @@ def update_tasks(task_id):
         description: 任务更新成功
     """
     try:
-        ok, reason = license_service.ensure_valid()
-        if not ok:
-            return jsonify({'error': f'License invalid: {reason}'}), 403
+      ok, reason = license_service.ensure_valid()
+      if not ok:
+        return jsonify({'error': f'License invalid: {reason}'}), 403
 
-        data = request.json or {}
-        # 任务更新忽略 modelId，模型由算法绑定决定
-        data.pop('modelId', None)
+      data = request.json or {}
+      # 任务更新忽略 modelId，模型由算法绑定决定
+      data.pop('modelId', None)
 
-        task = Task.query.get_or_404(task_id)
+      task = Task.query.get_or_404(task_id)
 
-        next_algorithm_id = data.get('algorithm_id', task.algorithm_id)
-        if next_algorithm_id:
-            algorithm = Algorithm.query.get(next_algorithm_id)
-            if not algorithm:
-                return jsonify({'error': 'Algorithm not found'}), 400
-            if not algorithm.model_id:
-                return jsonify({'error': 'Algorithm has no published model. Please publish algorithm version first.'}), 400
-            allowed, deny_reason = license_service.is_algorithm_allowed(algorithm.type)
-            if not allowed:
-                return jsonify({'error': f'Algorithm not allowed by license: {deny_reason}'}), 403
+      next_algorithm_id = data.get('algorithm_id', task.algorithm_id)
+      if next_algorithm_id:
+        algorithm = Algorithm.query.get(next_algorithm_id)
+        if not algorithm:
+          return jsonify({'error': 'Algorithm not found'}), 400
+        if not _is_algorithm_published(algorithm):
+          return jsonify({'error': 'Algorithm is not published'}), 400
+        if not algorithm.model_id:
+          return jsonify({'error': 'Algorithm has no bound model. Please bind a model in edit first.'}), 400
+        allowed, deny_reason = license_service.is_algorithm_allowed(algorithm.type)
+        if not allowed:
+          return jsonify({'error': f'Algorithm not allowed by license: {deny_reason}'}), 403
 
-        for key, value in data.items():
-            if hasattr(task, key):
-                setattr(task, key, value)
+      for key, value in data.items():
+        if hasattr(task, key):
+          setattr(task, key, value)
 
-        task.save_calibration_image()
-        db.session.add(task)  # 确保对象被跟踪
-        db.session.commit()
+      task.save_calibration_image()
+      db.session.add(task)  # 确保对象被跟踪
+      db.session.commit()
 
-        current_app.logger.info(f"Task updated successfully: {task.to_dict()}")
-        return jsonify(task.to_dict())
+      current_app.logger.info(f"Task updated successfully: {task.to_dict()}")
+      return jsonify(task.to_dict())
 
     except Exception as e:
-        current_app.logger.error(f"Error updating task: {str(e)}")
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+      current_app.logger.error(f"Error updating task: {str(e)}")
+      db.session.rollback()
+      return jsonify({'error': str(e)}), 500
 
 
 @task_bp.route('/api/tasks/<int:task_id>', methods=['DELETE'])
