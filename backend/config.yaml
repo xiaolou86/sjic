@@ -18,10 +18,10 @@ mqtt:
 storage:
   # 端边云对象存储与模型下发配置
   # 支持: 'MINIO', 'OBS', 'NGINX'
-  type: "MINIO"
-  
-  # ---------- 针对 Nginx 配置 ----------
-  nginx_static_base_url: "http://127.0.0.1/static-models"
+  # 私有化推荐 NGINX：frontend 托管 /static-models；Edge 自行拼接可达基址（见 edge-agent/config.yaml）
+  type: "NGINX"
+
+  # 须与 frontend 容器环境变量 DOWNLOAD_SECURE_KEY 一致（默认值两边已对齐，一般不用改）
   download_secure_key: "my-super-secret-key-for-nginx"
 
   # ---------- 针对 S3/MinIO 配置 ----------

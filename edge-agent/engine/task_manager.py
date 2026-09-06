@@ -4,6 +4,7 @@ import time
 import requests
 import os
 import cv2
+from urllib.parse import urlparse
 from algorithms import get_algorithm
 from runtime import create_runtime
 
@@ -26,6 +27,35 @@ class TaskManager:
 
     def set_mqtt_client(self, client):
         self.mqtt_client = client
+
+    def _models_base_url(self) -> str:
+        """Edge 侧模型 HTTP 基址：优先 platform.models_base_url，否则由 api_base_url 推导。"""
+        configured = (self.config.get('platform') or {}).get('models_base_url') or ''
+        if str(configured).strip():
+            return str(configured).rstrip('/')
+        parsed = urlparse(self.api_base_url)
+        if not parsed.scheme or not parsed.hostname:
+            raise ValueError(
+                "Cannot derive models_base_url: set platform.models_base_url "
+                "or a valid platform.api_base_url (e.g. http://192.168.x.x:38881/api/edge)"
+            )
+        return f"{parsed.scheme}://{parsed.hostname}:38880/static-models"
+
+    def _resolve_download_url(self, download_url: str) -> str:
+        """
+        MinIO/OBS：完整 https URL，原样使用。
+        NGINX：backend 下发 /static-models/...?md5=&expires=，在此拼接 Edge 可达基址。
+        """
+        if not download_url:
+            return ""
+        url = download_url.strip()
+        if url.startswith('http://') or url.startswith('https://'):
+            return url
+        if url.startswith('/'):
+            base = self._models_base_url()
+            parsed = urlparse(base)
+            return f"{parsed.scheme}://{parsed.netloc}{url}"
+        return f"{self._models_base_url().rstrip('/')}/{url.lstrip('/')}"
 
     def start_task(self, task_config, save=True):
         """解析云端指令并启动推理流"""
@@ -79,19 +109,29 @@ class TaskManager:
     def _ensure_model_exists(self, model_info):
         """如果本地没有 `.engine` 或 `.onnx`，从云端下载"""
         filename = model_info.get('filename')
-        download_url = model_info.get('download_url')
+        raw_url = model_info.get('download_url')
         if not filename:
             return None
         
         local_path = os.path.join(self.config['paths']['models_dir'], filename)
         if os.path.exists(local_path):
             return local_path
+
+        try:
+            download_url = self._resolve_download_url(raw_url)
+        except Exception as e:
+            logger.error(f"Resolve model download URL failed: {e}")
+            return None
+
+        if not download_url:
+            logger.error("Model download_url is empty")
+            return None
             
         logger.info(f"Model {filename} not found locally, downloading from {download_url}...")
         try:
             # 流式下载真正的模型（带进度指示更佳）
             logger.info(f"Starting to download {filename} from secure URL...")
-            response = requests.get(download_url, stream=True, timeout=10)
+            response = requests.get(download_url, stream=True, timeout=120)
             response.raise_for_status()
 
             # 按块写入文件，避免撑爆内存 (比如 1MB 每次)
@@ -103,7 +143,8 @@ class TaskManager:
             logger.info(f"Downloaded model successfully to {local_path} ({os.path.getsize(local_path)} bytes)")
             return local_path
         except requests.exceptions.HTTPError as he:
-            logger.error(f"Download authorization or access failed: HTTP {response.status_code}")
+            status = getattr(he.response, 'status_code', '?')
+            logger.error(f"Download authorization or access failed: HTTP {status}")
             return None
         except Exception as e:
             logger.error(f"Download model failed: {str(e)}")

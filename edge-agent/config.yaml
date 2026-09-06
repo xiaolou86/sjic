@@ -8,6 +8,9 @@ mqtt:
 
 platform:
   api_base_url: "http://192.168.3.27:38881/api/edge"
+  # 模型下载基址（NGINX 模式）。留空则按 api_base_url 的主机自动推导为 http://{host}:38880/static-models
+  # MinIO/OBS 下发的是完整预签名 URL，不会用到本项
+  models_base_url: ""
 
 paths:
   models_dir: "./models"

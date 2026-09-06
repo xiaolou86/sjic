@@ -11,14 +11,11 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-
-
 class MqttService:
     def __init__(self):
         # 生成基于 PID 和 UUID 的唯一客户端 ID 
         # 防止 Flask 在 Debug 热更模式下启动多个进程导致 MQTT 断线互踢（无限循环打印 connected）
         unique_client_id = f"sjic-platform-master-{os.getpid()}-{uuid.uuid4().hex[:6]}"
-        self.client_id = unique_client_id
         self.client = mqtt.Client(client_id=unique_client_id)
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message

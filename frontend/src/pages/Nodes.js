@@ -80,7 +80,11 @@ function Nodes() {
         if (isNaN(lastTime)) return 'warning';
 
         // 边缘节点心跳周期为 30 秒，设置 90 秒（3倍周期）作为失联缓冲，避免正常网络波动误判离线
-        if (Date.now() - lastTime > 90000) return 'warning';
+        const ageMs = Date.now() - lastTime;
+        // #region agent log
+        fetch('http://127.0.0.1:7453/ingest/081782cc-6465-4a44-ac05-89d5ee6ce675',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'902a99'},body:JSON.stringify({sessionId:'902a99',hypothesisId:'H4',location:'Nodes.js:getStatusColor',message:'frontend status calc',data:{status,lastHeartbeat,lastTime,ageMs,tzOffsetMin:new Date().getTimezoneOffset()},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        if (ageMs > 90000) return 'warning';
         return 'success';
     };
 

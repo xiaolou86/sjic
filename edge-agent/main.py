@@ -68,39 +68,21 @@ def main():
         "ip_address": get_local_ip_address(),
     }
 
-    # 4. 守护循环：周期推送心跳与信号监听
-    import signal
-    running = True
-
-    def handle_signal(signum, frame):
-        nonlocal running
-        logger.info(f"Received exit signal ({signum}), gracefully shutting down edge agent...")
-        running = False
-
-    signal.signal(signal.SIGINT, handle_signal)
-    if hasattr(signal, 'SIGTERM'):
-        signal.signal(signal.SIGTERM, handle_signal)
-
-    while running:
-        try:
+    # 4. 守护循环：周期推送心跳
+    try:
+        while True:
             # 构建心跳负荷
             heartbeat_payload['timestamp'] = int(time.time())
             heartbeat_payload['hardware'] = get_hardware_status(arch)
             heartbeat_payload['status'] = "online"
             heartbeat_payload['running_tasks'] = list(task_manager.active_tasks.keys())
             mqtt_client.publish_heartbeat(heartbeat_payload)
-            logger.debug("Heartbeat sent.")
-        except Exception as loop_err:
-            logger.error(f"Error in heartbeat loop: {loop_err}", exc_info=True)
-
-        # 步进 sleep（每秒检测 running 标志，支持秒级响应退出信号）
-        for _ in range(30):
-            if not running:
-                break
-            time.sleep(1)
-
-    logger.info("Shutting down edge agent...")
-    mqtt_client.stop()
+            logger.debug(f"Heartbeat sent.")
+            time.sleep(30) # 每30秒发送一次心跳
+            
+    except KeyboardInterrupt:
+        logger.info("Shutting down edge agent...")
+        mqtt_client.stop()
 
 if __name__ == "__main__":
     main()

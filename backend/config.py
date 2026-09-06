@@ -73,11 +73,12 @@ class Config:
     
     # --- 端边云对象存储与模型下发配置 ---
     STORAGE_TYPE = os.environ.get('STORAGE_TYPE') or get_cfg('storage', 'type', 'NGINX')
-    
-    # NGINX
-    NGINX_STATIC_BASE_URL = os.environ.get('NGINX_STATIC_BASE_URL') or get_cfg('storage', 'nginx_static_base_url', 'http://127.0.0.1/static-models')
-    DOWNLOAD_SECURE_KEY = os.environ.get('DOWNLOAD_SECURE_KEY') or get_cfg('storage', 'download_secure_key', 'super-secret')
-    
+
+    # NGINX secure_link 密钥（须与 frontend 容器 DOWNLOAD_SECURE_KEY 一致）
+    DOWNLOAD_SECURE_KEY = os.environ.get('DOWNLOAD_SECURE_KEY') or get_cfg(
+        'storage', 'download_secure_key', 'my-super-secret-key-for-nginx'
+    )
+
     # MinIO / OBS
     STORAGE_ENDPOINT = os.environ.get('STORAGE_ENDPOINT') or get_cfg('storage', 'endpoint', 'http://127.0.0.1:9000')
     STORAGE_ACCESS_KEY = os.environ.get('STORAGE_ACCESS_KEY') or get_cfg('storage', 'access_key', 'minioadmin')

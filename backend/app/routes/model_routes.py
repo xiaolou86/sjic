@@ -5,11 +5,11 @@ from flask import Blueprint, jsonify, request, current_app
 from app.extensions import db
 from app.models import DetectionModel
 from app.middleware.auth import token_required, role_required
+from app.utils.storage import get_storage
 from werkzeug.utils import secure_filename
 from config import Config
 import os
 import tempfile
-import shutil
 import json
 
 model_bp = Blueprint('model', __name__)
@@ -81,52 +81,35 @@ def upload_model():
     temp_file = None
     try:
         current_app.logger.info("Model upload request received")
-        current_app.logger.info(f"Request content type: {request.content_type}")
-        current_app.logger.info(f"Request headers: {dict(request.headers)}")
-        current_app.logger.info(f"Request files: {list(request.files.keys()) if request.files else 'No files'}")
-        current_app.logger.info(f"Request form: {dict(request.form) if request.form else 'No form data'}")
 
-        # 检查请求中是否有文件
         if 'file' not in request.files:
             current_app.logger.error("No file part in the request")
             return jsonify({'error': '没有文件'}), 400
 
         file = request.files['file']
 
-        # 检查文件名是否为空
         if file.filename == '':
             current_app.logger.error("No selected file")
             return jsonify({'error': '未选择文件'}), 400
 
-        # 检查文件类型
         if not allowed_file(file.filename):
             current_app.logger.error(f"File type not allowed: {file.filename}")
             return jsonify({'error': '不支持的文件类型'}), 400
 
-        # 获取模型名称
         name = request.form.get('name', '')
         if not name:
             name = os.path.splitext(file.filename)[0]
 
-        current_app.logger.info(f"Processing model upload: {name}, file: {file.filename}")
+        filename = secure_filename(file.filename)
+        current_app.logger.info(f"Processing model upload: {name}, file: {filename}")
 
-        # 使用临时文件
         with tempfile.NamedTemporaryFile(delete=False) as temp:
             temp_file = temp.name
             file.save(temp_file)
 
-            # 确保模型目录存在
-            model_folder = current_app.config.get('MODEL_FOLDER', Config.MODEL_FOLDER)
-            os.makedirs(model_folder, exist_ok=True)
+        # 写入当前 STORAGE_TYPE 对应的后端（NGINX 本地目录 / MinIO / OBS）
+        get_storage().upload(filename, temp_file)
 
-            # 保存文件
-            filename = secure_filename(file.filename)
-            file_path = os.path.join(model_folder, filename)
-
-            # 复制临时文件到目标位置
-            shutil.copy2(temp_file, file_path)
-
-        # 可选：labelmap（与模型文件绑定）
         labelmap_raw = request.form.get('labelmap')
         labelmap = None
         if labelmap_raw:
@@ -135,7 +118,6 @@ def upload_model():
             except Exception:
                 return jsonify({'error': 'labelmap 必须是合法 JSON'}), 400
 
-        # 创建模型记录
         model = DetectionModel(
             name=name,
             path=filename,
@@ -153,7 +135,6 @@ def upload_model():
         current_app.logger.error(f"Error uploading model: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
     finally:
-        # 清理临时文件
         if temp_file and os.path.exists(temp_file):
             os.unlink(temp_file)
 
@@ -181,6 +162,13 @@ def delete_model(model_id):
         description: 模型删除成功
     """
     model = DetectionModel.query.get_or_404(model_id)
+    storage_path = model.path
+    try:
+        if storage_path:
+            get_storage().delete(storage_path)
+    except Exception as e:
+        current_app.logger.warning(f"Failed to delete model object {storage_path}: {e}")
+
     db.session.delete(model)
     db.session.commit()
     return '', 204

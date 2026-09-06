@@ -1,5 +1,8 @@
 version: '3.8'
 
+# 私有化模型下发：backend 写 ./models，frontend Nginx 托管 /static-models（secure_link）
+# Edge 侧在 edge-agent/config.yaml 配置平台地址，自行拼接模型下载基址
+
 services:
   backend:
     build:
@@ -25,6 +28,8 @@ services:
       - ALERT_STORAGE_PATH=/app/alerts
       - MQTT_BROKER_URL=127.0.0.1
       - MQTT_BROKER_PORT=38883
+      - STORAGE_TYPE=${STORAGE_TYPE:-NGINX}
+      - DOWNLOAD_SECURE_KEY=${DOWNLOAD_SECURE_KEY:-my-super-secret-key-for-nginx}
     networks:
       - sjic-network
 
@@ -36,6 +41,10 @@ services:
     restart: unless-stopped
     ports:
       - "38880:38880"
+    volumes:
+      - ./models:/usr/share/nginx/models:ro
+    environment:
+      - DOWNLOAD_SECURE_KEY=${DOWNLOAD_SECURE_KEY:-my-super-secret-key-for-nginx}
     depends_on:
       - backend
     networks:
@@ -44,4 +53,3 @@ services:
 networks:
   sjic-network:
     driver: bridge
- 
