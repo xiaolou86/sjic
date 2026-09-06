@@ -62,6 +62,26 @@ run.bat init-db
 
 ### 4. 运行系统
 
+#### 方式一：Docker Compose 一键部署（推荐）
+
+```bash
+# 构建并启动后端与前端容器服务
+docker compose up -d --build
+
+# 查看容器运行状态
+docker compose ps
+
+# 查看日志
+docker compose logs -f
+
+# 停止服务
+docker compose down
+```
+
+访问 http://localhost:38880 打开系统界面。
+
+#### 方式二：本地开发环境运行
+
 在第一个终端运行后端：
 
 ```bash
@@ -85,6 +105,7 @@ run.bat frontend
 访问 http://localhost:38880 打开系统界面
 
 ## 项目结构
+
 
 ```
 .

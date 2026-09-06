@@ -70,9 +70,14 @@ def create_app(config_class=Config):
     total, used, free = shutil.disk_usage(temp_dir)
     app.logger.info(f"Disk space: total={total//(1024**3)}GB, used={used//(1024**3)}GB, free={free//(1024**3)}GB")
 
-    # 确保模型目录存在
+    # 确保应用核心工作目录与实例目录存在
+    os.makedirs(app.instance_path, exist_ok=True)
+    for folder_key in ['MODEL_FOLDER', 'VIDEO_FOLDER', 'IMAGE_FOLDER', 'ALERT_FOLDER', 'LOG_FOLDER']:
+        folder_path = app.config.get(folder_key)
+        if folder_path:
+            os.makedirs(folder_path, exist_ok=True)
+
     model_folder = app.config.get('MODEL_FOLDER', config_class.MODEL_FOLDER)
-    os.makedirs(model_folder, exist_ok=True)
     app.logger.info(f"Model upload directory: {os.path.abspath(model_folder)}")
 
     if not os.access(model_folder, os.W_OK):
@@ -102,15 +107,19 @@ def create_app(config_class=Config):
                 'FLASK_APP=run.py flask db upgrade'
             )
 
-        from sqlalchemy import inspect as sa_inspect
-        from app.models.algorithm import Algorithm
-        if sa_inspect(db.engine).has_table('algorithms'):
-            Algorithm.initialize_default_algorithms()
-            app.logger.info('Algorithms metadata initialized')
-        else:
-            app.logger.info(
-                'Skip algorithm seed: run flask db upgrade first'
-            )
+        try:
+            from sqlalchemy import inspect as sa_inspect
+            from app.models.algorithm import Algorithm
+            if sa_inspect(db.engine).has_table('algorithms'):
+                Algorithm.initialize_default_algorithms()
+                app.logger.info('Algorithms metadata initialized')
+            else:
+                app.logger.info(
+                    'Skip algorithm seed: run flask db upgrade first'
+                )
+        except Exception as e:
+            app.logger.warning(f"Database inspection skipped: {e}")
+
 
         # 注册错误处理器
         _register_error_handlers(app)

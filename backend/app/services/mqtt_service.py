@@ -11,11 +11,14 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+
+
 class MqttService:
     def __init__(self):
         # 生成基于 PID 和 UUID 的唯一客户端 ID 
         # 防止 Flask 在 Debug 热更模式下启动多个进程导致 MQTT 断线互踢（无限循环打印 connected）
         unique_client_id = f"sjic-platform-master-{os.getpid()}-{uuid.uuid4().hex[:6]}"
+        self.client_id = unique_client_id
         self.client = mqtt.Client(client_id=unique_client_id)
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
@@ -23,9 +26,14 @@ class MqttService:
 
     def init_app(self, app):
         self.app = app
+        # 防止 Flask 在 Debug 模式下 Werkzeug Reloader 父进程重复连接 MQTT 产生双重订阅
+        if app.debug and os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
+            logger.info("Skipping MQTT client initialization in Werkzeug reloader parent process.")
+            return
+
         # 这里暂时写死或从 config 取
         broker_ip = app.config.get('MQTT_BROKER_URL', '127.0.0.1')
-        broker_port = app.config.get('MQTT_BROKER_PORT', 1883)
+        broker_port = int(app.config.get('MQTT_BROKER_PORT', 38883))
         try:
             self.client.connect(broker_ip, broker_port, 60)
             self.client.loop_start()  # 后台线程接收消息
@@ -112,7 +120,7 @@ class MqttService:
                 # 冲突说明已经被别的线程插入，退回纯更新模式
                 node = EdgeNode.query.filter_by(mac_address=mac).first()
                 if node:
-                    node.status = 'online'
+                    node.status = reported_status
                     node.last_heartbeat = datetime.now()
                     node.hardware_status = data.get('hardware', {})
                     db.session.commit()

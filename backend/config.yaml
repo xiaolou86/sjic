@@ -10,6 +10,11 @@ database:
   # 生产环境推荐：mysql+pymysql://root:123456@127.0.0.1:3306/sjic_db?charset=utf8mb4
   uri: "sqlite:///app.db"
 
+mqtt:
+  # MQTT 服务端配置 (本地开发连接 127.0.0.1，Docker Compose 会被环境变量覆盖为 mosquitto)
+  broker_url: "127.0.0.1"
+  broker_port: 38883
+
 storage:
   # 端边云对象存储与模型下发配置
   # 支持: 'MINIO', 'OBS', 'NGINX'

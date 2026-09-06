@@ -3,7 +3,7 @@ architecture: "moore_e1000"       # jetson / rk3588 / x86
 
 mqtt:
   broker_url: "192.168.3.27"    # Platform IP address
-  broker_port: 1883
+  broker_port: 38883
   keepalive: 60
 
 platform:

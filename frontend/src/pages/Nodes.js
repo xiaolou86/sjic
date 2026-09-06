@@ -74,10 +74,21 @@ function Nodes() {
         if (status !== 'online') return 'error';
         if (!lastHeartbeat) return 'warning';
 
-        // 如果超过 30 秒没心跳，标记为离线
-        const lastTime = new Date(lastHeartbeat).getTime();
-        if (Date.now() - lastTime > 30000) return 'warning';
+        // 统一时间字符串解析（兼容各类浏览器）
+        const timeStr = typeof lastHeartbeat === 'string' ? lastHeartbeat.replace(/-/g, '/') : lastHeartbeat;
+        const lastTime = new Date(timeStr).getTime();
+        if (isNaN(lastTime)) return 'warning';
+
+        // 边缘节点心跳周期为 30 秒，设置 90 秒（3倍周期）作为失联缓冲，避免正常网络波动误判离线
+        if (Date.now() - lastTime > 90000) return 'warning';
         return 'success';
+    };
+
+    const getStatusLabel = (status, lastHeartbeat) => {
+        const color = getStatusColor(status, lastHeartbeat);
+        if (color === 'success') return '在线';
+        if (color === 'warning') return '失联';
+        return '离线';
     };
 
     return (
@@ -106,6 +117,7 @@ function Nodes() {
                         <TableBody>
                             {nodes.map((node) => {
                                 const statusColor = getStatusColor(node.status, node.last_heartbeat);
+                                const statusLabel = getStatusLabel(node.status, node.last_heartbeat);
                                 const boundIds = Array.isArray(node.bound_camera_ids) ? node.bound_camera_ids : [];
                                 const boundNames = boundIds
                                     .map(id => cameras.find(c => c.id === id)?.name || `ID=${id}`);
@@ -114,7 +126,7 @@ function Nodes() {
                                         <TableCell>
                                             <Chip
                                                 icon={<Circle fontSize="small" />}
-                                                label={statusColor === 'success' ? '在线' : '离线'}
+                                                label={statusLabel}
                                                 color={statusColor}
                                                 size="small"
                                                 variant="outlined"

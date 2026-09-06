@@ -63,21 +63,24 @@ def create_camera():
         description: 摄像头创建成功
     """
     try:
-      ok, reason = license_service.ensure_valid()
-      if not ok:
-        return jsonify({'error': f'License invalid: {reason}'}), 403
+        ok, reason = license_service.ensure_valid()
+        if not ok:
+            return jsonify({'error': f'License invalid: {reason}'}), 403
 
-        data = request.json
+        data = request.json or {}
         current_app.logger.info(f"Creating new camera: {data}")
 
-      current_count = Camera.query.count()
-      can_add, quota_reason, status = license_service.can_add_camera(current_count)
-      if not can_add:
-        return jsonify({
-          'error': f"License camera quota check failed: {quota_reason}",
-          'max_cameras': status.get('max_cameras', 0),
-          'current_cameras': current_count
-        }), 403
+        if not data.get('name') or not data.get('url'):
+            return jsonify({'error': 'Name and URL are required'}), 400
+
+        current_count = Camera.query.count()
+        can_add, quota_reason, status = license_service.can_add_camera(current_count)
+        if not can_add:
+            return jsonify({
+                'error': f"License camera quota check failed: {quota_reason}",
+                'max_cameras': status.get('max_cameras', 0),
+                'current_cameras': current_count
+            }), 403
 
         camera = Camera(
             name=data['name'],
@@ -89,6 +92,7 @@ def create_camera():
         current_app.logger.info(f"Camera created successfully: id={camera.id}")
         return jsonify(camera.to_dict()), 201
     except Exception as e:
+        db.session.rollback()
         current_app.logger.error(f"Failed to create camera: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 

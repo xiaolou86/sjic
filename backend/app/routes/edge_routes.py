@@ -96,7 +96,48 @@ def get_nodes():
     try:
         nodes = EdgeNode.query.all()
         # 与前端约定：直接返回数组（axios 响应拦截器会返回 response.data）
-        return jsonify([node.to_dict() for node in nodes]), 200
+        payload = [node.to_dict() for node in nodes]
+        # #region agent log
+        try:
+            import json as _json, time as _time, os as _os, urllib.request as _urlreq
+            _dbg = {
+                "sessionId": "902a99",
+                "hypothesisId": "H4",
+                "location": "edge_routes.py:get_nodes",
+                "message": "api/nodes response snapshot",
+                "data": {
+                    "count": len(payload),
+                    "nodes": [{"id": n.get("id"), "status": n.get("status"), "last_heartbeat": n.get("last_heartbeat"), "mac": n.get("mac_address")} for n in payload],
+                    "server_now": datetime.now().isoformat(),
+                },
+                "timestamp": int(_time.time() * 1000),
+                "pid": _os.getpid(),
+            }
+            _line = _json.dumps(_dbg, ensure_ascii=False) + "\n"
+            for _p in ("/app/logs/debug-902a99.log", "logs/debug-902a99.log", "debug-902a99.log"):
+                try:
+                    _os.makedirs(_os.path.dirname(_p) or ".", exist_ok=True)
+                    with open(_p, "a", encoding="utf-8") as _f:
+                        _f.write(_line)
+                    break
+                except Exception:
+                    continue
+            for _host in ("host.docker.internal", "127.0.0.1"):
+                try:
+                    _req = _urlreq.Request(
+                        f"http://{_host}:7453/ingest/081782cc-6465-4a44-ac05-89d5ee6ce675",
+                        data=_json.dumps(_dbg).encode("utf-8"),
+                        headers={"Content-Type": "application/json", "X-Debug-Session-Id": "902a99"},
+                        method="POST",
+                    )
+                    _urlreq.urlopen(_req, timeout=0.5)
+                    break
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        # #endregion
+        return jsonify(payload), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

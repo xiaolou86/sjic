@@ -2,43 +2,46 @@ version: '3.8'
 
 services:
   backend:
-    build: 
+    build:
       context: ./backend
-      args:
-        PYTHON_VERSION: "3.10"
+      dockerfile: Dockerfile
+    container_name: sjic-backend
+    restart: unless-stopped
     ports:
       - "38881:38881"
+      - "38883:38883"
     volumes:
-      - ./backend:/app
-      - ./models:/app/models
+      - ./backend/instance:/app/instance
       - ./data:/app/data
       - ./alerts:/app/alerts
+      - ./models:/app/models
+      - ./videos:/app/videos
+      - ./logs:/app/logs
     environment:
-      - FLASK_ENV=development
-      - DATABASE_URL=sqlite:///app.db
+      - FLASK_ENV=production
       - PYTHONUNBUFFERED=1
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+      - TZ=Asia/Shanghai
+      - DATABASE_URL=sqlite:///instance/app.db
+      - ALERT_STORAGE_PATH=/app/alerts
+      - MQTT_BROKER_URL=127.0.0.1
+      - MQTT_BROKER_PORT=38883
+    networks:
+      - sjic-network
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sjic-frontend
+    restart: unless-stopped
     ports:
       - "38880:38880"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    environment:
-      - REACT_APP_API_URL=http://localhost:38881
+    depends_on:
+      - backend
+    networks:
+      - sjic-network
 
-  db:
-    image: sqlite:latest
-    volumes:
-      - ./data:/data
-
-volumes:
-  postgres_data: 
+networks:
+  sjic-network:
+    driver: bridge
+ 

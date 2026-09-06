@@ -14,6 +14,7 @@ class EdgeMqttClient:
         self.client = mqtt.Client(client_id=f"sjic-edge-{self.edge_id}")
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
+        self.client.on_disconnect = self.on_disconnect
         self.task_manager = task_manager
 
         self.topic_prefix = f"sjic/edge/{self.edge_id}"
@@ -39,6 +40,16 @@ class EdgeMqttClient:
             logger.error(f"Failed to connect to MQTT broker: {str(e)}")
 
     def stop(self):
+        try:
+            # 优雅退出时主动向云端通告 offline 状态，并更新 Broker 保留消息
+            offline_payload = {
+                "edge_id": self.edge_id,
+                "status": "offline",
+                "message": "Edge agent shut down gracefully"
+            }
+            self.client.publish(f"{self.topic_prefix}/heartbeat", json.dumps(offline_payload), qos=1, retain=True)
+        except Exception as e:
+            logger.warning(f"Failed to publish offline status on stop: {e}")
         self.client.loop_stop()
         self.client.disconnect()
 
@@ -50,6 +61,10 @@ class EdgeMqttClient:
             client.subscribe(f"{self.topic_prefix}/task/stop")
         else:
             logger.error(f"Failed to connect, return code {rc}")
+
+    def on_disconnect(self, client, userdata, rc):
+        if rc != 0:
+            logger.warning(f"Unexpected MQTT disconnection (rc={rc}). Client will auto-reconnect.")
 
     def on_message(self, client, userdata, msg):
         payload_str = msg.payload.decode('utf-8')
@@ -67,7 +82,8 @@ class EdgeMqttClient:
 
     def publish_heartbeat(self, status_payload):
         topic = f"{self.topic_prefix}/heartbeat"
-        self.client.publish(topic, json.dumps(status_payload), qos=0)
+        # 使用 retain=True 覆盖 Broker 中可能驻留的旧 LWT 离线消息
+        self.client.publish(topic, json.dumps(status_payload), qos=1, retain=True)
         
     def publish_task_status(self, payload):
         topic = f"{self.topic_prefix}/task/status"
