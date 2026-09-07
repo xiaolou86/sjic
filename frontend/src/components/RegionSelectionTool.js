@@ -5,7 +5,7 @@ import {
 } from '@mui/material';
 import { useCameraPreviewSnapshot } from './hooks/useCameraPreviewSnapshot';
 
-function RegionSelectionTool({ cameraId, onSelect, existingRegion }) {
+function RegionSelectionTool({ cameraId, onSelect, existingRegion, buttonLabel = '选择检测区域' }) {
   const [open, setOpen] = useState(false);
   const [points, setPoints] = useState([]);
   const [isComplete, setIsComplete] = useState(false);
@@ -203,7 +203,7 @@ function RegionSelectionTool({ cameraId, onSelect, existingRegion }) {
 
   return (
     <>
-      <Button variant="outlined" onClick={() => setOpen(true)}>选择检测区域</Button>
+      <Button variant="outlined" size="small" onClick={() => setOpen(true)}>{buttonLabel}</Button>
       <Dialog open={open} onClose={handleClose} maxWidth="lg" fullWidth>
         <DialogTitle>选择检测区域</DialogTitle>
         <DialogContent>

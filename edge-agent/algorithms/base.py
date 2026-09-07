@@ -29,14 +29,13 @@ class BaseAlgorithm(ABC):
         logger.debug(f"Time since last alert: {seconds_passed}s. Threshold: {alert_threshold}s")
         return seconds_passed >= alert_threshold
 
-    def is_point_in_roi(self, point, points, logger):
+    def is_point_in_roi(self, point, points, logger=None):
         """
         判断点是否在检测区域内
         :param point: 点 (x, y)
         :param points: 检测区域的边界点列表 [(x1, y1), (x2, y2), ..., (xn, yn)]
         :return: bool
         """
-        logger.debug(f"Checking if point {point} is in ROI")
         center_point = Point(point)
         roi_polygon = Polygon(points)
         return roi_polygon.contains(center_point)

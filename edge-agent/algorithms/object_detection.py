@@ -1,162 +1,179 @@
 from .base import BaseAlgorithm
+from .rules import build_rules
 import cv2
 import time
 from datetime import datetime
 from dataclasses import replace
 from utils.calc import transform_points_from_frontend_to_backend, get_letterbox_params, preprocess
-from runtime.base_runtime import DetectionResult
+from utils.rtsp import FramePump, is_valid_frame
+
 
 class ObjectDetectionAlgorithm(BaseAlgorithm):
-    """边缘端目标检测算法"""
+    """边缘端目标检测算法：一次推理，按任务规则做驻留/缺席/出现判定。"""
+
+    def _transform_roi(self, detection_region, new_h, new_w, top, left, logger):
+        if not detection_region:
+            return None
+        points = detection_region.get('points') or []
+        frame_size = detection_region.get('frame_size') or {}
+        if not points or not frame_size.get('height') or not frame_size.get('width'):
+            return None
+        roi_points = transform_points_from_frontend_to_backend(
+            points, frame_size['height'], frame_size['width'], new_h, new_w, top, left
+        )
+        if roi_points is None:
+            logger.error("error: roi_points is None")
+            return None
+        logger.info(f"Transformed ROI Points for inference: {roi_points}")
+        return roi_points
+
+    def _legacy_presence_spec(self, algorithm_parameters):
+        """无 rules 但配置了 detection_region 时，按旧行为：区域内出现即告警。"""
+        region = algorithm_parameters.get('detection_region')
+        if not region:
+            return []
+        return [{
+            'id': 'legacy_presence',
+            'type': 'presence',
+            'name': '检测区域',
+            'enabled': True,
+            'alert_type': 'object_detection',
+            'class_ids': algorithm_parameters.get('labels') or [0],
+            'detection_region': region,
+        }]
 
     def process(self, camera_stream, config_dict, logger, stop_event, on_alert, runtime):
         """处理目标检测视频"""
         try:
-            # 解析最新的边侧下发配置
             parameters = config_dict.get('parameters', {})
             model_path = config_dict.get('model_local_path')
             task_name = config_dict.get('task_id', 'unknown_task')
             camera = camera_stream
 
-            logger.debug(f"parameters={parameters}")
-            logger.debug(f"model_path={model_path}")
-            logger.debug(f"task_name={task_name}")
-            logger.debug(f"camera={camera}")
-            
-            # 通过 Runtime 抽象加载模型（自动适配 Jetson/摩尔/RK3588）
+            logger.debug(f"model_path={model_path} task_name={task_name}")
+            rule_summaries = []
+            for r in (parameters.get('algorithm_parameters') or {}).get('rules') or []:
+                rule_summaries.append({
+                    'id': r.get('id'),
+                    'type': r.get('type'),
+                    'enabled': r.get('enabled', True),
+                    'has_roi': bool((r.get('detection_region') or {}).get('points')),
+                })
+            logger.debug(f"rules={rule_summaries}")
+
             logger.info(f"Loading model for object_detection via runtime: {model_path}")
-            runtime.load(model_path)
-            
-            confidence = float(parameters.get('confidence', 0.5))
-            algorithm_parameters = parameters.get('algorithm_parameters', {})
-            alertThreshold = int(parameters.get('alertThreshold', 10))
-            last_alert_time = None
-            
-            # 获取检测区域
-            detection_region = algorithm_parameters.get('detection_region')
-            points = None
-            frame_size = None
-            roi_points = None
 
             if camera is None:
-                logger.error(f"error: camera is None")
-                return
-            
-            if detection_region:
-                points = detection_region.get('points', [])
-                frame_size = detection_region.get('frame_size', {})
-
-            h, w = camera.get(cv2.CAP_PROP_FRAME_HEIGHT), camera.get(cv2.CAP_PROP_FRAME_WIDTH)
-            new_h, new_w, top, bottom, left, right = get_letterbox_params(h, w, target_size=640)
-            
-            if new_h is None:
-                logger.error(f"error: get_letterbox_params return None")
+                logger.error("error: camera is None")
                 return
 
-            if points:
-                logger.debug(f"ROI Points from frontend: {points}, Frame size: {frame_size}")
-                roi_points = transform_points_from_frontend_to_backend(points, frame_size['height'], frame_size['width'], new_h, new_w, top, left)
-                if roi_points is None:
-                    logger.error(f"error: roi_points is None")
-                    return
-                logger.info(f"Transformed ROI Points for inference: {roi_points}")
+            rtsp_url = config_dict.get('camera', {}).get('rtsp_url')
+            pump = FramePump(camera, stop_event, rtsp_url, logger)
+            pump.start()
+            try:
+                runtime.load(model_path)
 
-            # 设置 FFmpeg 读取容忍度（应对多流 RTMP）
-            import os
-            os.environ.setdefault('OPENCV_FFMPEG_READ_ATTEMPTS', '65536')
-            grab_fail_count = 0
-            max_grab_fails = 10  # 连续失败 10 次后触发重连
+                confidence = float(parameters.get('confidence', 0.5))
+                algorithm_parameters = parameters.get('algorithm_parameters') or {}
+                alert_threshold = int(parameters.get('alertThreshold', 10))
 
-            while not stop_event.is_set():
-                # 策略升级：跳过旧帧，直接抓取缓冲区中【最新】的一帧 (Real-time Frame Grabbing)
-                if not camera.grab(): 
-                    grab_fail_count += 1
-                    if grab_fail_count >= max_grab_fails:
-                        rtsp_url = config_dict['camera'].get('rtsp_url')
-                        logger.warning(f"Stream grab failed {grab_fail_count} times, reconnecting to {rtsp_url}...")
-                        camera.release()
-                        time.sleep(3)  # 等待流恢复
-                        camera = cv2.VideoCapture(rtsp_url)
-                        if not camera.isOpened():
-                            logger.error(f"Reconnect failed, will retry in 5s...")
-                            time.sleep(5)
-                            continue
-                        logger.info(f"Stream reconnected successfully.")
-                        grab_fail_count = 0
-                    else:
-                        time.sleep(0.5)
-                    continue
-                
-                grab_fail_count = 0  # 成功 grab，重置计数器
-
-                # 成功 grab 后，只检索当前这帧
-                ret, frame = camera.retrieve()
-                if not ret:
-                    logger.warning("Failed to retrieve frame from camera")
-                    continue
-                
-                logger.debug("Frame retrieved, starting inference...")
-                # 预处理（Letterbox）
-                processed = preprocess(frame, new_h, new_w, top, bottom, left, right)
-                if processed is None:
-                    continue
-
-                # 通过 Runtime 推理 - 指定输入类别为人 (classes=[0])
-                result = runtime.infer(processed, conf=confidence, classes=[0], imgsz=640)
-                
-                total_detected = result.count
-                if total_detected > 0:
-                    logger.debug(f"Detected {total_detected} human(s)")
+                first_frame, last_seq = pump.get_latest(last_seq=0, wait_sec=8.0)
+                if first_frame is None:
+                    h, w = camera.get(cv2.CAP_PROP_FRAME_HEIGHT), camera.get(cv2.CAP_PROP_FRAME_WIDTH)
                 else:
-                    logger.debug("No human detected in this frame")
+                    h, w = first_frame.shape[0], first_frame.shape[1]
+                new_h, new_w, top, bottom, left, right = get_letterbox_params(h, w, target_size=640)
+                if new_h is None:
+                    logger.error("error: get_letterbox_params return None")
+                    return
 
-                # 检查是否有人员在检测区域内
-                is_exception = False
-                result_confidence = 0
-                roi_matched_boxes = []
-                
-                for box in result.boxes:
-                    foot_center = box.foot_center
-                    logger.debug(f"Detected Human at foot_center: {foot_center}, Box: [{box.x1}, {box.y1}, {box.x2}, {box.y2}]")
+                raw_rules = algorithm_parameters.get('rules')
+                if not raw_rules:
+                    raw_rules = self._legacy_presence_spec(algorithm_parameters)
+                if not raw_rules:
+                    raw_rules = [{
+                        'id': 'default_presence',
+                        'type': 'presence',
+                        'name': '整帧出现',
+                        'enabled': True,
+                        'alert_type': 'object_detection',
+                        'class_ids': algorithm_parameters.get('labels') or [0],
+                    }]
+                    logger.warning("Task has no rules; fallback to whole-frame presence (add rules in task UI)")
 
-                    if roi_points:
-                        # 检查点是否在检测区域内
-                        if self.is_point_in_roi(foot_center, roi_points, logger):
-                            is_exception = True
-                            roi_matched_boxes.append(box)
-                            # 告警置信度使用 ROI 内目标中的最大值
-                            result_confidence = max(result_confidence, box.confidence)
-                            logger.info(f"MATCH! Human detected in ROI! foot_center={foot_center}, Confidence: {result_confidence:.2f}")
-                    else:
-                        # 未配置 ROI 时，等价于整帧检测都算有效目标
-                        roi_matched_boxes.append(box)
-                        is_exception = True
-                        result_confidence = max(result_confidence, box.confidence)
-                
-                if total_detected > 0 and not is_exception:
-                    logger.debug(f"Human(s) detected (counts={total_detected}), but none matched current ROI: {roi_points}")
+                def transform_roi(region):
+                    return self._transform_roi(region, new_h, new_w, top, left, logger)
 
-                # 发起告警
-                if is_exception and self.need_alert_again(last_alert_time, alertThreshold, logger):
-                    last_alert_time = datetime.now()
-                    
-                    # 生成检测画面截图
-                    # 注意：当前算法的 ROI 与检测框都在 preprocess 后的 letterbox 坐标系中，
-                    # 需在 processed 上绘制，避免将 letterbox 坐标误画到原始 frame 造成位置偏移。
-                    alert_result = replace(result, boxes=roi_matched_boxes, _raw=None)
-                    alert_frame = self.draw_and_get_frame(processed, alert_result)
-        
-                    # 如果有检测结果，将结果投送给 TaskManager 上传到云端
-                    if on_alert:
-                        logger.info(f"Triggering alert for {task_name}...")
-                        on_alert(
-                            alert_type="object_detection", 
-                            confidence=result_confidence, 
-                            image_frame=alert_frame
+                rules = build_rules(
+                    raw_rules,
+                    transform_roi,
+                    alert_threshold,
+                    self.is_point_in_roi,
+                    logger,
+                )
+
+                infer_classes = []
+                for rule in rules:
+                    infer_classes.extend(rule.class_ids or [])
+                if algorithm_parameters.get('labels'):
+                    infer_classes.extend(int(x) for x in algorithm_parameters.get('labels'))
+                infer_classes = sorted(set(infer_classes)) or [0]
+
+                warmup = first_frame if is_valid_frame(first_frame) else None
+                if warmup is not None:
+                    processed = preprocess(warmup, new_h, new_w, top, bottom, left, right)
+                    if processed is not None:
+                        logger.info("Warmup infer (may init CUDA/CPU) while RTSP pump keeps reading...")
+                        try:
+                            runtime.infer(processed, conf=confidence, classes=infer_classes, imgsz=640)
+                            logger.info("Warmup infer done")
+                        except Exception as e:
+                            logger.warning(f"Warmup infer failed: {e}")
+
+                frame_idx = 0
+                last_log = time.time()
+                while not stop_event.is_set():
+                    frame, last_seq = pump.get_latest(last_seq=last_seq, wait_sec=2.0)
+                    if frame is None:
+                        logger.warning("No new RTSP frame for 2s")
+                        continue
+
+                    processed = preprocess(frame, new_h, new_w, top, bottom, left, right)
+                    if processed is None:
+                        continue
+
+                    t0 = time.time()
+                    try:
+                        result = runtime.infer(processed, conf=confidence, classes=infer_classes, imgsz=640)
+                    except Exception as infer_err:
+                        logger.warning(f"Infer skipped: {infer_err}")
+                        continue
+                    infer_ms = (time.time() - t0) * 1000
+                    boxes = result.boxes or []
+                    now = datetime.now()
+                    frame_idx += 1
+
+                    if frame_idx == 1 or time.time() - last_log >= 5:
+                        logger.info(
+                            f"Frame #{frame_idx} infer={infer_ms:.0f}ms boxes={len(boxes)} rules={len(rules)}"
                         )
-                
-                time.sleep(0.01) # 降频节能
-                               
+                        last_log = time.time()
+
+                    for rule in rules:
+                        hit = rule.evaluate(boxes, now, logger)
+                        if not hit or not on_alert:
+                            continue
+                        alert_result = replace(result, boxes=hit['boxes'], _raw=None)
+                        alert_frame = self.draw_and_get_frame(processed, alert_result)
+                        logger.info(f"Triggering alert {hit['alert_type']} for {task_name} rule={hit['rule_id']}")
+                        on_alert(
+                            alert_type=hit['alert_type'],
+                            confidence=hit['confidence'],
+                            image_frame=alert_frame,
+                        )
+            finally:
+                pump.release()
+
         except Exception as e:
             logger.error(f"Error in object detection: {str(e)}", exc_info=True)
             raise

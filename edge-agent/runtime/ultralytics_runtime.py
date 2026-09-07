@@ -15,18 +15,30 @@ class UltralyticsRuntime(BaseRuntime):
     def __init__(self):
         self.model = None
         self._model_path = None
+        self._device = self._pick_device()
+
+    def _pick_device(self):
+        try:
+            import torch
+            if torch.cuda.is_available():
+                logger.info("[UltralyticsRuntime] Using CUDA GPU")
+                return 0
+        except Exception as e:
+            logger.warning(f"[UltralyticsRuntime] CUDA probe failed: {e}")
+        logger.warning("[UltralyticsRuntime] CUDA unavailable, using CPU (inference will be slow)")
+        return 'cpu'
 
     def load(self, model_path: str, **kwargs):
         from ultralytics import YOLO
         self._model_path = model_path
         self.model = YOLO(model_path)
-        logger.info(f"[UltralyticsRuntime] Loaded model: {model_path}")
+        logger.info(f"[UltralyticsRuntime] Loaded model: {model_path} device={self._device}")
 
     def infer(self, frame, conf=0.5, classes=None, imgsz=640) -> DetectionResult:
         if self.model is None:
             raise RuntimeError("Model not loaded. Call load() first.")
 
-        kwargs = dict(imgsz=imgsz, verbose=False, conf=conf)
+        kwargs = dict(imgsz=imgsz, verbose=False, conf=conf, device=self._device)
         if classes is not None:
             kwargs['classes'] = classes
 

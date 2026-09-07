@@ -9,7 +9,7 @@ import { Add, Edit, Delete, PlayArrow, Stop, Info, Search } from '@mui/icons-mat
 import axios from '../utils/axios';
 import BeltCalibrationTool from '../components/BeltCalibrationTool';
 import BeltDeviationCalibrationTool from '../components/BeltDeviationCalibrationTool';
-import RegionSelectionTool from '../components/RegionSelectionTool';
+import DetectionRulesEditor from '../components/DetectionRulesEditor';
 
 function Tasks() {
   const [tasks, setTasks] = useState([]);
@@ -160,7 +160,8 @@ function Tasks() {
           belt_width: 0,
           points: []
         },
-        regions: []
+        regions: [],
+        rules: []
       }
     });
   };
@@ -240,19 +241,6 @@ function Tasks() {
     }
   };
 
-  // 处理区域选择
-  const handleRegionSelect = (regionData) => {
-    setFormData(prev => ({
-      ...prev,
-      algorithm_parameters: {
-        ...prev.algorithm_parameters,
-        detection_region: regionData.detection_region,
-        calibration: regionData.calibration
-      }
-    }));
-  };
-
-  // 渲染算法参数
   const renderAlgorithmParams = (task) => {
     const algorithm = algorithms.find(a => a.id === task.algorithm_id);
     if (!algorithm) return null;
@@ -274,87 +262,33 @@ function Tasks() {
 
     const specificContent = (() => {
       switch (algorithm.type) {
-        case 'object_detection':
-          console.log('Detection region data:', task.algorithm_parameters?.detection_region);
-          console.log('Points:', task.algorithm_parameters?.detection_region?.points);
-          console.log('Frame size:', task.algorithm_parameters?.detection_region?.frame_size);
-
+        case 'object_detection': {
+          const rules = Array.isArray(task.algorithm_parameters?.rules) ? task.algorithm_parameters.rules : [];
+          const legacyRegion = task.algorithm_parameters?.detection_region;
           return (
             <>
-              <Typography variant="subtitle2" gutterBottom>目标检测参数：</Typography>
-              <Grid container spacing={2}>
-                {task.algorithm_parameters?.detection_region && task.algorithm_parameters.calibration && (
-                  <Grid item xs={12}>
-                    <Typography gutterBottom>检测区域：</Typography>
-                    <Box sx={{ position: 'relative', width: '100%', maxWidth: 800 }}>
-                      <img
-                        src={task.algorithm_parameters.calibration.image_data}
-                        alt="Detection Region"
-                        style={{ width: '100%', height: 'auto' }}
-                      />
-                      <canvas
-                        ref={(canvas) => {
-                          if (canvas && task.algorithm_parameters?.detection_region?.points) {
-                            const ctx = canvas.getContext('2d');
-                            const img = new Image();
-                            img.onload = () => {
-                              // 设置canvas尺寸与图像一致
-                              canvas.width = task.algorithm_parameters.detection_region.frame_size.width;
-                              canvas.height = task.algorithm_parameters.detection_region.frame_size.height;
-
-                              // 绘制图像
-                              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-                              // 绘制检测区域
-                              const points = task.algorithm_parameters.detection_region.points;
-                              if (points && points.length > 0) {
-                                ctx.beginPath();
-                                ctx.moveTo(points[0].x, points[0].y);
-                                points.forEach((point, index) => {
-                                  if (index > 0) {
-                                    ctx.lineTo(point.x, point.y);
-                                  }
-                                });
-
-                                // 闭合路径
-                                ctx.closePath();
-
-                                // 填充和描边
-                                ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
-                                ctx.fill();
-                                ctx.strokeStyle = 'yellow';
-                                ctx.lineWidth = 2;
-                                ctx.stroke();
-
-                                // 绘制顶点
-                                points.forEach(point => {
-                                  ctx.beginPath();
-                                  ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
-                                  ctx.fillStyle = 'red';
-                                  ctx.fill();
-                                  ctx.strokeStyle = 'white';
-                                  ctx.stroke();
-                                });
-                              }
-                            };
-                            img.src = task.algorithm_parameters.calibration.image_data;
-                          }
-                        }}
-                        style={{
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                          width: '100%',
-                          height: '100%',
-                          pointerEvents: 'none'
-                        }}
-                      />
-                    </Box>
-                  </Grid>
-                )}
-              </Grid>
+              <Typography variant="subtitle2" gutterBottom>目标检测规则：</Typography>
+              {rules.length === 0 && !legacyRegion && (
+                <Typography color="text.secondary">未配置规则</Typography>
+              )}
+              {rules.map((rule, idx) => (
+                <Box key={rule.id || idx} sx={{ mb: 2 }}>
+                  <Typography>
+                    {rule.name || rule.type}
+                    {rule.enabled === false ? '（已关闭）' : ''}
+                    {rule.type === 'linger' ? ` · 驻留 ${rule.linger_seconds ?? 5} 秒` : ''}
+                    {rule.type === 'absence' ? ` · 缺席 ${rule.absent_seconds ?? 600} 秒` : ''}
+                    {` · 告警 ${rule.alert_type || '-'}`}
+                    {rule.detection_region?.points?.length ? ` · ROI ${rule.detection_region.points.length} 点` : ' · 整帧'}
+                  </Typography>
+                </Box>
+              ))}
+              {legacyRegion && rules.length === 0 && (
+                <Typography>旧版检测区域：{legacyRegion.points?.length || 0} 个顶点</Typography>
+              )}
             </>
           );
+        }
         case 'belt_broken':
           return (
             <>
@@ -506,10 +440,14 @@ function Tasks() {
         return (
           <Grid container spacing={2}>
             <Grid item xs={12}>
-              <RegionSelectionTool
+              <DetectionRulesEditor
                 cameraId={formData.cameraId}
-                onSelect={handleRegionSelect}
-                existingRegion={formData.algorithm_parameters}
+                algorithm={algorithm}
+                algorithmParameters={formData.algorithm_parameters}
+                onChange={(nextParams) => setFormData((prev) => ({
+                  ...prev,
+                  algorithm_parameters: nextParams,
+                }))}
               />
             </Grid>
           </Grid>
@@ -723,14 +661,24 @@ function Tasks() {
                 onChange={(e) => {
                   const algId = e.target.value;
                   const selectedAlg = algorithms.find(a => a.id === algId);
-                  setFormData(prev => ({ 
-                    ...prev, 
-                    algorithm_id: algId,
-                    algorithm_parameters: {
+                  setFormData(prev => {
+                    const nextParams = {
                       ...prev.algorithm_parameters,
-                      labels: (selectedAlg && selectedAlg.labels && selectedAlg.labels.length > 0) ? selectedAlg.labels : []
+                      labels: (selectedAlg && selectedAlg.labels && selectedAlg.labels.length > 0) ? selectedAlg.labels : [],
+                      rules: Array.isArray(prev.algorithm_parameters?.rules) ? prev.algorithm_parameters.rules : []
+                    };
+                    if (selectedAlg?.type === 'object_detection' && (!nextParams.rules || nextParams.rules.length === 0)) {
+                      nextParams.rules = [{
+                        id: `rule_${Date.now()}`,
+                        type: 'presence',
+                        name: '区域内出现',
+                        enabled: true,
+                        alert_type: 'object_detection',
+                        class_ids: [0],
+                      }];
                     }
-                  }));
+                    return { ...prev, algorithm_id: algId, algorithm_parameters: nextParams };
+                  });
                 }}
                 displayEmpty
               >

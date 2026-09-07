@@ -48,6 +48,8 @@ class Algorithm(db.Model):
     def initialize_default_algorithms(cls):
         """初始化系统默认支持的边缘端算法"""
         from flask import current_app
+        from app.utils.object_detection_schema import OBJECT_DETECTION_RULE_TYPES
+
         algorithms_data = [
             {'type': 'object_detection', 'name': '目标通用检测', 'desc': '标准通用目标检测'},
             {'type': 'belt_broken', 'name': '皮带表面故障检测', 'desc': '检测皮带表面破损划伤'},
@@ -65,9 +67,17 @@ class Algorithm(db.Model):
                     description=data['desc']
                 )
                 db.session.add(new_algo)
+                existing = new_algo
             else:
                 existing.name = data['name']
                 existing.description = data['desc']
+
+            if data['type'] == 'object_detection':
+                schema = dict(existing.parameter_schema or {})
+                schema['rule_types'] = OBJECT_DETECTION_RULE_TYPES
+                existing.parameter_schema = schema
+                from sqlalchemy.orm.attributes import flag_modified
+                flag_modified(existing, 'parameter_schema')
                 
         db.session.commit()
         current_app.logger.info("Default algorithms seamlessly initialized.")
