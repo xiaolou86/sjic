@@ -56,6 +56,7 @@ def receive_alert():
         camera_id = request.form.get('camera_id')
         alert_type = request.form.get('alert_type')
         confidence = request.form.get('confidence', 0.0)
+        message = request.form.get('message') or None
         
         # 接收图像文件
         image_file = request.files.get('image')
@@ -75,7 +76,8 @@ def receive_alert():
             camera_id=camera_id,
             alert_type=alert_type,
             confidence=float(confidence),
-            image_url=image_url
+            image_url=image_url,
+            message=message,
         )
         db.session.add(alert)
         db.session.commit()

@@ -72,6 +72,7 @@ function Alerts() {
                     <TableCell>时间</TableCell>
                     <TableCell>视频源</TableCell>
                     <TableCell>类型</TableCell>
+                    <TableCell>说明</TableCell>
                     <TableCell>置信度</TableCell>
                     <TableCell>图片</TableCell>
                     <TableCell>操作</TableCell>
@@ -83,6 +84,9 @@ function Alerts() {
                       <TableCell>{new Date(alert.timestamp).toLocaleString()}</TableCell>
                       <TableCell>{alert.camera_name}</TableCell>
                       <TableCell>{alert.alert_type}</TableCell>
+                      <TableCell sx={{ maxWidth: 280, whiteSpace: 'normal' }}>
+                        {alert.message || '-'}
+                      </TableCell>
                       <TableCell>{(alert.confidence * 100).toFixed(2)}%</TableCell>
                       <TableCell>
                         <img

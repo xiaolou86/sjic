@@ -77,3 +77,96 @@ class BaseAlgorithm(ABC):
                 pass
 
         return frame
+
+    def draw_alert_overlay(self, frame, boxes=None, roi_points=None, caption=None):
+        """在告警截图上画规则 ROI、检测框和说明文字。"""
+        vis = frame.copy()
+        if roi_points and len(roi_points) >= 3:
+            pts = np.array(roi_points, dtype=np.int32).reshape((-1, 1, 2))
+            overlay = vis.copy()
+            cv2.fillPoly(overlay, [pts], (0, 255, 255))
+            vis = cv2.addWeighted(overlay, 0.18, vis, 0.82, 0)
+            cv2.polylines(vis, [pts], isClosed=True, color=(0, 255, 255), thickness=2)
+
+        for box in boxes or []:
+            x1, y1, x2, y2 = int(box.x1), int(box.y1), int(box.x2), int(box.y2)
+            cv2.rectangle(vis, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            label = f"cls{getattr(box, 'class_id', 0)}:{float(box.confidence):.2f}"
+            vis = _put_text(vis, label, (x1, max(y1 - 22, 4)), color_bgr=(0, 255, 0))
+            if hasattr(box, 'foot_center'):
+                fx, fy = box.foot_center
+                cv2.circle(vis, (int(fx), int(fy)), 4, (0, 0, 255), -1)
+
+        if caption:
+            vis = _put_text(vis, caption, (8, 8), color_bgr=(255, 255, 255))
+        return vis
+
+
+_FONT_CACHE = {}
+
+
+def _load_cjk_font(size=20):
+    if size in _FONT_CACHE:
+        return _FONT_CACHE[size]
+    try:
+        from PIL import ImageFont
+    except Exception:
+        _FONT_CACHE[size] = None
+        return None
+    candidates = [
+        os.environ.get('SJIC_CJK_FONT'),
+        'C:/Windows/Fonts/msyh.ttc',
+        'C:/Windows/Fonts/simhei.ttf',
+        '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
+        '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+        '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
+        '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf',
+    ]
+    for path in candidates:
+        if not path or not os.path.exists(path):
+            continue
+        try:
+            font = ImageFont.truetype(path, size)
+            _FONT_CACHE[size] = font
+            return font
+        except Exception:
+            continue
+    _FONT_CACHE[size] = None
+    return None
+
+
+def _put_text(img, text, origin, color_bgr=(255, 255, 255)):
+    """优先用系统中文字体画说明，没有则退回 OpenCV 拉丁字。"""
+    if not text:
+        return img
+    x, y = int(origin[0]), int(origin[1])
+    font = _load_cjk_font(20)
+    if font is not None:
+        try:
+            from PIL import Image, ImageDraw
+            rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            pil = Image.fromarray(rgb)
+            draw = ImageDraw.Draw(pil, 'RGBA')
+            if hasattr(draw, 'textbbox'):
+                bbox = draw.textbbox((x, y), text, font=font)
+            else:
+                tw, th = draw.textsize(text, font=font)
+                bbox = (x, y, x + tw, y + th)
+            draw.rectangle(
+                [bbox[0] - 4, bbox[1] - 2, bbox[2] + 4, bbox[3] + 2],
+                fill=(0, 0, 0, 160),
+            )
+            draw.text(
+                (x, y),
+                text,
+                font=font,
+                fill=(color_bgr[2], color_bgr[1], color_bgr[0], 255),
+            )
+            return cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
+        except Exception:
+            pass
+    cv2.putText(
+        img, text, (x, y + 16),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_bgr, 1, cv2.LINE_AA,
+    )
+    return img

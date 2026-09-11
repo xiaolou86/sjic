@@ -10,6 +10,7 @@ class Alert(db.Model):
     alert_type = db.Column(db.String(50), nullable=False)
     confidence = db.Column(db.Float)
     image_url = db.Column(db.String(200))
+    message = db.Column(db.Text)
     
     def to_dict(self):
         # 构建完整的图片URL
@@ -28,5 +29,6 @@ class Alert(db.Model):
             'alert_type': self.alert_type,
             'confidence': self.confidence,
             'image_url': image_url,
+            'message': self.message,
             'timestamp': self.timestamp.isoformat()
         } 

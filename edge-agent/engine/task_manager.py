@@ -169,8 +169,14 @@ class TaskManager:
             task_config['model_local_path'] = model_path
 
             # 定义告警回调
-            def handle_alert(alert_type, confidence, image_frame):
-                self._upload_alert(task_config['camera']['id'], alert_type, confidence, image_frame=image_frame)
+            def handle_alert(alert_type, confidence, image_frame, message=None):
+                self._upload_alert(
+                    task_config['camera']['id'],
+                    alert_type,
+                    confidence,
+                    image_frame=image_frame,
+                    message=message,
+                )
 
             # 让纯业务代码接管！彻底剥离调度！
             logger.info(f"Handing over stream {rtsp_url} to algorithm: {algo_type}")
@@ -271,7 +277,7 @@ class TaskManager:
             }
             self.mqtt_client.publish_task_status(payload)
 
-    def _upload_alert(self, camera_id, alert_type, confidence, image_frame=None, image_path=None):
+    def _upload_alert(self, camera_id, alert_type, confidence, image_frame=None, image_path=None, message=None):
         """HTTP POST 上传告警到云端"""
         url = f"{self.api_base_url}/alerts"
         try:
@@ -280,6 +286,8 @@ class TaskManager:
                 "alert_type": alert_type,
                 "confidence": confidence
             }
+            if message:
+                data["message"] = message
             files = {}
             # 如果内存里有帧（例如 cv2读取的）或者有本地存储的图片
             if image_path and os.path.exists(image_path):

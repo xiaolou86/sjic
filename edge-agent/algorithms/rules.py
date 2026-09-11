@@ -95,6 +95,8 @@ class LingerRule(BaseRule):
             return None
         conf = max(b.confidence for b in matched)
         logger.info(f"Rule[{self.id}] linger hit after {elapsed:.1f}s, count={len(matched)}")
+        # 报完重新计时，避免同一次驻留按告警间隔反复打
+        self._state_since = now
         return self._hit(now, matched, conf)
 
 
@@ -108,6 +110,7 @@ class AbsenceRule(BaseRule):
     def evaluate(self, boxes, now, logger):
         matched = _boxes_in_roi(boxes, self.class_ids, self._roi_polygon)
         if matched:
+            # 有人回来：结束本轮缺席，下次再空才能重新计时
             self._state_since = None
             return None
         if self._state_since is None:
@@ -117,6 +120,8 @@ class AbsenceRule(BaseRule):
         if elapsed < self.absent_seconds or not self._cooldown_ok(now):
             return None
         logger.info(f"Rule[{self.id}] absence hit after {elapsed:.1f}s")
+        # 报完从当前时刻重新计时，持续缺席则每隔 absent_seconds 再报一次
+        self._state_since = now
         return self._hit(now, [], 1.0)
 
 

@@ -84,6 +84,8 @@ def create_alert():
               type: number
             image_url:
               type: string
+            message:
+              type: string
     responses:
       201:
         description: 创建成功
@@ -98,7 +100,8 @@ def create_alert():
         camera_id=data['camera_id'],
         alert_type=data['alert_type'],
         confidence=data.get('confidence'),
-        image_url=data.get('image_url')
+        image_url=data.get('image_url'),
+        message=data.get('message'),
     )
 
     db.session.add(alert)

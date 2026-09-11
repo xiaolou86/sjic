@@ -3,7 +3,6 @@ from .rules import build_rules
 import cv2
 import time
 from datetime import datetime
-from dataclasses import replace
 from utils.calc import transform_points_from_frontend_to_backend, get_letterbox_params, preprocess
 from utils.rtsp import FramePump, is_valid_frame
 
@@ -163,13 +162,22 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                         hit = rule.evaluate(boxes, now, logger)
                         if not hit or not on_alert:
                             continue
-                        alert_result = replace(result, boxes=hit['boxes'], _raw=None)
-                        alert_frame = self.draw_and_get_frame(processed, alert_result)
+                        message = (
+                            f"规则[{hit['rule_name']}] {hit['alert_type']} "
+                            f"目标数={len(hit['boxes'])} 置信度={hit['confidence']:.2f}"
+                        )
+                        alert_frame = self.draw_alert_overlay(
+                            processed,
+                            boxes=hit['boxes'],
+                            roi_points=rule.roi_points,
+                            caption=message,
+                        )
                         logger.info(f"Triggering alert {hit['alert_type']} for {task_name} rule={hit['rule_id']}")
                         on_alert(
                             alert_type=hit['alert_type'],
                             confidence=hit['confidence'],
                             image_frame=alert_frame,
+                            message=message,
                         )
             finally:
                 pump.release()
