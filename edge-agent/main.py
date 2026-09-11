@@ -5,13 +5,15 @@ import logging
 import psutil
 import socket
 
+# 必须在 import cv2 之前设置。只保留 tcp：多余 option 会让部分 OpenCV 丢掉整串参数，仍走 UDP。
+os.environ["OPENCV_FFMPEG_READ_ATTEMPTS"] = "65536"
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
+
 from utils.ip import get_mac_address, get_local_ip_address
 from mqtt_client import EdgeMqttClient
 from engine.task_manager import TaskManager
 from platforms import get_platform_info
-
-# 设置环境变量，优化 OpenCV FFmpeg 读取性能，防止出现 grabFrame packet read max attempts exceeded
-os.environ["OPENCV_FFMPEG_READ_ATTEMPTS"] = "16384"
 
 
 # 修改日志格式：使用标准的层级化日志
