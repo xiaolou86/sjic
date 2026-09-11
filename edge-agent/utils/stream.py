@@ -1,6 +1,7 @@
 import ctypes
 import logging
 import os
+import threading
 import time
 
 import cv2
@@ -52,7 +53,7 @@ def _gst_pipeline(rtsp_url):
     # 旧压缩包在这里丢掉，只保留最新一包。appsink 不 drop，避免空转解码。
     return (
         f'rtspsrc location="{location}" protocols=tcp latency=200 retry=5 '
-        f'drop-on-latency=true ! '
+        f'timeout=5000000 tcp-timeout=5000000 drop-on-latency=true ! '
         f'rtph264depay ! h264parse ! '
         f'queue leaky=downstream max-size-buffers=1 max-size-time=0 max-size-bytes=0 ! '
         f'avdec_h264 ! videoconvert ! video/x-raw,format=BGR ! '
@@ -110,6 +111,7 @@ class RtspCapture:
         self._backend = "ffmpeg"
         self._fps = 25.0
         self._last_grab = 0.0
+        self._lock = threading.Lock()
 
     def start(self):
         _silence_libav_logs()
@@ -138,44 +140,57 @@ class RtspCapture:
                 break
 
     def grab(self):
-        if self._cap is None:
-            return False
-        self._discard_stale()
-        ok = self._cap.grab()
-        if ok:
-            self._last_grab = time.time()
-        return ok
+        with self._lock:
+            if self._cap is None:
+                return False
+            self._discard_stale()
+            ok = self._cap.grab()
+            if ok:
+                self._last_grab = time.time()
+            return ok
 
     def retrieve(self):
-        if self._cap is None:
-            return False, None
-        return self._cap.retrieve()
+        with self._lock:
+            if self._cap is None:
+                return False, None
+            return self._cap.retrieve()
 
     def read(self):
-        if not self.grab():
-            return False, None
-        return self.retrieve()
+        with self._lock:
+            if self._cap is None:
+                return False, None
+            self._discard_stale()
+            if not self._cap.grab():
+                return False, None
+            self._last_grab = time.time()
+            return self._cap.retrieve()
 
     def get(self, prop):
-        if self._cap is None:
-            return 0
-        return self._cap.get(prop)
+        with self._lock:
+            if self._cap is None:
+                return 0
+            return self._cap.get(prop)
 
     def set(self, prop, value):
-        if self._cap is None:
-            return False
-        return self._cap.set(prop, value)
+        with self._lock:
+            if self._cap is None:
+                return False
+            return self._cap.set(prop, value)
 
     def isOpened(self):
-        return self._cap is not None and self._cap.isOpened()
+        with self._lock:
+            return self._cap is not None and self._cap.isOpened()
 
     def release(self):
-        if self._cap is not None:
+        with self._lock:
+            cap = self._cap
+            self._cap = None
+            if cap is None:
+                return
             try:
-                self._cap.release()
+                cap.release()
             except Exception:
                 pass
-            self._cap = None
 
 
 def open_rtsp_capture(rtsp_url, buffer_size=1, warmup_grabs=5):

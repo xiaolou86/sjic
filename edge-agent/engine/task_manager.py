@@ -152,6 +152,7 @@ class TaskManager:
             return None
 
     def _run_inference_loop(self, task_id, task_config, model_path, stop_event):
+        cap = None
         try:
             logger.info(f"Task {task_id} Inference Loop Started. Model: {model_path}")
             
@@ -194,14 +195,17 @@ class TaskManager:
                 runtime=self.runtime
             )
 
-            # 当 stop_event.is_set() 后，process 循环会退出
-            cap.release()
             logger.info(f"Task {task_id} Inference Loop Stopped gracefully.")
             self._report_status(task_id, "stopped", "Task stopped by command")
         except Exception as e:
             logger.error(f"Task {task_id} failed: {str(e)}")
             self._report_status(task_id, "error", str(e))
         finally:
+            if cap is not None:
+                try:
+                    cap.release()
+                except Exception:
+                    pass
             self._cleanup_task(task_id)
 
     def _cleanup_task(self, task_id):

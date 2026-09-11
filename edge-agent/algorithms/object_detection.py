@@ -133,6 +133,8 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                 last_log = time.time()
                 while not stop_event.is_set():
                     frame, last_seq = pump.get_latest(last_seq=last_seq, wait_sec=2.0)
+                    if stop_event.is_set():
+                        break
                     if frame is None:
                         logger.warning("No new RTSP frame for 2s")
                         continue

@@ -20,6 +20,15 @@ def open_capture(url):
     return cap
 
 
+def _open_for_reconnect(url):
+    """重连时尽量走与主路径相同的 RtspCapture，失败再退回 raw VideoCapture。"""
+    try:
+        from utils.stream import open_rtsp_capture
+        return open_rtsp_capture(url)
+    except Exception:
+        return open_capture(url)
+
+
 def is_valid_frame(frame):
     if frame is None:
         return False
@@ -37,11 +46,13 @@ class FramePump:
         self.stop_event = stop_event
         self.url = url
         self.logger = logger
-        self.open_fn = open_fn or open_capture
+        self.open_fn = open_fn or _open_for_reconnect
         self._lock = threading.Lock()
+        self._cap_lock = threading.Lock()
         self._frame = None
         self._seq = 0
         self._fail = 0
+        self._released = False
         self._thread = threading.Thread(target=self._loop, name='rtsp-pump', daemon=True)
 
     def start(self):
@@ -53,38 +64,80 @@ class FramePump:
             self._seq += 1
             self._fail = 0
 
-    def _reconnect(self):
-        self.logger.warning("RTSP pump reconnecting...")
+    def _read_one(self):
+        """grab+retrieve 必须在同一把锁里，禁止 stop 线程在两步之间 release。"""
+        with self._cap_lock:
+            if self.stop_event.is_set() or self.cap is None:
+                return False, None
+            if not self.cap.grab():
+                return False, None
+            return self.cap.retrieve()
+
+    def _take_cap(self):
+        with self._cap_lock:
+            cap = self.cap
+            self.cap = None
+            return cap
+
+    def _close_cap(self, cap):
+        if cap is None:
+            return
         try:
-            self.cap.release()
+            cap.release()
         except Exception:
             pass
-        time.sleep(2)
-        cap = self.open_fn(self.url)
+
+    def _reconnect(self):
+        if self.stop_event.is_set():
+            return
+        self.logger.warning("RTSP pump reconnecting...")
+        old = self._take_cap()
+        self._close_cap(old)
+        for _ in range(20):
+            if self.stop_event.is_set():
+                return
+            time.sleep(0.1)
+        if self.stop_event.is_set():
+            return
+        try:
+            cap = self.open_fn(self.url)
+        except Exception as e:
+            self.logger.error(f"RTSP pump reconnect failed: {e}")
+            time.sleep(1)
+            return
         if cap is None or not cap.isOpened():
             self.logger.error("RTSP pump reconnect failed")
-            time.sleep(3)
+            self._close_cap(cap)
+            time.sleep(1)
             return
-        self.cap = cap
-        self._fail = 0
+        with self._cap_lock:
+            if self.stop_event.is_set():
+                self._close_cap(cap)
+                return
+            self.cap = cap
+            self._fail = 0
         self.logger.info("RTSP pump reconnected")
 
     def _loop(self):
         while not self.stop_event.is_set():
             try:
-                if self.cap is None or not self.cap.grab():
+                ret, frame = self._read_one()
+                if self.stop_event.is_set():
+                    break
+                if not ret:
                     self._fail += 1
                     if self._fail >= 30:
                         self._reconnect()
                     else:
                         time.sleep(0.03)
                     continue
-                ret, frame = self.cap.retrieve()
-                if ret and is_valid_frame(frame):
+                if is_valid_frame(frame):
                     self._store(frame)
                 else:
                     self._fail += 1
             except Exception as e:
+                if self.stop_event.is_set():
+                    break
                 self.logger.warning(f"RTSP pump error: {e}")
                 self._fail += 1
                 time.sleep(0.05)
@@ -101,10 +154,22 @@ class FramePump:
             if time.time() >= deadline:
                 return None, last_seq
             time.sleep(0.01)
+        return None, last_seq
 
     def release(self):
-        try:
-            if self.cap is not None:
-                self.cap.release()
-        except Exception:
-            pass
+        """先等泵线程离开 OpenCV native 调用，再释放 VideoCapture，避免 heap corruption。"""
+        if self._released:
+            return
+        self._released = True
+        self.stop_event.set()
+        thread = self._thread
+        if thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=15.0)
+            if thread.is_alive():
+                self.logger.warning(
+                    "RTSP pump still running after stop; waiting for in-flight grab before release"
+                )
+        cap = self._take_cap()
+        self._close_cap(cap)
+        with self._lock:
+            self._frame = None
