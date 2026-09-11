@@ -9,17 +9,12 @@ def get_letterbox_params(h, w, target_size=640):
         scale = min(target_size / h, target_size / w)
         new_h, new_w = int(h * scale), int(w * scale)
 
-        print(h, w)
-        print(new_h, new_w)
-
         dh = target_size - new_h
         dw = target_size - new_w
         top = dh // 2
         bottom = dh - top
         left = dw // 2
         right = dw - left
-        print(dh, dw)
-        print(top, bottom, left, right)
         return new_h, new_w, top, bottom, left, right
     except Exception as e:
         print(f"Error in get_letterbox_params: {e}")

@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 from dataclasses import replace
 from utils.calc import transform_points_from_frontend_to_backend, get_letterbox_params, preprocess
+from utils.stream import open_rtsp_capture
 from runtime.base_runtime import DetectionResult
 
 class ObjectDetectionAlgorithm(BaseAlgorithm):
@@ -61,9 +62,6 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                     return
                 logger.info(f"Transformed ROI Points for inference: {roi_points}")
 
-            # 设置 FFmpeg 读取容忍度（应对多流 RTMP）
-            import os
-            os.environ.setdefault('OPENCV_FFMPEG_READ_ATTEMPTS', '65536')
             grab_fail_count = 0
             max_grab_fails = 10  # 连续失败 10 次后触发重连
 
@@ -76,13 +74,14 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                         logger.warning(f"Stream grab failed {grab_fail_count} times, reconnecting to {rtsp_url}...")
                         camera.release()
                         time.sleep(3)  # 等待流恢复
-                        camera = cv2.VideoCapture(rtsp_url)
-                        if not camera.isOpened():
-                            logger.error(f"Reconnect failed, will retry in 5s...")
+                        try:
+                            camera = open_rtsp_capture(rtsp_url)
+                            logger.info(f"Stream reconnected successfully.")
+                            grab_fail_count = 0
+                        except Exception as e:
+                            logger.error(f"Reconnect failed ({e}), will retry in 5s...")
                             time.sleep(5)
                             continue
-                        logger.info(f"Stream reconnected successfully.")
-                        grab_fail_count = 0
                     else:
                         time.sleep(0.5)
                     continue

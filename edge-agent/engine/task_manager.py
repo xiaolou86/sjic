@@ -7,6 +7,7 @@ import cv2
 from urllib.parse import urlparse
 from algorithms import get_algorithm
 from runtime import create_runtime
+from utils.stream import open_rtsp_capture
 
 logger = logging.getLogger('engine.task')
 
@@ -161,10 +162,8 @@ class TaskManager:
             if not algo_instance:
                 raise ValueError(f"Algorithm {algo_type} is not supported on this edge node.")
 
-            # 加载本地视频流/RTSP流
-            cap = cv2.VideoCapture(rtsp_url)
-            if not cap.isOpened():
-                raise ConnectionError(f"Cannot open camera stream at {rtsp_url}")
+            # 加载本地视频流/RTSP流（优先 TCP，避免 UDP 丢包导致 H.264 解码刷屏）
+            cap = open_rtsp_capture(rtsp_url)
 
             # 为了后续过程能拿到本地模型地址，注入 config 字典中
             task_config['model_local_path'] = model_path
