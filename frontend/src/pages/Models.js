@@ -88,6 +88,7 @@ function Models() {
   };
 
   const handleDelete = async (id) => {
+    if (!window.confirm('确定要删除该模型吗？此操作不可恢复。')) return;
     try {
       await axios.delete(`/api/models/${id}`);
       fetchModels();

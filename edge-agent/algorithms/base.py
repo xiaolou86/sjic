@@ -116,8 +116,11 @@ def _load_cjk_font(size=20):
     candidates = [
         os.environ.get('SJIC_CJK_FONT'),
         'C:/Windows/Fonts/msyh.ttc',
+        'C:/Windows/Fonts/msyhbd.ttc',
         'C:/Windows/Fonts/simhei.ttf',
+        'C:/Windows/Fonts/simsun.ttc',
         '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
+        '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
         '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
         '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
         '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf',
@@ -165,8 +168,14 @@ def _put_text(img, text, origin, color_bgr=(255, 255, 255)):
             return cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
         except Exception:
             pass
-    cv2.putText(
-        img, text, (x, y + 16),
-        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_bgr, 1, cv2.LINE_AA,
-    )
+    # OpenCV 默认字体不支持中文，强行绘制会产生方框/乱码；无 CJK 字体时跳过非 ASCII
+    try:
+        ascii_only = text.isascii()
+    except Exception:
+        ascii_only = all(ord(ch) < 128 for ch in str(text))
+    if ascii_only:
+        cv2.putText(
+            img, text, (x, y + 16),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_bgr, 1, cv2.LINE_AA,
+        )
     return img

@@ -333,6 +333,37 @@ def get_product(product_type: str):
     return None
 
 
+def get_product_by_engine(engine: str):
+    engine = (engine or '').strip()
+    for item in PRODUCT_ALGORITHMS:
+        if item.get('engine') == engine or item.get('type') == engine:
+            return item
+    return None
+
+
+def schema_for_engine(engine: str) -> dict:
+    """按引擎取完整 parameter_schema（含 scene_presets）。"""
+    product = get_product_by_engine(engine)
+    if not product:
+        return {}
+    return dict(product.get('parameter_schema') or {})
+
+
+def merge_catalog_schema(existing_schema, engine: str, *, origin=None) -> dict:
+    """用目录补齐缺失的 scene_presets / ui / default_task_params，保留 publish_meta 等。"""
+    base = schema_for_engine(engine)
+    schema = dict(existing_schema or {})
+    if not schema.get('scene_presets') and base.get('scene_presets'):
+        schema['scene_presets'] = base['scene_presets']
+    if not schema.get('ui') and base.get('ui'):
+        schema['ui'] = base['ui']
+    if 'default_task_params' not in schema and 'default_task_params' in base:
+        schema['default_task_params'] = base['default_task_params']
+    if origin and not schema.get('origin'):
+        schema['origin'] = origin
+    return schema
+
+
 def catalog_for_api():
     return {
         'engines': [{'value': k, **v} for k, v in ENGINES.items()],
@@ -344,6 +375,8 @@ def catalog_for_api():
                 'name': p['name'],
                 'description': p['description'],
                 'category': p['category'],
+                'parameter_schema': p.get('parameter_schema') or {},
+                'needs_model': engine_needs_model(p.get('engine') or p['type']),
             }
             for p in PRODUCT_ALGORITHMS
         ],

@@ -8,7 +8,7 @@ import { Add, Delete } from '@mui/icons-material';
 /**
  * 姿态行为：从场景预设添加多条行为，同一 pose task 一次推理。
  */
-function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange }) {
+function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange, catalogPresets }) {
   const [addPreset, setAddPreset] = useState('');
 
   const behaviors = Array.isArray(algorithmParameters?.behaviors)
@@ -17,8 +17,9 @@ function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange }) {
 
   const scenePresets = useMemo(() => {
     const fromSchema = algorithm?.parameter_schema?.scene_presets;
-    return Array.isArray(fromSchema) ? fromSchema : [];
-  }, [algorithm]);
+    if (Array.isArray(fromSchema) && fromSchema.length > 0) return fromSchema;
+    return Array.isArray(catalogPresets) ? catalogPresets : [];
+  }, [algorithm, catalogPresets]);
 
   const patchBehavior = (index, patch) => {
     const next = behaviors.map((b, i) => (i === index ? { ...b, ...patch } : b));
@@ -59,13 +60,15 @@ function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange }) {
         </Typography>
       </Grid>
 
-      {behaviors.length === 0 && (
-        <Grid item xs={12}>
-          <Typography variant="body2" color="text.secondary">
-            尚未添加行为，请从下方场景预设添加。
-          </Typography>
-        </Grid>
-      )}
+          {behaviors.length === 0 && (
+            <Grid item xs={12}>
+              <Typography variant="body2" color="text.secondary">
+                {scenePresets.length === 0
+                  ? '该算法没有场景预设（请确认使用的是从模板派生并已补齐 schema 的上架算法）。'
+                  : '尚未添加行为，请从下方场景预设添加。'}
+              </Typography>
+            </Grid>
+          )}
 
       {behaviors.map((b, index) => (
         <Grid item xs={12} key={b.id || index}>

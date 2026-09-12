@@ -33,6 +33,7 @@ function Tasks() {
   const [cameras, setCameras] = useState([]);
   const [algorithms, setAlgorithms] = useState([]);
   const [nodes, setNodes] = useState([]);
+  const [catalog, setCatalog] = useState(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [formData, setFormData] = useState({
@@ -54,11 +55,22 @@ function Tasks() {
   });
   const [openDetailDialog, setOpenDetailDialog] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [formError, setFormError] = useState('');
 
   // Filtering States
   const [filterNodeId, setFilterNodeId] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  const taskAlgorithms = algorithms.filter((a) => a.published === true);
+  const selectedAlgorithm = algorithms.find((a) => a.id === formData.algorithm_id);
+
+  const extractApiError = (error, fallback) => {
+    const data = error?.response?.data;
+    if (typeof data?.error === 'string' && data.error) return data.error;
+    if (typeof data?.message === 'string' && data.message) return data.message;
+    return fallback;
+  };
 
   useEffect(() => {
     fetchMetadata();
@@ -91,14 +103,16 @@ function Tasks() {
 
   const fetchMetadata = async () => {
     try {
-      const [camerasRes, algorithmsRes, nodesRes] = await Promise.all([
+      const [camerasRes, algorithmsRes, nodesRes, catalogRes] = await Promise.all([
         axios.get('/api/cameras'),
         axios.get('/api/algorithms'),
-        axios.get('/api/nodes')
+        axios.get('/api/nodes'),
+        axios.get('/api/algorithms/catalog').catch(() => null),
       ]);
       setCameras(camerasRes || []);
       setAlgorithms(algorithmsRes || []);
       setNodes(nodesRes || []);
+      setCatalog(catalogRes);
     } catch (error) {
       console.error('Error fetching metadata:', error);
     }
@@ -114,16 +128,21 @@ function Tasks() {
   };
 
   const handleCreate = async () => {
+    setFormError('');
     try {
       const response = await axios.post('/api/tasks', formData);
       setTasks([...tasks, response]);
       setOpenDialog(false);
+      resetForm();
+      fetchTasks();
     } catch (error) {
       console.error('Error creating task:', error);
+      setFormError(extractApiError(error, '创建任务失败'));
     }
   };
 
   const handleUpdate = async () => {
+    setFormError('');
     try {
       await axios.put(`/api/tasks/${editingTask.id}`, formData);
       setOpenDialog(false);
@@ -131,10 +150,12 @@ function Tasks() {
       fetchTasks();
     } catch (error) {
       console.error('Error updating task:', error);
+      setFormError(extractApiError(error, '更新任务失败'));
     }
   };
 
   const handleDelete = async (id) => {
+    if (!window.confirm('确定要删除该任务吗？此操作不可恢复。')) return;
     try {
       await axios.delete(`/api/tasks/${id}`);
       fetchTasks();
@@ -144,6 +165,7 @@ function Tasks() {
   };
 
   const handleEdit = (task) => {
+    setFormError('');
     setFormData({
       id: task.id,
       name: task.name,
@@ -162,6 +184,7 @@ function Tasks() {
 
   const resetForm = () => {
     setEditingTask(null);
+    setFormError('');
     setFormData({
       name: '',
       cameraId: '',
@@ -178,7 +201,8 @@ function Tasks() {
           points: []
         },
         regions: [],
-        rules: []
+        rules: [],
+        behaviors: []
       }
     });
   };
@@ -491,6 +515,7 @@ function Tasks() {
               cameraId={formData.cameraId}
               algorithm={algorithm}
               algorithmParameters={formData.algorithm_parameters}
+              catalogPresets={catalog?.od_scene_presets}
               onChange={(nextParams) => setFormData((prev) => ({
                 ...prev,
                 algorithm_parameters: nextParams,
@@ -505,6 +530,7 @@ function Tasks() {
         <PoseBehaviorEditor
           algorithm={algorithm}
           algorithmParameters={formData.algorithm_parameters}
+          catalogPresets={catalog?.pose_scene_presets}
           onChange={(nextParams) => setFormData((prev) => ({
             ...prev,
             algorithm_parameters: nextParams,
@@ -734,6 +760,11 @@ function Tasks() {
         </DialogTitle>
         <DialogContent>
           <Grid container spacing={2}>
+            {formError && (
+              <Grid item xs={12}>
+                <Alert severity="error">{formError}</Alert>
+              </Grid>
+            )}
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -783,6 +814,7 @@ function Tasks() {
                 onChange={(e) => {
                   const algId = e.target.value;
                   const selectedAlg = algorithms.find(a => a.id === algId);
+                  setFormError('');
                   setFormData(prev => ({
                     ...prev,
                     algorithm_id: algId,
@@ -795,8 +827,8 @@ function Tasks() {
                 }}
                 displayEmpty
               >
-                <MenuItem value="">选择算法（按引擎）</MenuItem>
-                {algorithms.map(algorithm => (
+                <MenuItem value="">选择算法（按引擎，仅已发布）</MenuItem>
+                {taskAlgorithms.map(algorithm => (
                   <MenuItem key={algorithm.id} value={algorithm.id}>
                     {algorithm.name}
                     {algorithm.engine ? ` · ${algorithm.engine}` : ''}
@@ -804,13 +836,41 @@ function Tasks() {
                 ))}
               </Select>
               {(() => {
-                const selectedAlg = algorithms.find(a => a.id === formData.algorithm_id);
-                if (!selectedAlg) return null;
+                const selectedAlg = selectedAlgorithm;
+                if (!selectedAlg) {
+                  if (algorithms.length > 0 && taskAlgorithms.length === 0) {
+                    return (
+                      <Alert severity="warning" sx={{ mt: 1 }}>
+                        当前没有已发布的算法。请先到「算法」页绑定模型并发布（姿态算法需 YOLO-Pose 模型）。
+                      </Alert>
+                    );
+                  }
+                  return null;
+                }
+                if (selectedAlg.published !== true) {
+                  return (
+                    <Alert severity="error" sx={{ mt: 1 }}>
+                      该算法未发布，无法创建任务。请先在「算法」页发布。
+                    </Alert>
+                  );
+                }
+                // vendor 响应含 model_id；未绑模型时提前提示
+                if (
+                  selectedAlg.needs_model
+                  && Object.prototype.hasOwnProperty.call(selectedAlg, 'model_id')
+                  && !selectedAlg.model_id
+                ) {
+                  return (
+                    <Alert severity="error" sx={{ mt: 1 }}>
+                      该算法未绑定模型。姿态任务请先绑定 Pose 模型后再发布。
+                    </Alert>
+                  );
+                }
                 const engine = selectedAlg.engine || selectedAlg.type;
                 const tip = engine === 'object_detection'
                   ? '可在下方添加多条检测规则/场景（缺席、手机、帽子等），同一任务只推理一次。'
                   : engine === 'pose_behavior'
-                    ? '可在下方添加多个姿态行为/场景（张望、手托下巴等），同一任务只推理一次。'
+                    ? '可在下方添加多个姿态行为/场景（张望、手托下巴等），同一任务只推理一次。姿态算法需已绑定并发布 Pose 模型。'
                     : null;
                 if (!tip) return null;
                 return <Alert severity="info" sx={{ mt: 1 }}>{tip}</Alert>;

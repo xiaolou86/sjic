@@ -13,13 +13,60 @@ class Algorithm(db.Model):
     engine = db.Column(db.String(50), nullable=True)
     category = db.Column(db.String(50), nullable=True)
     description = db.Column(db.Text)
-    parameter_schema = db.Column(db.JSON)  # rule_types / scene_presets / default_task_params / publish_meta
+    parameter_schema = db.Column(db.JSON)  # scene_presets / ui / default_task_params / publish_meta / origin
     model_id = db.Column(db.Integer, db.ForeignKey('detection_models.id'), nullable=True)
     labels = db.Column(db.JSON, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
 
     def resolved_engine(self):
         return (self.engine or self.type or '').strip()
+
+    def schema_origin(self):
+        return ((self.parameter_schema or {}).get('origin') or '').strip()
+
+    def is_system_template(self):
+        """系统目录同步的模板：不可直接发布，需派生实例后再绑模型发布。"""
+        origin = self.schema_origin()
+        if origin == 'system_template':
+            return True
+        if origin == 'instance':
+            return False
+        # 兼容旧数据：同 type 中 id 最小的未标记行视为模板，其余视为实例
+        from app.utils.algorithm_catalog import get_product
+        if get_product(self.type) is None:
+            return False
+        sibling = (
+            Algorithm.query.filter_by(type=self.type)
+            .order_by(Algorithm.id.asc())
+            .first()
+        )
+        return sibling is not None and sibling.id == self.id
+
+    def is_published(self):
+        publish_meta = (self.parameter_schema or {}).get('publish_meta') or {}
+        return bool(publish_meta.get('published', False))
+
+    def ensure_catalog_schema(self, persist=False):
+        """补齐缺失的 scene_presets 等（修复手工新建漏拷贝 schema 的实例）。"""
+        from sqlalchemy.orm.attributes import flag_modified
+        from app.utils.algorithm_catalog import merge_catalog_schema
+
+        if self.schema_origin() == 'system_template' or self.is_system_template():
+            origin = 'system_template'
+        else:
+            origin = 'instance'
+        before = dict(self.parameter_schema or {})
+        merged = merge_catalog_schema(before, self.resolved_engine(), origin=origin)
+        # 明确写回 origin，避免旧实例继续被误判
+        if origin == 'instance':
+            merged['origin'] = 'instance'
+        if merged != before:
+            self.parameter_schema = merged
+            flag_modified(self, 'parameter_schema')
+            if persist:
+                db.session.add(self)
+            return True
+        return False
 
     def to_dict(self):
         return {
@@ -51,37 +98,85 @@ class Algorithm(db.Model):
 
     @classmethod
     def initialize_default_algorithms(cls):
-        """同步引擎级算法模板；刷新 scene_presets，不覆盖 publish_meta / model_id。"""
+        """同步系统模板；刷新 scene_presets，不覆盖实例、不覆盖模板上的 model_id / publish_meta。"""
         from flask import current_app
         from sqlalchemy.orm.attributes import flag_modified
         from app.utils.algorithm_catalog import PRODUCT_ALGORITHMS
 
         for data in PRODUCT_ALGORITHMS:
-            existing = cls.query.filter_by(type=data['type']).first()
             schema = dict(data.get('parameter_schema') or {})
+            schema['origin'] = 'system_template'
 
-            if existing:
-                old_schema = dict(existing.parameter_schema or {})
-                if 'publish_meta' in old_schema:
-                    schema['publish_meta'] = old_schema['publish_meta']
-                existing.name = data['name']
-                existing.description = data['description']
-                existing.engine = data.get('engine') or data['type']
-                existing.category = data.get('category')
-                existing.parameter_schema = schema
-                flag_modified(existing, 'parameter_schema')
+            candidates = cls.query.filter_by(type=data['type']).all()
+            template = None
+            for row in candidates:
+                origin = ((row.parameter_schema or {}).get('origin') or '').strip()
+                if origin == 'instance':
+                    continue
+                template = row
+                break
+
+            if template:
+                old_schema = dict(template.parameter_schema or {})
+                old_publish = dict(old_schema.get('publish_meta') or {})
+                was_published = bool(old_publish.get('published'))
+                # 模板本身不再承载发布状态
+                schema.pop('publish_meta', None)
+                template.name = data['name']
+                template.description = data['description']
+                template.engine = data.get('engine') or data['type']
+                template.category = data.get('category')
+                template.parameter_schema = schema
+                flag_modified(template, 'parameter_schema')
+
+                # 历史：模板曾被直接绑模型并发布 → 自动派生一条已发布实例
+                if was_published and template.model_id:
+                    has_instance = any(
+                        ((r.parameter_schema or {}).get('origin') == 'instance')
+                        for r in candidates
+                        if r.id != template.id
+                    )
+                    if not has_instance:
+                        inst_schema = dict(data.get('parameter_schema') or {})
+                        inst_schema = {**inst_schema, 'origin': 'instance', 'publish_meta': old_publish}
+                        db.session.add(cls(
+                            name=f"{data['name']}（已上架）",
+                            type=data['type'],
+                            engine=data.get('engine') or data['type'],
+                            category=data.get('category'),
+                            description=data['description'],
+                            parameter_schema=inst_schema,
+                            model_id=template.model_id,
+                            labels=template.labels,
+                        ))
+                        # 模型留在实例上；模板清空绑定，避免误用
+                        template.model_id = None
             else:
-                db.session.add(cls(
+                template = cls(
                     name=data['name'],
                     type=data['type'],
                     engine=data.get('engine') or data['type'],
                     category=data.get('category'),
                     description=data['description'],
                     parameter_schema=schema,
-                ))
+                )
+                db.session.add(template)
+
+            # 同 type 的其它行标为实例，并补齐 scene_presets
+            db.session.flush()
+            refreshed = cls.query.filter_by(type=data['type']).all()
+            for row in refreshed:
+                if template.id is not None and row.id == template.id:
+                    continue
+                row.ensure_catalog_schema(persist=False)
+                inst_schema = dict(row.parameter_schema or {})
+                if inst_schema.get('origin') != 'instance':
+                    inst_schema['origin'] = 'instance'
+                    row.parameter_schema = inst_schema
+                    flag_modified(row, 'parameter_schema')
 
         db.session.commit()
         current_app.logger.info(
-            "Default algorithms synced from catalog (%d engine-level).",
+            "Default algorithm templates synced from catalog (%d engine-level).",
             len(PRODUCT_ALGORITHMS),
         )

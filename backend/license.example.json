@@ -5,6 +5,9 @@
   "max_cameras": 16,
   "allowed_algorithms": [
     "object_detection",
+    "pose_behavior",
+    "camera_health",
+    "mouse_idle",
     "belt_broken",
     "belt_deviation_detection"
   ],

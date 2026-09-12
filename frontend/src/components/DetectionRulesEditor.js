@@ -14,13 +14,14 @@ const TYPE_FIELDS = {
   crowd_count: ['min_count', 'seconds'],
 };
 
-function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChange }) {
+function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChange, catalogPresets }) {
   const [addPreset, setAddPreset] = useState('');
 
   const scenePresets = useMemo(() => {
     const fromSchema = algorithm?.parameter_schema?.scene_presets;
-    return Array.isArray(fromSchema) ? fromSchema : [];
-  }, [algorithm]);
+    if (Array.isArray(fromSchema) && fromSchema.length > 0) return fromSchema;
+    return Array.isArray(catalogPresets) ? catalogPresets : [];
+  }, [algorithm, catalogPresets]);
 
   const rules = Array.isArray(algorithmParameters?.rules) ? algorithmParameters.rules : [];
 

@@ -94,20 +94,39 @@ def create_tasks():
 
     algorithm_id = data.get('algorithm_id')
     if not algorithm_id:
+        current_app.logger.warning("Create task rejected: algorithm_id is required")
         return jsonify({'error': 'algorithm_id is required'}), 400
 
     algorithm = Algorithm.query.get(algorithm_id)
     if not algorithm:
+        current_app.logger.warning(f"Create task rejected: Algorithm {algorithm_id} not found")
         return jsonify({'error': 'Algorithm not found'}), 400
     if not _is_algorithm_published(algorithm):
-        return jsonify({'error': 'Algorithm is not published'}), 400
+        current_app.logger.warning(
+            f"Create task rejected: Algorithm {algorithm_id} ({algorithm.type}) is not published"
+        )
+        return jsonify({'error': 'Algorithm is not published. Please publish it in Algorithms first.'}), 400
+    if algorithm.is_system_template():
+        current_app.logger.warning(
+            f"Create task rejected: Algorithm {algorithm_id} is a system template"
+        )
+        return jsonify({
+            'error': 'Cannot create task from system template. Use a published algorithm instance derived from the template.',
+        }), 400
 
+    algorithm.ensure_catalog_schema(persist=True)
     from app.utils.algorithm_catalog import engine_needs_model
     if engine_needs_model(algorithm.resolved_engine()) and not algorithm.model_id:
-        return jsonify({'error': 'Algorithm has no bound model. Please bind a model in edit first.'}), 400
+        current_app.logger.warning(
+            f"Create task rejected: Algorithm {algorithm_id} ({algorithm.type}) has no bound model"
+        )
+        return jsonify({'error': 'Algorithm has no bound model. Please bind a pose/detection model in Algorithms edit, then publish.'}), 400
 
     allowed, deny_reason = license_service.is_algorithm_allowed(algorithm.type)
     if not allowed:
+        current_app.logger.warning(
+            f"Create task rejected: Algorithm {algorithm.type} not allowed by license ({deny_reason})"
+        )
         return jsonify({'error': f'Algorithm not allowed by license: {deny_reason}'}), 403
 
     # 新建任务时合并算法模板默认参数（前端未传 rules/behaviors 时）
@@ -123,11 +142,17 @@ def create_tasks():
             merged['behaviors'] = defaults['behaviors']
         data['algorithm_parameters'] = merged
 
-    task = Task(**data)
-    task.save_calibration_image()
-    db.session.add(task)
-    db.session.commit()
-    return jsonify(task.to_dict()), 201
+    try:
+        task = Task(**data)
+        task.save_calibration_image()
+        db.session.add(task)
+        db.session.commit()
+        current_app.logger.info(f"Task created successfully: id={task.id} name={task.name}")
+        return jsonify(task.to_dict()), 201
+    except Exception as e:
+        current_app.logger.error(f"Error creating task: {str(e)}", exc_info=True)
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 
 @task_bp.route('/api/tasks/<int:task_id>', methods=['PUT'])

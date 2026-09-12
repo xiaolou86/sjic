@@ -83,6 +83,7 @@ function VideoStreams() {
   };
 
   const handleDelete = async (id) => {
+    if (!window.confirm('确定要删除该视频源吗？此操作不可恢复。')) return;
     try {
       await axios.delete(`/api/cameras/${id}`);
       fetchStreams();

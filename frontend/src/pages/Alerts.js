@@ -1,35 +1,94 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Grid, Card, CardContent, Typography, Table, TableBody, TableCell, 
-  TableContainer, TableHead, TableRow, Paper, Dialog, DialogContent,
-  TablePagination, IconButton 
+import {
+  Grid, Card, CardContent, Typography, Table, TableBody, TableCell,
+  TableContainer, TableHead, TableRow, Paper, Dialog, DialogTitle, DialogContent,
+  TablePagination, IconButton, TextField, Button, Box, Stack
 } from '@mui/material';
-import { ZoomIn } from '@mui/icons-material';
-import axios from '../utils/axios';
+import { ZoomIn, Search, FileDownload, Clear } from '@mui/icons-material';
+import axios, { getBaseUrl } from '../utils/axios';
 
 function Alerts() {
   const [alerts, setAlerts] = useState([]);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [total, setTotal] = useState(0);
-  const [previewImage, setPreviewImage] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [keyword, setKeyword] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [appliedFilters, setAppliedFilters] = useState({ keyword: '', start: '', end: '' });
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     fetchAlerts();
-  }, [page, rowsPerPage]);
+  }, [page, rowsPerPage, appliedFilters]);
+
+  const buildFilterParams = (filters = appliedFilters) => {
+    const params = {};
+    if (filters.keyword) params.keyword = filters.keyword;
+    if (filters.start) params.start = filters.start;
+    if (filters.end) params.end = filters.end;
+    return params;
+  };
 
   const fetchAlerts = async () => {
     try {
       const response = await axios.get('/api/alerts', {
         params: {
           page: page + 1,
-          per_page: rowsPerPage
+          per_page: rowsPerPage,
+          ...buildFilterParams(),
         }
       });
       setAlerts(response.items || []);
       setTotal(response.total || 0);
     } catch (error) {
       console.error('Error fetching alerts:', error);
+    }
+  };
+
+  const handleSearch = () => {
+    setPage(0);
+    setAppliedFilters({
+      keyword: keyword.trim(),
+      start: startTime,
+      end: endTime,
+    });
+  };
+
+  const handleClearFilters = () => {
+    setKeyword('');
+    setStartTime('');
+    setEndTime('');
+    setPage(0);
+    setAppliedFilters({ keyword: '', start: '', end: '' });
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const blob = await axios.get('/api/alerts/export', {
+        params: buildFilterParams({
+          keyword: keyword.trim() || appliedFilters.keyword,
+          start: startTime || appliedFilters.start,
+          end: endTime || appliedFilters.end,
+        }),
+        responseType: 'blob',
+        timeout: 120000,
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `alerts_export_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting alerts:', error);
+      window.alert('导出失败，请稍后重试');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -42,19 +101,23 @@ function Alerts() {
     setPage(0);
   };
 
-  const handlePreviewImage = (imageUrl) => {
-    setPreviewImage(imageUrl);
-  };
-
-  // 添加一个处理图片 URL 的函数
   const getImageUrl = (imageUrl) => {
     if (!imageUrl) return '';
     if (imageUrl.startsWith('http')) {
       return imageUrl;
     }
-    // 使用环境变量中的 API URL
-    const baseUrl = process.env.REACT_APP_API_URL || '';
+    const baseUrl = getBaseUrl() || '';
     return `${baseUrl}${imageUrl}`;
+  };
+
+  const handlePreviewImage = (alert) => {
+    setPreview({
+      url: getImageUrl(alert.image_url),
+      camera_name: alert.camera_name || '未知摄像头',
+      alert_type: alert.alert_type || '',
+      message: alert.message || '',
+      timestamp: alert.timestamp,
+    });
   };
 
   return (
@@ -65,6 +128,56 @@ function Alerts() {
             <Typography variant="h6" gutterBottom>
               告警记录
             </Typography>
+
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={2}
+              alignItems={{ md: 'center' }}
+              sx={{ mb: 2 }}
+            >
+              <TextField
+                size="small"
+                label="关键字"
+                placeholder="摄像头 / 类型 / 说明"
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+                sx={{ minWidth: 220 }}
+              />
+              <TextField
+                size="small"
+                label="开始时间"
+                type="datetime-local"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
+              <TextField
+                size="small"
+                label="结束时间"
+                type="datetime-local"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Button variant="contained" startIcon={<Search />} onClick={handleSearch}>
+                  查询
+                </Button>
+                <Button variant="outlined" startIcon={<Clear />} onClick={handleClearFilters}>
+                  清空
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<FileDownload />}
+                  onClick={handleExport}
+                  disabled={exporting}
+                >
+                  {exporting ? '导出中…' : '导出(含图片)'}
+                </Button>
+              </Box>
+            </Stack>
+
             <TableContainer component={Paper}>
               <Table>
                 <TableHead>
@@ -87,18 +200,24 @@ function Alerts() {
                       <TableCell sx={{ maxWidth: 280, whiteSpace: 'normal' }}>
                         {alert.message || '-'}
                       </TableCell>
-                      <TableCell>{(alert.confidence * 100).toFixed(2)}%</TableCell>
                       <TableCell>
-                        <img
-                          src={getImageUrl(alert.image_url)}
-                          alt="告警截图"
-                          style={{ width: 100, height: 'auto' }}
-                        />
+                        {alert.confidence != null ? `${(alert.confidence * 100).toFixed(2)}%` : '-'}
                       </TableCell>
                       <TableCell>
-                        <IconButton 
-                          onClick={() => handlePreviewImage(getImageUrl(alert.image_url))}
+                        {alert.image_url ? (
+                          <img
+                            src={getImageUrl(alert.image_url)}
+                            alt="告警截图"
+                            style={{ width: 100, height: 'auto', cursor: 'pointer' }}
+                            onClick={() => handlePreviewImage(alert)}
+                          />
+                        ) : '-'}
+                      </TableCell>
+                      <TableCell>
+                        <IconButton
+                          onClick={() => handlePreviewImage(alert)}
                           title="预览"
+                          disabled={!alert.image_url}
                         >
                           <ZoomIn />
                         </IconButton>
@@ -122,17 +241,27 @@ function Alerts() {
         </Card>
       </Grid>
 
-      {/* 图片预览对话框 */}
       <Dialog
-        open={Boolean(previewImage)}
-        onClose={() => setPreviewImage(null)}
+        open={Boolean(preview)}
+        onClose={() => setPreview(null)}
         maxWidth="lg"
+        fullWidth
       >
+        <DialogTitle>
+          {preview?.camera_name || '告警图片'}
+          {preview?.alert_type ? ` · ${preview.alert_type}` : ''}
+          {preview?.timestamp ? (
+            <Typography variant="body2" color="text.secondary" component="div" sx={{ mt: 0.5 }}>
+              {new Date(preview.timestamp).toLocaleString()}
+              {preview.message ? ` — ${preview.message}` : ''}
+            </Typography>
+          ) : null}
+        </DialogTitle>
         <DialogContent>
-          {previewImage && (
+          {preview?.url && (
             <img
-              src={previewImage}
-              alt="告警大图"
+              src={preview.url}
+              alt={`${preview.camera_name || '告警'}大图`}
               style={{ width: '100%', height: 'auto' }}
             />
           )}
@@ -142,4 +271,4 @@ function Alerts() {
   );
 }
 
-export default Alerts; 
+export default Alerts;
