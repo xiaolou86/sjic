@@ -57,6 +57,8 @@ def receive_alert():
         alert_type = request.form.get('alert_type')
         confidence = request.form.get('confidence', 0.0)
         message = request.form.get('message') or None
+        task_id = request.form.get('task_id') or None
+        algorithm_id = request.form.get('algorithm_id') or None
         
         # 接收图像文件
         image_file = request.files.get('image')
@@ -74,6 +76,8 @@ def receive_alert():
         # 写入数据库
         alert = Alert(
             camera_id=camera_id,
+            task_id=int(task_id) if task_id else None,
+            algorithm_id=int(algorithm_id) if algorithm_id else None,
             alert_type=alert_type,
             confidence=float(confidence),
             image_url=image_url,

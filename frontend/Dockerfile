@@ -14,6 +14,9 @@ RUN npm run build
 # 阶段 2：使用 Nginx 托管静态资源、模型下发，并反向代理后端
 FROM nginx:1.25-alpine
 
+ENV TZ=Asia/Shanghai
+RUN apk add --no-cache tzdata
+
 # 拷贝打包好的静态文件到 Nginx 根目录
 COPY --from=build /app/build /usr/share/nginx/html
 

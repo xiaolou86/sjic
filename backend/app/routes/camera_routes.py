@@ -84,7 +84,7 @@ def create_camera():
 
         camera = Camera(
             name=data['name'],
-            url=data['url']
+            url=data['url'],
         )
         db.session.add(camera)
         db.session.commit()

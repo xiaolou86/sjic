@@ -84,6 +84,13 @@ def create_tasks():
 
     # 任务不再接收 modelId，模型由 algorithm.model_id 决定
     data.pop('modelId', None)
+    data.pop('algorithm_type', None)
+    data.pop('algorithm_engine', None)
+    data.pop('algorithm_camera_role', None)
+    data.pop('id', None)
+    data.pop('created_at', None)
+    data.pop('status', None)
+    data.pop('run_status', None)
 
     algorithm_id = data.get('algorithm_id')
     if not algorithm_id:
@@ -94,12 +101,27 @@ def create_tasks():
         return jsonify({'error': 'Algorithm not found'}), 400
     if not _is_algorithm_published(algorithm):
         return jsonify({'error': 'Algorithm is not published'}), 400
-    if not algorithm.model_id:
+
+    from app.utils.algorithm_catalog import engine_needs_model
+    if engine_needs_model(algorithm.resolved_engine()) and not algorithm.model_id:
         return jsonify({'error': 'Algorithm has no bound model. Please bind a model in edit first.'}), 400
 
     allowed, deny_reason = license_service.is_algorithm_allowed(algorithm.type)
     if not allowed:
         return jsonify({'error': f'Algorithm not allowed by license: {deny_reason}'}), 403
+
+    # 新建任务时合并算法模板默认参数（前端未传 rules/behaviors 时）
+    params = dict(data.get('algorithm_parameters') or {})
+    defaults = (algorithm.parameter_schema or {}).get('default_task_params') or {}
+    if defaults:
+        merged = dict(defaults)
+        merged.update(params)
+        # rules/behaviors：仅当任务侧为空时用模板预设
+        if not params.get('rules') and defaults.get('rules'):
+            merged['rules'] = defaults['rules']
+        if not params.get('behaviors') and defaults.get('behaviors'):
+            merged['behaviors'] = defaults['behaviors']
+        data['algorithm_parameters'] = merged
 
     task = Task(**data)
     task.save_calibration_image()
@@ -151,7 +173,8 @@ def update_tasks(task_id):
           return jsonify({'error': 'Algorithm not found'}), 400
         if not _is_algorithm_published(algorithm):
           return jsonify({'error': 'Algorithm is not published'}), 400
-        if not algorithm.model_id:
+        from app.utils.algorithm_catalog import engine_needs_model
+        if engine_needs_model(algorithm.resolved_engine()) and not algorithm.model_id:
           return jsonify({'error': 'Algorithm has no bound model. Please bind a model in edit first.'}), 400
         allowed, deny_reason = license_service.is_algorithm_allowed(algorithm.type)
         if not allowed:

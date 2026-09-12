@@ -25,7 +25,8 @@ class BaseRule:
     def __init__(self, spec, roi_points, alert_cooldown_sec, is_point_in_roi=None):
         self.spec = spec or {}
         self.roi_points = roi_points
-        self.alert_cooldown_sec = max(int(alert_cooldown_sec or 0), 0)
+        per_rule = self.spec.get('alert_cooldown_sec')
+        self.alert_cooldown_sec = max(int(per_rule if per_rule is not None else (alert_cooldown_sec or 0)), 0)
         self.enabled = bool(self.spec.get('enabled', True))
         self.id = self.spec.get('id') or self.spec.get('type') or 'rule'
         self.rule_type = self.spec.get('type')
@@ -38,7 +39,6 @@ class BaseRule:
             self.class_ids = [int(x) for x in raw_ids]
         self._last_alert_time = None
         self._state_since = None
-        # 多边形只建一次，避免每帧每个 box 都 new Polygon（DEBUG 日志 + Shapely 会拖垮拉流）
         if roi_points and len(roi_points) >= 3:
             self._roi_polygon = Polygon(roi_points)
         else:
@@ -64,8 +64,6 @@ class BaseRule:
 
 
 class PresenceRule(BaseRule):
-    """区域内出现即告警（兼容旧的 detection_region 行为）。"""
-
     def evaluate(self, boxes, now, logger):
         matched = _boxes_in_roi(boxes, self.class_ids, self._roi_polygon)
         if not matched or not self._cooldown_ok(now):
@@ -76,8 +74,6 @@ class PresenceRule(BaseRule):
 
 
 class LingerRule(BaseRule):
-    """区域内持续有人超过 linger_seconds。"""
-
     def __init__(self, spec, roi_points, alert_cooldown_sec, is_point_in_roi=None):
         super().__init__(spec, roi_points, alert_cooldown_sec, is_point_in_roi)
         self.linger_seconds = float(self.spec.get('linger_seconds', 5))
@@ -95,14 +91,11 @@ class LingerRule(BaseRule):
             return None
         conf = max(b.confidence for b in matched)
         logger.info(f"Rule[{self.id}] linger hit after {elapsed:.1f}s, count={len(matched)}")
-        # 报完重新计时，避免同一次驻留按告警间隔反复打
         self._state_since = now
         return self._hit(now, matched, conf)
 
 
 class AbsenceRule(BaseRule):
-    """区域内持续无人超过 absent_seconds。"""
-
     def __init__(self, spec, roi_points, alert_cooldown_sec, is_point_in_roi=None):
         super().__init__(spec, roi_points, alert_cooldown_sec, is_point_in_roi)
         self.absent_seconds = float(self.spec.get('absent_seconds', 600))
@@ -110,7 +103,6 @@ class AbsenceRule(BaseRule):
     def evaluate(self, boxes, now, logger):
         matched = _boxes_in_roi(boxes, self.class_ids, self._roi_polygon)
         if matched:
-            # 有人回来：结束本轮缺席，下次再空才能重新计时
             self._state_since = None
             return None
         if self._state_since is None:
@@ -120,23 +112,47 @@ class AbsenceRule(BaseRule):
         if elapsed < self.absent_seconds or not self._cooldown_ok(now):
             return None
         logger.info(f"Rule[{self.id}] absence hit after {elapsed:.1f}s")
-        # 报完从当前时刻重新计时，持续缺席则每隔 absent_seconds 再报一次
         self._state_since = now
         return self._hit(now, [], 1.0)
+
+
+class CrowdCountRule(BaseRule):
+    """区域内目标数持续 >= min_count 超过 seconds。"""
+
+    def __init__(self, spec, roi_points, alert_cooldown_sec, is_point_in_roi=None):
+        super().__init__(spec, roi_points, alert_cooldown_sec, is_point_in_roi)
+        self.min_count = int(self.spec.get('min_count', 5))
+        self.seconds = float(self.spec.get('seconds', 10))
+
+    def evaluate(self, boxes, now, logger):
+        matched = _boxes_in_roi(boxes, self.class_ids, self._roi_polygon)
+        if len(matched) < self.min_count:
+            self._state_since = None
+            return None
+        if self._state_since is None:
+            self._state_since = now
+            return None
+        elapsed = (now - self._state_since).total_seconds()
+        if elapsed < self.seconds or not self._cooldown_ok(now):
+            return None
+        conf = max(b.confidence for b in matched)
+        logger.info(
+            f"Rule[{self.id}] crowd_count hit after {elapsed:.1f}s, "
+            f"count={len(matched)} >= {self.min_count}"
+        )
+        self._state_since = now
+        return self._hit(now, matched, conf)
 
 
 RULE_CLASS_MAP = {
     'presence': PresenceRule,
     'linger': LingerRule,
     'absence': AbsenceRule,
+    'crowd_count': CrowdCountRule,
 }
 
 
 def build_rules(raw_rules, transform_roi, alert_cooldown_sec, is_point_in_roi, logger):
-    """
-    raw_rules: 任务 algorithm_parameters.rules
-    transform_roi: fn(detection_region) -> roi_points or None
-    """
     rules = []
     for spec in raw_rules or []:
         if not spec or spec.get('enabled', True) is False:

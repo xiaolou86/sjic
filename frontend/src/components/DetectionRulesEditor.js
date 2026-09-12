@@ -6,35 +6,23 @@ import {
 import { Add, Delete } from '@mui/icons-material';
 import RegionSelectionTool from './RegionSelectionTool';
 
-const FALLBACK_RULE_TYPES = [
-  {
-    type: 'linger',
-    name: '区域内驻留',
-    defaults: { linger_seconds: 5, alert_type: 'exam_desk_linger', class_ids: [0], enabled: true },
-  },
-  {
-    type: 'absence',
-    name: '区域内缺席',
-    defaults: { absent_seconds: 600, alert_type: 'invigilator_absent', class_ids: [0], enabled: true },
-  },
-  {
-    type: 'presence',
-    name: '区域内出现',
-    defaults: { alert_type: 'object_detection', class_ids: [0], enabled: true },
-  },
-];
+/** 按规则 type 决定编辑哪些字段（边缘仍按 type 跑 Presence/Linger/Absence/Crowd） */
+const TYPE_FIELDS = {
+  linger: ['linger_seconds'],
+  absence: ['absent_seconds'],
+  presence: [],
+  crowd_count: ['min_count', 'seconds'],
+};
 
 function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChange }) {
-  const [addType, setAddType] = useState('');
+  const [addPreset, setAddPreset] = useState('');
 
-  const ruleTypes = useMemo(() => {
-    const fromSchema = algorithm?.parameter_schema?.rule_types;
-    return Array.isArray(fromSchema) && fromSchema.length > 0 ? fromSchema : FALLBACK_RULE_TYPES;
+  const scenePresets = useMemo(() => {
+    const fromSchema = algorithm?.parameter_schema?.scene_presets;
+    return Array.isArray(fromSchema) ? fromSchema : [];
   }, [algorithm]);
 
   const rules = Array.isArray(algorithmParameters?.rules) ? algorithmParameters.rules : [];
-
-  const typeMeta = (type) => ruleTypes.find((t) => t.type === type);
 
   const updateRules = (nextRules) => {
     onChange({
@@ -43,19 +31,20 @@ function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChan
     });
   };
 
-  const handleAdd = () => {
-    const meta = typeMeta(addType);
-    if (!meta) return;
+  const handleAddPreset = () => {
+    const preset = scenePresets.find((p) => p.id === addPreset);
+    if (!preset) return;
     const next = {
       id: `rule_${Date.now()}`,
-      type: meta.type,
-      name: meta.name,
-      ...(meta.defaults || {}),
+      type: preset.type,
+      name: preset.name,
+      scene_preset_id: preset.id,
+      ...(preset.defaults || {}),
       enabled: true,
       detection_region: null,
     };
     updateRules([...rules, next]);
-    setAddType('');
+    setAddPreset('');
   };
 
   const patchRule = (index, patch) => {
@@ -69,23 +58,29 @@ function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChan
   return (
     <Grid container spacing={2}>
       <Grid item xs={12}>
-        <Typography variant="subtitle2" gutterBottom>检测规则</Typography>
+        <Typography variant="subtitle2" gutterBottom>检测场景</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-          同一任务只跑一次推理；可叠加多条规则（驻留 / 缺席 / 出现）。每条规则各自画 ROI。
+          从预设添加场景（如人员缺席、识别手机）。同一任务只推理一次，多场景共用检测结果。
         </Typography>
       </Grid>
 
+      {rules.length === 0 && (
+        <Grid item xs={12}>
+          <Typography variant="body2" color="text.secondary">尚未添加场景。</Typography>
+        </Grid>
+      )}
+
       {rules.map((rule, index) => {
-        const meta = typeMeta(rule.type);
+        const fields = TYPE_FIELDS[rule.type] || [];
         const hasRegion = Boolean(rule.detection_region?.points?.length);
         return (
           <Grid item xs={12} key={rule.id || index}>
             <Paper variant="outlined" sx={{ p: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
-                <Chip size="small" label={meta?.name || rule.type} />
+                <Chip size="small" label={rule.type} />
                 <TextField
                   size="small"
-                  label="规则名称"
+                  label="场景名称"
                   value={rule.name || ''}
                   onChange={(e) => patchRule(index, { name: e.target.value })}
                   sx={{ minWidth: 160 }}
@@ -106,7 +101,7 @@ function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChan
               </Box>
 
               <Grid container spacing={2}>
-                {rule.type === 'linger' && (
+                {fields.includes('linger_seconds') && (
                   <Grid item xs={12} md={4}>
                     <TextField
                       fullWidth
@@ -119,7 +114,7 @@ function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChan
                     />
                   </Grid>
                 )}
-                {rule.type === 'absence' && (
+                {fields.includes('absent_seconds') && (
                   <Grid item xs={12} md={4}>
                     <TextField
                       fullWidth
@@ -129,7 +124,32 @@ function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChan
                       value={rule.absent_seconds ?? 600}
                       onChange={(e) => patchRule(index, { absent_seconds: parseFloat(e.target.value) })}
                       inputProps={{ min: 1, step: 1 }}
-                      helperText="默认 600 秒（10 分钟）"
+                    />
+                  </Grid>
+                )}
+                {fields.includes('min_count') && (
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      type="number"
+                      label="人数阈值"
+                      value={rule.min_count ?? 5}
+                      onChange={(e) => patchRule(index, { min_count: parseInt(e.target.value, 10) })}
+                      inputProps={{ min: 1, step: 1 }}
+                    />
+                  </Grid>
+                )}
+                {fields.includes('seconds') && (
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      type="number"
+                      label="持续时长(秒)"
+                      value={rule.seconds ?? 10}
+                      onChange={(e) => patchRule(index, { seconds: parseFloat(e.target.value) })}
+                      inputProps={{ min: 1, step: 1 }}
                     />
                   </Grid>
                 )}
@@ -172,22 +192,25 @@ function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChan
           <Select
             size="small"
             displayEmpty
-            value={addType}
-            onChange={(e) => setAddType(e.target.value)}
-            sx={{ minWidth: 220 }}
+            value={addPreset}
+            onChange={(e) => setAddPreset(e.target.value)}
+            sx={{ minWidth: 260 }}
+            disabled={scenePresets.length === 0}
           >
-            <MenuItem value="">选择规则类型</MenuItem>
-            {ruleTypes.map((t) => (
-              <MenuItem key={t.type} value={t.type}>{t.name}</MenuItem>
+            <MenuItem value="">选择场景预设…</MenuItem>
+            {scenePresets.map((p) => (
+              <MenuItem key={p.id} value={p.id}>
+                {p.name}
+              </MenuItem>
             ))}
           </Select>
           <Button
-            variant="outlined"
+            variant="contained"
             startIcon={<Add />}
-            disabled={!addType}
-            onClick={handleAdd}
+            disabled={!addPreset}
+            onClick={handleAddPreset}
           >
-            添加规则
+            添加场景
           </Button>
         </Box>
       </Grid>

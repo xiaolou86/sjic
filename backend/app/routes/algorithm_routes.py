@@ -1,7 +1,7 @@
 """
 算法管理路由蓝图
 """
-from datetime import datetime, timezone
+from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 
@@ -25,11 +25,25 @@ def _serialize_algorithm(algorithm, include_internal=False):
     publish_meta = schema.get('publish_meta', {})
     data['published'] = bool(publish_meta.get('published', False))
     data['published_at'] = publish_meta.get('published_at')
+    data['needs_model'] = True
+    try:
+        from app.utils.algorithm_catalog import engine_needs_model
+        data['needs_model'] = engine_needs_model(algorithm.resolved_engine())
+    except Exception:
+        pass
 
     if not include_internal:
         data.pop('model_id', None)
 
     return data
+
+
+@algorithm_bp.route('/api/algorithms/catalog', methods=['GET'])
+@token_required
+def get_algorithm_catalog():
+    """产品算法 / 引擎 / 摄像头位静态目录（前端下拉与任务引导）。"""
+    from app.utils.algorithm_catalog import catalog_for_api
+    return jsonify(catalog_for_api())
 
 
 @algorithm_bp.route('/api/algorithms', methods=['GET'])
@@ -84,7 +98,23 @@ def create_algorithm():
     if not allowed:
         return jsonify({'error': f'Algorithm not allowed by license: {deny_reason}'}), 403
 
-    algorithm = Algorithm(**data)
+    # 未显式传 engine 时：目录有则取目录，否则 type 即引擎
+    if not data.get('engine'):
+        from app.utils.algorithm_catalog import get_product
+        product = get_product(algorithm_type) if algorithm_type else None
+        data['engine'] = (product or {}).get('engine') or algorithm_type
+    if not data.get('category'):
+        from app.utils.algorithm_catalog import get_product
+        product = get_product(algorithm_type) if algorithm_type else None
+        if product:
+            data['category'] = product.get('category')
+
+    allowed_keys = {
+        'name', 'type', 'engine', 'category',
+        'description', 'parameter_schema', 'model_id', 'labels',
+    }
+    payload = {k: v for k, v in data.items() if k in allowed_keys}
+    algorithm = Algorithm(**payload)
     db.session.add(algorithm)
     db.session.commit()
     return jsonify(_serialize_algorithm(algorithm, include_internal=True)), 201
@@ -122,17 +152,21 @@ def delete_algorithm(alg_id):
 @role_required('vendor')
 def publish_algorithm(alg_id):
     """发布算法：发布后才对客户与任务可见。"""
+    from app.utils.algorithm_catalog import engine_needs_model
+
     algorithm = Algorithm.query.get_or_404(alg_id)
 
-    if not algorithm.model_id:
+    if engine_needs_model(algorithm.resolved_engine()) and not algorithm.model_id:
         return jsonify({'error': 'Please bind a model in edit before publish'}), 400
 
     schema = algorithm.parameter_schema or {}
     schema['publish_meta'] = {
         'published': True,
-        'published_at': datetime.now(timezone.utc).isoformat(),
+        'published_at': datetime.now().isoformat(),
     }
     algorithm.parameter_schema = schema
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(algorithm, 'parameter_schema')
 
     db.session.commit()
 

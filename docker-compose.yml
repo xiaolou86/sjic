@@ -44,6 +44,7 @@ services:
     volumes:
       - ./models:/usr/share/nginx/models:ro
     environment:
+      - TZ=Asia/Shanghai
       - DOWNLOAD_SECURE_KEY=${DOWNLOAD_SECURE_KEY:-my-super-secret-key-for-nginx}
     depends_on:
       - backend

@@ -10,6 +10,23 @@ import axios from '../utils/axios';
 import BeltCalibrationTool from '../components/BeltCalibrationTool';
 import BeltDeviationCalibrationTool from '../components/BeltDeviationCalibrationTool';
 import DetectionRulesEditor from '../components/DetectionRulesEditor';
+import PoseBehaviorEditor from '../components/PoseBehaviorEditor';
+
+function mergeAlgoDefaults(algorithm, prevParams = {}) {
+  const defaults = algorithm?.parameter_schema?.default_task_params || {};
+  const next = { ...defaults, ...prevParams };
+  // 按引擎建任务：默认空规则列表，由用户添加多个场景
+  if (!Array.isArray(prevParams.rules)) {
+    next.rules = Array.isArray(defaults.rules) ? [...defaults.rules] : [];
+  }
+  if (!Array.isArray(prevParams.behaviors)) {
+    next.behaviors = Array.isArray(defaults.behaviors) ? [...defaults.behaviors] : [];
+  }
+  if (algorithm?.labels?.length && (!next.labels || next.labels.length === 0)) {
+    next.labels = algorithm.labels;
+  }
+  return next;
+}
 
 function Tasks() {
   const [tasks, setTasks] = useState([]);
@@ -207,8 +224,9 @@ function Tasks() {
     const algorithm = algorithms.find(a => a.id === formData.algorithm_id);
     if (!algorithm) return null;
 
-    console.log('algorithm.type=', algorithm.type)
-    switch (algorithm.type) {
+    console.log('algorithm.type=', algorithm.type, 'engine=', algorithm.engine)
+    const engine = algorithm.engine || algorithm.type;
+    switch (engine) {
       case 'belt_broken':
         return (
           <BeltCalibrationTool
@@ -216,7 +234,7 @@ function Tasks() {
             onCalibrate={handleCalibrate}
           />
         );
-      case 'belt_deviation_detecion':
+      case 'belt_deviation_detection':
         return (
           <BeltDeviationCalibrationTool
             cameraId={formData.cameraId}
@@ -261,7 +279,8 @@ function Tasks() {
     ) : null;
 
     const specificContent = (() => {
-      switch (algorithm.type) {
+      const engine = algorithm.engine || algorithm.type;
+      switch (engine) {
         case 'object_detection': {
           const rules = Array.isArray(task.algorithm_parameters?.rules) ? task.algorithm_parameters.rules : [];
           const legacyRegion = task.algorithm_parameters?.detection_region;
@@ -278,6 +297,7 @@ function Tasks() {
                     {rule.enabled === false ? '（已关闭）' : ''}
                     {rule.type === 'linger' ? ` · 驻留 ${rule.linger_seconds ?? 5} 秒` : ''}
                     {rule.type === 'absence' ? ` · 缺席 ${rule.absent_seconds ?? 600} 秒` : ''}
+                    {rule.type === 'crowd_count' ? ` · ≥${rule.min_count ?? 5}人 / ${rule.seconds ?? 10}秒` : ''}
                     {` · 告警 ${rule.alert_type || '-'}`}
                     {rule.detection_region?.points?.length ? ` · ROI ${rule.detection_region.points.length} 点` : ' · 整帧'}
                   </Typography>
@@ -289,6 +309,31 @@ function Tasks() {
             </>
           );
         }
+        case 'pose_behavior': {
+          const behaviors = Array.isArray(task.algorithm_parameters?.behaviors) ? task.algorithm_parameters.behaviors : [];
+          return (
+            <>
+              <Typography variant="subtitle2" gutterBottom>姿态行为：</Typography>
+              {behaviors.map((b, idx) => (
+                <Typography key={b.id || idx}>
+                  {b.name || b.type} · {b.seconds ?? '-'} 秒
+                  {b.enabled === false ? '（已关闭）' : ''}
+                </Typography>
+              ))}
+            </>
+          );
+        }
+        case 'camera_health':
+          return (
+            <Typography>
+              黑屏比例 {task.algorithm_parameters?.black_ratio ?? 0.85} ·
+              持续 {task.algorithm_parameters?.seconds ?? 3} 秒
+            </Typography>
+          );
+        case 'mouse_idle':
+          return (
+            <Typography>空闲阈值 {task.algorithm_parameters?.idle_seconds ?? 60} 秒</Typography>
+          );
         case 'belt_broken':
           return (
             <>
@@ -351,6 +396,7 @@ function Tasks() {
               </Grid>
             </>
           );
+        case 'belt_deviation_detection':
         case 'belt_deviation_detecion':
           return (
             <>
@@ -434,48 +480,121 @@ function Tasks() {
 
     const algorithm = algorithms.find(a => a.id === formData.algorithm_id);
     if (!algorithm) return null;
+    const engine = algorithm.engine || algorithm.type;
+    const editor = algorithm.parameter_schema?.ui?.editor;
 
-    switch (algorithm.type) {
-      case 'object_detection':
-        return (
-          <Grid container spacing={2}>
-            <Grid item xs={12}>
-              <DetectionRulesEditor
-                cameraId={formData.cameraId}
-                algorithm={algorithm}
-                algorithmParameters={formData.algorithm_parameters}
-                onChange={(nextParams) => setFormData((prev) => ({
-                  ...prev,
-                  algorithm_parameters: nextParams,
-                }))}
-              />
-            </Grid>
+    if (engine === 'object_detection' || editor === 'detection_rules') {
+      return (
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+            <DetectionRulesEditor
+              cameraId={formData.cameraId}
+              algorithm={algorithm}
+              algorithmParameters={formData.algorithm_parameters}
+              onChange={(nextParams) => setFormData((prev) => ({
+                ...prev,
+                algorithm_parameters: nextParams,
+              }))}
+            />
           </Grid>
-        );
-      case 'belt_broken':
-        return (
-          <Grid item xs={12} md={6}>
+        </Grid>
+      );
+    }
+    if (engine === 'pose_behavior' || editor === 'pose_behavior') {
+      return (
+        <PoseBehaviorEditor
+          algorithm={algorithm}
+          algorithmParameters={formData.algorithm_parameters}
+          onChange={(nextParams) => setFormData((prev) => ({
+            ...prev,
+            algorithm_parameters: nextParams,
+          }))}
+        />
+      );
+    }
+    if (engine === 'camera_health' || editor === 'camera_health') {
+      return (
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={4}>
             <TextField
               fullWidth
               type="number"
-              label="最小异常面积(cm²)"
-              value={formData.algorithm_parameters.min_area_cm2}
+              label="黑屏占比阈值"
+              value={formData.algorithm_parameters?.black_ratio ?? 0.85}
               onChange={(e) => setFormData({
                 ...formData,
                 algorithm_parameters: {
                   ...formData.algorithm_parameters,
-                  min_area_cm2: parseInt(e.target.value)
-                }
+                  black_ratio: parseFloat(e.target.value),
+                },
               })}
-              inputProps={{ min: 1 }}
+              inputProps={{ min: 0.5, max: 0.99, step: 0.01 }}
+              helperText="画面暗部比例超过此值判为遮挡/黑屏"
             />
           </Grid>
-        );
-      case 'belt_deviation_detecion':
-        return null; // 跑偏检测不需要额外参数
-      default:
-        return null;
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              type="number"
+              label="持续秒数"
+              value={formData.algorithm_parameters?.seconds ?? 3}
+              onChange={(e) => setFormData({
+                ...formData,
+                algorithm_parameters: {
+                  ...formData.algorithm_parameters,
+                  seconds: parseFloat(e.target.value),
+                },
+              })}
+              inputProps={{ min: 1, step: 1 }}
+            />
+          </Grid>
+        </Grid>
+      );
     }
+    if (engine === 'mouse_idle' || editor === 'mouse_idle') {
+      return (
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              type="number"
+              label="无鼠标操作时长(秒)"
+              value={formData.algorithm_parameters?.idle_seconds ?? 60}
+              onChange={(e) => setFormData({
+                ...formData,
+                algorithm_parameters: {
+                  ...formData.algorithm_parameters,
+                  idle_seconds: parseFloat(e.target.value),
+                },
+              })}
+              inputProps={{ min: 10, step: 1 }}
+              helperText="边缘需写入鼠标活动时间戳文件"
+            />
+          </Grid>
+        </Grid>
+      );
+    }
+    if (engine === 'belt_broken') {
+      return (
+        <Grid item xs={12} md={6}>
+          <TextField
+            fullWidth
+            type="number"
+            label="最小异常面积(cm²)"
+            value={formData.algorithm_parameters.min_area_cm2}
+            onChange={(e) => setFormData({
+              ...formData,
+              algorithm_parameters: {
+                ...formData.algorithm_parameters,
+                min_area_cm2: parseInt(e.target.value)
+              }
+            })}
+            inputProps={{ min: 1 }}
+          />
+        </Grid>
+      );
+    }
+    return null;
   };
 
 
@@ -506,9 +625,12 @@ function Tasks() {
               setOpenDialog(true);
             }}
           >
-            添加新任务
+            添加任务
           </Button>
         </div>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          同一摄像头按引擎建任务：目标检测挂多条规则，姿态检测挂多个行为；不要为每个小场景单独建任务。
+        </Typography>
 
         {/* 高级过滤栏 */}
         <Paper sx={{ p: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -661,34 +783,38 @@ function Tasks() {
                 onChange={(e) => {
                   const algId = e.target.value;
                   const selectedAlg = algorithms.find(a => a.id === algId);
-                  setFormData(prev => {
-                    const nextParams = {
-                      ...prev.algorithm_parameters,
-                      labels: (selectedAlg && selectedAlg.labels && selectedAlg.labels.length > 0) ? selectedAlg.labels : [],
-                      rules: Array.isArray(prev.algorithm_parameters?.rules) ? prev.algorithm_parameters.rules : []
-                    };
-                    if (selectedAlg?.type === 'object_detection' && (!nextParams.rules || nextParams.rules.length === 0)) {
-                      nextParams.rules = [{
-                        id: `rule_${Date.now()}`,
-                        type: 'presence',
-                        name: '区域内出现',
-                        enabled: true,
-                        alert_type: 'object_detection',
-                        class_ids: [0],
-                      }];
-                    }
-                    return { ...prev, algorithm_id: algId, algorithm_parameters: nextParams };
-                  });
+                  setFormData(prev => ({
+                    ...prev,
+                    algorithm_id: algId,
+                    algorithm_parameters: mergeAlgoDefaults(selectedAlg, {
+                      labels: selectedAlg?.labels || [],
+                      rules: undefined,
+                      behaviors: undefined,
+                    }),
+                  }));
                 }}
                 displayEmpty
               >
-                <MenuItem value="">选择算法</MenuItem>
+                <MenuItem value="">选择算法（按引擎）</MenuItem>
                 {algorithms.map(algorithm => (
                   <MenuItem key={algorithm.id} value={algorithm.id}>
                     {algorithm.name}
+                    {algorithm.engine ? ` · ${algorithm.engine}` : ''}
                   </MenuItem>
                 ))}
               </Select>
+              {(() => {
+                const selectedAlg = algorithms.find(a => a.id === formData.algorithm_id);
+                if (!selectedAlg) return null;
+                const engine = selectedAlg.engine || selectedAlg.type;
+                const tip = engine === 'object_detection'
+                  ? '可在下方添加多条检测规则/场景（缺席、手机、帽子等），同一任务只推理一次。'
+                  : engine === 'pose_behavior'
+                    ? '可在下方添加多个姿态行为/场景（张望、手托下巴等），同一任务只推理一次。'
+                    : null;
+                if (!tip) return null;
+                return <Alert severity="info" sx={{ mt: 1 }}>{tip}</Alert>;
+              })()}
             </Grid>
 
             <Grid item xs={12} md={6}>

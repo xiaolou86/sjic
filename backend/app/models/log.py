@@ -5,7 +5,7 @@ class Log(db.Model):
     __tablename__ = 'logs'
     
     id = db.Column(db.Integer, primary_key=True)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=datetime.now)
     level = db.Column(db.String(20))  # INFO, WARNING, ERROR
     message = db.Column(db.Text)
     details = db.Column(db.JSON)

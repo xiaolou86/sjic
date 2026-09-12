@@ -172,6 +172,7 @@ function VideoStreams() {
             fullWidth
             value={newStream.url}
             onChange={(e) => setNewStream({ ...newStream, url: e.target.value })}
+            helperText="机位请直接写在名称里，例如「3号考位-考生位」"
           />
         </DialogContent>
         <DialogActions>

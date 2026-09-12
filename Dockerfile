@@ -39,12 +39,15 @@ COPY backend .
 # 最终运行阶段
 FROM python:3.10-slim
 
+ENV TZ=Asia/Shanghai
+
 # 安装运行时依赖和 nginx
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nginx \
     ffmpeg \
     libgl1 \
     libglib2.0-0 \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制前端构建文件

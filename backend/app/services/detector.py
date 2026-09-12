@@ -81,15 +81,22 @@ class DetectorService:
             if not camera:
                 return {"success": False, "message": "Camera not found"}
 
-            # 模型由算法绑定，任务不再直绑 modelId
-            if not algorithm.model_id:
-                return {"success": False, "message": f"Algorithm {algorithm.name} is not bound to a model"}
+            from app.utils.algorithm_catalog import engine_needs_model
 
-            model = DetectionModel.query.get(algorithm.model_id)
-            if not model:
-                return {"success": False, "message": "Bound model not found"}
-            
-            # TODO: 如果还是希望在云端跑（没有edge_node_id的情况），可以保留原逻辑。或者强迫下发。
+            engine = algorithm.resolved_engine()
+            needs_model = engine_needs_model(engine)
+
+            model = None
+            download_url = ""
+            if needs_model:
+                if not algorithm.model_id:
+                    return {"success": False, "message": f"Algorithm {algorithm.name} is not bound to a model"}
+                model = DetectionModel.query.get(algorithm.model_id)
+                if not model:
+                    return {"success": False, "message": "Bound model not found"}
+                from app.utils.storage import StorageService
+                download_url = StorageService.get_download_url(model.path, expires_in_seconds=86400)
+
             if not task.edge_node_id:
                 return {"success": False, "message": "此任务未指定边缘计算节点 (edge_node_id 为空)"}
 
@@ -97,25 +104,24 @@ class DetectorService:
             if not edge_node:
                 return {"success": False, "message": f"Edge node {task.edge_node_id} not found"}
 
-            # 生成受保护的模型下载 URL（24小时内有效）
-            from app.utils.storage import StorageService
-            download_url = StorageService.get_download_url(model.path, expires_in_seconds=86400) if model else ""
-
-            # 组装任务配置负载
+            # algorithm_type = 边缘引擎；algorithm_code = 产品算法标识
             task_payload = {
                 "msg_id": f"req_{int(datetime.now().timestamp())}",
                 "timestamp": int(datetime.now().timestamp()),
                 "task_id": task.id,
                 "task_name": task.name,
-                "algorithm_type": algorithm.type,
+                "algorithm_type": engine,
+                "algorithm_code": algorithm.type,
+                "algorithm_id": algorithm.id,
                 "camera": {
                     "id": camera.id,
-                    "rtsp_url": camera.get_rtsp_url()
+                    "rtsp_url": camera.get_rtsp_url(),
                 },
                 "model": {
                     "id": model.id if model else None,
                     "download_url": download_url,
-                    "filename": model.path if model else ""
+                    "filename": model.path if model else "",
+                    "required": needs_model,
                 },
                 "parameters": {
                     "confidence": task.confidence,

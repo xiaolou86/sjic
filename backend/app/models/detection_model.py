@@ -11,7 +11,7 @@ class DetectionModel(db.Model):
     # labelmap: 绑定模型输出类别的 ID->名称 映射
     # 推荐格式：[{ "id": 0, "name": "person" }, ...]
     labelmap = db.Column(db.JSON, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     def to_dict(self):
         return {
