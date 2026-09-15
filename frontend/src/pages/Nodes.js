@@ -3,10 +3,11 @@ import {
     Grid, Paper, Table, TableBody, TableCell, TableContainer, TableHead,
     TableRow, Button, IconButton, Typography, Box, Dialog, DialogTitle,
     DialogContent, DialogActions, TextField, Chip, Select, MenuItem, OutlinedInput,
-    Menu, ListItemIcon, ListItemText, Divider
+    Menu, ListItemIcon, ListItemText, Divider, LinearProgress, Tooltip, Snackbar, Alert, Stack,
+    FormControl, InputLabel
 } from '@mui/material';
 import {
-    Edit, Delete, Circle, RestartAlt, PowerSettingsNew, WifiTethering, SettingsBackupRestore
+    Edit, Delete, Circle, RestartAlt, PowerSettingsNew, WifiTethering, SettingsBackupRestore, ContentCopy
 } from '@mui/icons-material';
 import axios from '../utils/axios';
 
@@ -19,6 +20,7 @@ function Nodes() {
     const [formData, setFormData] = useState({ name: '', bound_camera_ids: [] });
     const [powerBusyId, setPowerBusyId] = useState(null);
     const [powerMenu, setPowerMenu] = useState({ anchor: null, node: null });
+    const [copyMsg, setCopyMsg] = useState({ open: false, type: 'success', text: '' });
 
     useEffect(() => {
         fetchNodes();
@@ -147,17 +149,64 @@ function Nodes() {
         return lastTime.toLocaleString();
     };
 
+    const usageColor = (pct) => {
+        if (pct >= 90) return 'error';
+        if (pct >= 70) return 'warning';
+        return 'primary';
+    };
+
+    const UsageBar = ({ label, value, hint }) => {
+        if (value == null || Number.isNaN(Number(value)) || Number(value) < 0) {
+            return (
+                <Box sx={{ minWidth: 92 }}>
+                    <Typography variant="caption" color="text.secondary">{label} -</Typography>
+                </Box>
+            );
+        }
+        const pct = Math.min(100, Math.max(0, Number(value)));
+        const bar = (
+            <Box sx={{ minWidth: 92 }}>
+                <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.2 }}>
+                    {label} {pct.toFixed(0)}%
+                </Typography>
+                <LinearProgress
+                    variant="determinate"
+                    value={pct}
+                    color={usageColor(pct)}
+                    sx={{ height: 6, borderRadius: 1, mt: 0.25 }}
+                />
+            </Box>
+        );
+        return hint ? <Tooltip title={hint}>{bar}</Tooltip> : bar;
+    };
+
+    const renderHardware = (node) => {
+        const hw = node.hardware_status || {};
+        let gpu = hw.gpu_usage;
+        if (gpu == null && hw.npu_usage != null) gpu = hw.npu_usage;
+        if (gpu == null && hw.musa_mem_total_mb) {
+            gpu = (Number(hw.musa_mem_used_mb) / Number(hw.musa_mem_total_mb)) * 100;
+        }
+        if (hw.cpu_usage == null && hw.mem_usage == null && gpu == null) {
+            return <Typography variant="caption" color="text.secondary">暂无数据</Typography>;
+        }
+        const gpuLabel = String(node.architecture || '').toLowerCase().includes('rk3588') ? 'NPU' : 'GPU';
+        const gpuWindow = Number(hw.gpu_usage_window_sec) > 0 ? Number(hw.gpu_usage_window_sec) : 30;
+        return (
+            <Stack direction="row" spacing={1.25} useFlexGap flexWrap="wrap">
+                <UsageBar label="CPU" value={hw.cpu_usage} />
+                <UsageBar label="内存" value={hw.mem_usage} />
+                <UsageBar label={gpuLabel} value={gpu} hint={`${gpuLabel} 为近 ${gpuWindow} 秒平均值`} />
+            </Stack>
+        );
+    };
+
     return (
         <Grid container spacing={3}>
             <Grid item xs={12}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <Typography variant="h5">节点</Typography>
                 </div>
-                {canPower && (
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        电源菜单可重启/关闭主机，或网络唤醒（需网卡开启 WOL，平台与盒子同一局域网）。关机、重启主机要求边缘 Docker 使用 privileged 与 pid: host。
-                    </Typography>
-                )}
             </Grid>
 
             <Grid item xs={12}>
@@ -170,6 +219,7 @@ function Nodes() {
                                 <TableCell>机器码</TableCell>
                                 <TableCell>IP 地址</TableCell>
                                 <TableCell>机器型号</TableCell>
+                                <TableCell>资源占用</TableCell>
                                 <TableCell>绑定视频源</TableCell>
                                 <TableCell>最近在线时间</TableCell>
                                 <TableCell>操作</TableCell>
@@ -194,9 +244,9 @@ function Nodes() {
                                             />
                                         </TableCell>
                                         <TableCell><b>{node.name}</b></TableCell>
-                                        <TableCell>{node.mac_address}</TableCell>
                                         <TableCell>{node.ip_address || "-"}</TableCell>
                                         <TableCell>{node.architecture || "-"}</TableCell>
+                                        <TableCell>{renderHardware(node)}</TableCell>
                                         <TableCell>
                                             {boundNames.length === 0 ? '-' : (
                                                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
@@ -230,7 +280,7 @@ function Nodes() {
                             })}
                             {nodes.length === 0 && (
                                 <TableRow>
-                                    <TableCell colSpan={8} align="center" sx={{ py: 5 }}>
+                                    <TableCell colSpan={9} align="center" sx={{ py: 5 }}>
                                         <Typography color="textSecondary">
                                             暂无注册的边缘节点。请在下位机中配置 MQTT 连接并启动 Edge Agent。
                                         </Typography>
@@ -249,20 +299,20 @@ function Nodes() {
             >
                 <MenuItem onClick={() => powerMenu.node && handleNodePower(powerMenu.node, 'reboot')}>
                     <ListItemIcon><RestartAlt fontSize="small" /></ListItemIcon>
-                    <ListItemText primary="重启主机" secondary="整机重新开机" />
+                    <ListItemText primary="重启主机" />
                 </MenuItem>
                 <MenuItem onClick={() => powerMenu.node && handleNodePower(powerMenu.node, 'shutdown')}>
                     <ListItemIcon><PowerSettingsNew fontSize="small" /></ListItemIcon>
-                    <ListItemText primary="关机" secondary="关闭后需唤醒或现场开机" />
+                    <ListItemText primary="关机" secondary="关闭后需现场开机或远程开机" />
                 </MenuItem>
                 <MenuItem onClick={() => powerMenu.node && handleNodePower(powerMenu.node, 'wake')}>
                     <ListItemIcon><WifiTethering fontSize="small" /></ListItemIcon>
-                    <ListItemText primary="网络唤醒" secondary="发送 WoL 魔术包" />
+                    <ListItemText primary="远程开机" />
                 </MenuItem>
                 <Divider />
                 <MenuItem onClick={() => powerMenu.node && handleAgentRestart(powerMenu.node)}>
                     <ListItemIcon><SettingsBackupRestore fontSize="small" /></ListItemIcon>
-                    <ListItemText primary="重启程序" secondary="仅重启 Agent 容器" />
+                    <ListItemText primary="重启程序" secondary="仅重启程序，不关闭主机" />
                 </MenuItem>
             </Menu>
 
@@ -277,19 +327,20 @@ function Nodes() {
                             value={formData.name}
                             onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                         />
-                        <Box label="绑定视频源" sx={{ mt: 2 }}>
+                        <FormControl fullWidth sx={{ mt: 2 }}>
+                            <InputLabel id="bound-cameras-label">绑定视频源（可多选）</InputLabel>
                             <Select
-                                fullWidth
+                                labelId="bound-cameras-label"
+                                label="绑定视频源（可多选）"
                                 multiple
                                 value={formData.bound_camera_ids}
                                 onChange={(e) => {
                                     const value = e.target.value;
                                     setFormData(prev => ({ ...prev, bound_camera_ids: typeof value === 'string' ? value.split(',') : value }));
                                 }}
-                                displayEmpty
-                                input={<OutlinedInput />}
+                                input={<OutlinedInput label="绑定视频源（可多选）" />}
                                 renderValue={(selected) => {
-                                    if (!selected || selected.length === 0) return '未绑定视频源（全部可选）';
+                                    if (!selected || selected.length === 0) return '未选择';
                                     const names = selected.map(id => cameras.find(c => c.id === id)?.name || `ID=${id}`);
                                     return names.join(', ');
                                 }}
@@ -300,7 +351,7 @@ function Nodes() {
                                     </MenuItem>
                                 ))}
                             </Select>
-                        </Box>
+                        </FormControl>
                     </Box>
                 </DialogContent>
                 <DialogActions>
@@ -308,6 +359,18 @@ function Nodes() {
                     <Button onClick={handleUpdate} variant="contained">保存</Button>
                 </DialogActions>
             </Dialog>
+            <Snackbar
+                open={copyMsg.open}
+                autoHideDuration={2500}
+                onClose={() => setCopyMsg((prev) => ({ ...prev, open: false }))}
+            >
+                <Alert
+                    severity={copyMsg.type}
+                    onClose={() => setCopyMsg((prev) => ({ ...prev, open: false }))}
+                >
+                    {copyMsg.text}
+                </Alert>
+            </Snackbar>
         </Grid>
     );
 }

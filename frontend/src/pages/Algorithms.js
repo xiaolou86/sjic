@@ -91,6 +91,10 @@ function Algorithms() {
     ? catalog.engines.map((e) => ({ value: e.value, label: e.label || e.value, needs_model: e.needs_model }))
     : FALLBACK_ENGINES;
 
+  const engineLabel = (algorithm) => {
+    const value = algorithm.engine || algorithm.type;
+    return engines.find((e) => e.value === value)?.label || value || '-';
+  };
   const templates = algorithms.filter((a) => a.is_system_template);
   const instances = algorithms.filter((a) => !a.is_system_template);
 
@@ -200,7 +204,6 @@ function Algorithms() {
         <TableHead>
           <TableRow>
             <TableCell>名称</TableCell>
-            <TableCell>标识 type</TableCell>
             <TableCell>引擎</TableCell>
             <TableCell>分类</TableCell>
             <TableCell>派生</TableCell>
@@ -209,7 +212,7 @@ function Algorithms() {
         <TableBody>
           {rows.length === 0 && (
             <TableRow>
-              <TableCell colSpan={5}>
+              <TableCell colSpan={4}>
                 <Typography variant="body2" color="text.secondary">
                   暂无系统模板（重启后端同步目录后出现）
                 </Typography>
@@ -230,9 +233,8 @@ function Algorithms() {
                     </Typography>
                   )}
                 </TableCell>
-                <TableCell><Chip label={algorithm.type} size="small" variant="outlined" /></TableCell>
                 <TableCell>
-                  <Chip label={algorithm.engine || algorithm.type} size="small" color="primary" variant="outlined" />
+                  <Chip label={engineLabel(algorithm)} size="small" color="primary" variant="outlined" />
                 </TableCell>
                 <TableCell>{algorithm.category || '-'}</TableCell>
                 <TableCell>
@@ -261,7 +263,6 @@ function Algorithms() {
         <TableHead>
           <TableRow>
             <TableCell>名称</TableCell>
-            {isSuperAdmin && <TableCell>标识 type</TableCell>}
             {isSuperAdmin && <TableCell>引擎</TableCell>}
             <TableCell>分类</TableCell>
             {isSuperAdmin && <TableCell>绑定模型</TableCell>}
@@ -273,7 +274,7 @@ function Algorithms() {
         <TableBody>
           {rows.length === 0 && (
             <TableRow>
-              <TableCell colSpan={isSuperAdmin ? 8 : 2}>
+              <TableCell colSpan={isSuperAdmin ? 7 : 2}>
                 <Typography variant="body2" color="text.secondary">
                   {isSuperAdmin ? '暂无上架算法，请到「系统模板」页签派生' : '暂无可用算法'}
                 </Typography>
@@ -296,11 +297,8 @@ function Algorithms() {
                   )}
                 </TableCell>
                 {isSuperAdmin && (
-                  <TableCell><Chip label={algorithm.type} size="small" variant="outlined" /></TableCell>
-                )}
-                {isSuperAdmin && (
                   <TableCell>
-                    <Chip label={algorithm.engine || algorithm.type} size="small" color="primary" variant="outlined" />
+                    <Chip label={engineLabel(algorithm)} size="small" color="primary" variant="outlined" />
                   </TableCell>
                 )}
                 <TableCell>{algorithm.category || '-'}</TableCell>
@@ -437,21 +435,11 @@ function Algorithms() {
               />
             </Grid>
 
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="标识 type"
-                value={formData.type}
-                disabled
-                helperText="授权与引擎标识，派生后与模板相同"
-              />
-            </Grid>
-
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12}>
               <Select fullWidth value={formData.engine} displayEmpty disabled>
                 <MenuItem value="" disabled>边缘引擎</MenuItem>
                 {engines.map((t) => (
-                  <MenuItem key={t.value} value={t.value}>{t.label} ({t.value})</MenuItem>
+                  <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
                 ))}
               </Select>
             </Grid>

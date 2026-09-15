@@ -13,7 +13,7 @@ os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
 from utils.ip import get_mac_address, get_local_ip_address
 from mqtt_client import EdgeMqttClient
 from engine.task_manager import TaskManager
-from platforms import get_platform_info
+from platforms import get_platform_info, start_gpu_sampler
 
 
 # 修改日志格式：使用标准的层级化日志
@@ -35,19 +35,27 @@ def load_config(path='config.yaml'):
     return config
 
 def get_hardware_status(architecture):
-    """获取设备状态（支持多平台硬件信息采集）"""
+    """获取设备状态（CPU / 内存 / GPU 或 NPU）"""
+    mem = psutil.virtual_memory()
     base = {
-        "cpu_usage": psutil.cpu_percent(),
-        "mem_usage": psutil.virtual_memory().percent,
+        "cpu_usage": psutil.cpu_percent(interval=None),
+        "mem_usage": mem.percent,
+        "mem_used_mb": round(mem.used / 1024 / 1024),
+        "mem_total_mb": round(mem.total / 1024 / 1024),
     }
-    # 合并平台特定的硬件信息（温度、NPU 状态等）
-    base.update(get_platform_info(architecture))
+    try:
+        extra = get_platform_info(architecture) or {}
+        if isinstance(extra, dict):
+            base.update(extra)
+    except Exception as e:
+        logger.debug(f"platform hardware extras skipped: {e}")
     return base
 
 def main():
     config = load_config()
     arch = config.get('architecture', 'x86')
     logger.info(f"Starting SJIC Edge Agent [{config['edge_name']}] [{config['edge_id']}] on platform: {arch}")
+    start_gpu_sampler(arch)
 
     # 1. 实例化任务管理器 (负责 AI 推理全生命周期)
     task_manager = TaskManager(config)
@@ -73,14 +81,16 @@ def main():
     # 4. 守护循环：周期推送心跳
     try:
         while True:
-            # 构建心跳负荷
-            heartbeat_payload['timestamp'] = int(time.time())
-            heartbeat_payload['hardware'] = get_hardware_status(arch)
-            heartbeat_payload['status'] = "online"
-            heartbeat_payload['running_tasks'] = list(task_manager.active_tasks.keys())
-            mqtt_client.publish_heartbeat(heartbeat_payload)
-            logger.debug(f"Heartbeat sent.")
-            time.sleep(30) # 每30秒发送一次心跳
+            try:
+                heartbeat_payload['timestamp'] = int(time.time())
+                heartbeat_payload['hardware'] = get_hardware_status(arch)
+                heartbeat_payload['status'] = "online"
+                heartbeat_payload['running_tasks'] = list(task_manager.active_tasks.keys())
+                mqtt_client.publish_heartbeat(heartbeat_payload)
+                logger.debug("Heartbeat sent.")
+            except Exception as e:
+                logger.error(f"Heartbeat failed: {e}")
+            time.sleep(10)
             
     except KeyboardInterrupt:
         logger.info("Shutting down edge agent...")

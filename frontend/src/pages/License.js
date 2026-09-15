@@ -5,6 +5,7 @@ import {
 } from '@mui/material';
 import { CloudUpload, ContentCopy, VpnKey } from '@mui/icons-material';
 import axios from '../utils/axios';
+import { copyText } from '../utils/clipboard';
 
 const EDITION_LABEL = {
   trial: '试用版',
@@ -39,7 +40,7 @@ function License() {
     const code = license?.machine_code || '';
     if (!code) return;
     try {
-      await navigator.clipboard.writeText(code);
+      await copyText(code);
       showMsg('success', '机器码已复制');
     } catch (e) {
       showMsg('error', '复制失败，请手动选择机器码');
