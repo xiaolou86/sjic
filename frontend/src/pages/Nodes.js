@@ -216,7 +216,6 @@ function Nodes() {
                             <TableRow>
                                 <TableCell>状态</TableCell>
                                 <TableCell>名称</TableCell>
-                                <TableCell>机器码</TableCell>
                                 <TableCell>IP 地址</TableCell>
                                 <TableCell>机器型号</TableCell>
                                 <TableCell>资源占用</TableCell>
