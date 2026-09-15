@@ -220,7 +220,7 @@ function Nodes() {
                                 <TableCell>机器型号</TableCell>
                                 <TableCell>资源占用</TableCell>
                                 <TableCell>绑定视频源</TableCell>
-                                <TableCell>最近在线时间</TableCell>
+                                <TableCell>最近更新时间</TableCell>
                                 <TableCell>操作</TableCell>
                             </TableRow>
                         </TableHead>
