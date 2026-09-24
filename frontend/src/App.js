@@ -17,6 +17,8 @@ import Algorithms from './pages/Algorithms';
 import Settings from './pages/Settings';
 import License from './pages/License';
 import Nodes from './pages/Nodes';
+import OperationLogs from './pages/OperationLogs';
+import ClickHotspots from './pages/ClickHotspots';
 
 function App() {
   const isSuperAdmin = localStorage.getItem('user_role') === 'vendor';
@@ -109,6 +111,20 @@ function App() {
             <PrivateRoute>
               <Layout>
                 <License />
+              </Layout>
+            </PrivateRoute>
+          } />
+          <Route path="/operation-logs" element={
+            <PrivateRoute>
+              <Layout>
+                <OperationLogs />
+              </Layout>
+            </PrivateRoute>
+          } />
+          <Route path="/click-hotspots" element={
+            <PrivateRoute>
+              <Layout>
+                {isSuperAdmin ? <ClickHotspots /> : <Navigate to="/dashboard" replace />}
               </Layout>
             </PrivateRoute>
           } />

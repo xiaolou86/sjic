@@ -141,6 +141,12 @@ function Nodes() {
         return '离线';
     };
 
+    /** 在线 / 失联：主机多半已开机；离线：视为关机，仅允许远程开机 */
+    const isHostLikelyOn = (node) => {
+        if (!node) return false;
+        return getStatusColor(node.status, node.last_heartbeat) !== 'error';
+    };
+
     const formatLastOnline = (lastHeartbeat) => {
         if (!lastHeartbeat) return '-';
         const timeStr = typeof lastHeartbeat === 'string' ? lastHeartbeat.replace(/-/g, '/') : lastHeartbeat;
@@ -154,6 +160,11 @@ function Nodes() {
         if (pct >= 70) return 'warning';
         return 'primary';
     };
+
+    const powerMenuNode = powerMenu.node
+        ? (nodes.find((n) => n.id === powerMenu.node.id) || powerMenu.node)
+        : null;
+    const hostLikelyOn = isHostLikelyOn(powerMenuNode);
 
     const UsageBar = ({ label, value, hint }) => {
         if (value == null || Number.isNaN(Number(value)) || Number(value) < 0) {
@@ -296,22 +307,46 @@ function Nodes() {
                 open={Boolean(powerMenu.anchor)}
                 onClose={closePowerMenu}
             >
-                <MenuItem onClick={() => powerMenu.node && handleNodePower(powerMenu.node, 'reboot')}>
+                <MenuItem
+                    disabled={!hostLikelyOn}
+                    onClick={() => powerMenuNode && handleNodePower(powerMenuNode, 'reboot')}
+                >
                     <ListItemIcon><RestartAlt fontSize="small" /></ListItemIcon>
-                    <ListItemText primary="重启主机" />
+                    <ListItemText
+                        primary="重启主机"
+                        secondary={!hostLikelyOn ? '节点离线，无法下发' : undefined}
+                    />
                 </MenuItem>
-                <MenuItem onClick={() => powerMenu.node && handleNodePower(powerMenu.node, 'shutdown')}>
+                <MenuItem
+                    disabled={!hostLikelyOn}
+                    onClick={() => powerMenuNode && handleNodePower(powerMenuNode, 'shutdown')}
+                >
                     <ListItemIcon><PowerSettingsNew fontSize="small" /></ListItemIcon>
-                    <ListItemText primary="关机" secondary="关闭后需现场开机或远程开机" />
+                    <ListItemText
+                        primary="关机"
+                        secondary={!hostLikelyOn ? '节点离线，无法下发' : '关闭后需现场开机或远程开机'}
+                    />
                 </MenuItem>
-                <MenuItem onClick={() => powerMenu.node && handleNodePower(powerMenu.node, 'wake')}>
+                <MenuItem
+                    disabled={hostLikelyOn}
+                    onClick={() => powerMenuNode && handleNodePower(powerMenuNode, 'wake')}
+                >
                     <ListItemIcon><WifiTethering fontSize="small" /></ListItemIcon>
-                    <ListItemText primary="远程开机" />
+                    <ListItemText
+                        primary="远程开机"
+                        secondary={hostLikelyOn ? '主机已开机（在线/失联），无需唤醒' : undefined}
+                    />
                 </MenuItem>
                 <Divider />
-                <MenuItem onClick={() => powerMenu.node && handleAgentRestart(powerMenu.node)}>
+                <MenuItem
+                    disabled={!hostLikelyOn}
+                    onClick={() => powerMenuNode && handleAgentRestart(powerMenuNode)}
+                >
                     <ListItemIcon><SettingsBackupRestore fontSize="small" /></ListItemIcon>
-                    <ListItemText primary="重启程序" secondary="仅重启程序，不关闭主机" />
+                    <ListItemText
+                        primary="重启程序"
+                        secondary={!hostLikelyOn ? '节点离线，无法下发' : '仅重启程序，不关闭主机'}
+                    />
                 </MenuItem>
             </Menu>
 

@@ -6,5 +6,10 @@ from .algorithm import Algorithm
 from .log import Log
 from .setting import Setting
 from .edge_node import EdgeNode
+from .operation_log import OperationLog
+from .ui_click import UiClickEvent
 
-__all__ = ['Camera', 'DetectionModel', 'Alert', 'Task', 'Algorithm', 'Log', 'Setting', 'EdgeNode']
+__all__ = [
+    'Camera', 'DetectionModel', 'Alert', 'Task', 'Algorithm', 'Log', 'Setting',
+    'EdgeNode', 'OperationLog', 'UiClickEvent',
+]

@@ -6,6 +6,7 @@ from flask_cors import cross_origin
 import jwt
 from datetime import datetime, timedelta
 from config import Config
+from app.middleware.auth import token_required
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -79,3 +80,10 @@ def login():
         return response
 
     return jsonify({'error': 'Invalid credentials'}), 401
+
+
+@auth_bp.route('/api/logout', methods=['POST'])
+@token_required
+def logout():
+    """记录退出登录。审计由 after_request 写入。"""
+    return jsonify({'status': 'ok'})

@@ -5,9 +5,10 @@ import {
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import {
-  Videocam, ModelTraining, Settings, Build, NotificationsActive, Task, Code, Logout, Computer, Dashboard as DashboardIcon, VpnKey
+  Videocam, ModelTraining, Settings, Build, NotificationsActive, Task, Code, Logout, Computer, Dashboard as DashboardIcon, VpnKey, History, TouchApp
 } from '@mui/icons-material';
 import axios, { getBaseUrl } from '../utils/axios';
+import ClickTracker from './ClickTracker';
 
 const drawerWidth = 240;
 
@@ -21,6 +22,8 @@ const menuItems = [
   { text: '模型训练', icon: <Build />, path: '/training', role: 'vendor' },
   { text: '告警记录', icon: <NotificationsActive />, path: '/alerts' },
   { text: '授权管理', icon: <VpnKey />, path: '/license', always: true },
+  { text: '操作日志', icon: <History />, path: '/operation-logs' },
+  { text: '点击热点', icon: <TouchApp />, path: '/click-hotspots', role: 'vendor' },
   { text: '系统设置', icon: <Settings />, path: '/settings' },
 ];
 
@@ -85,7 +88,12 @@ function Layout({ children }) {
     return () => window.removeEventListener('license-updated', onLicense);
   }, [loadLicense]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await axios.post('/api/logout');
+    } catch (e) {
+      // 网络失败也要清掉本地登录态
+    }
     localStorage.removeItem('token');
     localStorage.removeItem('user_role');
     localStorage.removeItem('username');
@@ -123,6 +131,7 @@ function Layout({ children }) {
           </Stack>
           <IconButton
             color="inherit"
+            aria-label="退出登录"
             onClick={handleLogout}
             sx={{
               border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.25)}`,
@@ -185,6 +194,7 @@ function Layout({ children }) {
         }}
       >
         <Toolbar />
+        <ClickTracker />
         {licenseValid === false && (
           <Alert severity="warning" sx={{ mb: 2 }}>
             {licenseMessage || '尚未导入有效授权'}。请在「授权管理」导入试用版或正式版授权文件后继续使用。

@@ -695,7 +695,7 @@ function Tasks() {
                 </InputAdornment>
               ),
             }}
-            sx={{ flexGrow: 1, minWidth: 200 }}
+            sx={{ minWidth: 220}}
           />
 
           <Select
@@ -718,8 +718,8 @@ function Tasks() {
             displayEmpty
             sx={{ minWidth: 220 }}
           >
-            <MenuItem value="all">部署节点 (全平台)</MenuItem>
-            <MenuItem value="unassigned">⚠️ 尚未分配节点的任务</MenuItem>
+            <MenuItem value="all">节点 (全部)</MenuItem>
+            <MenuItem value="unassigned">未分配节点的任务</MenuItem>
             {nodes.map(node => (
               <MenuItem key={node.id} value={node.id}>
                 🖥️ {node.name}

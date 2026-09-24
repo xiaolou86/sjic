@@ -130,6 +130,9 @@ def create_app(config_class=Config):
         from app.middleware.license_guard import register_request_guards
         register_request_guards(app)
 
+        from app.services.audit import register_audit
+        register_audit(app)
+
     # 初始化 MQTT
     from app.services.mqtt_service import mqtt_service
     mqtt_service.init_app(app)
