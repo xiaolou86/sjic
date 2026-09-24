@@ -198,7 +198,7 @@ function Nodes() {
             gpu = (Number(hw.musa_mem_used_mb) / Number(hw.musa_mem_total_mb)) * 100;
         }
         if (hw.cpu_usage == null && hw.mem_usage == null && gpu == null) {
-            return <Typography variant="caption" color="text.secondary">暂无数据</Typography>;
+            return <Typography variant="caption" color="text.secondary">-</Typography>;
         }
         const gpuLabel = String(node.architecture || '').toLowerCase().includes('rk3588') ? 'NPU' : 'GPU';
         const gpuWindow = Number(hw.gpu_usage_window_sec) > 0 ? Number(hw.gpu_usage_window_sec) : 30;

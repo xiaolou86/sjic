@@ -341,6 +341,7 @@ function Tasks() {
                     {rule.type === 'linger' ? ` · 驻留 ${rule.linger_seconds ?? 5} 秒` : ''}
                     {rule.type === 'absence' ? ` · 缺席 ${rule.absent_seconds ?? 600} 秒` : ''}
                     {rule.type === 'crowd_count' ? ` · ≥${rule.min_count ?? 5}人 / ${rule.seconds ?? 10}秒` : ''}
+                    {rule.confidence != null && rule.confidence !== '' ? ` · 置信度 ${rule.confidence}` : ''}
                     {` · 告警 ${rule.alert_type || '-'}`}
                     {rule.detection_region?.points?.length ? ` · ROI ${rule.detection_region.points.length} 点` : ' · 整帧'}
                     {rule.schedule_start && rule.schedule_end ? ` · 时段 ${rule.schedule_start}–${rule.schedule_end}` : ''}
@@ -361,7 +362,8 @@ function Tasks() {
               {behaviors.map((b, idx) => (
                 <Typography key={b.id || idx}>
                   {b.name || b.type} · {b.seconds ?? '-'} 秒
-                  {b.type === 'smart_glasses' ? ` · ≥${b.min_touches ?? 3}次触碰` : ''}
+                  {b.type === 'smart_glasses' ? ` · ≥${b.min_touches ?? 3}次触碰 · 耳距 ${b.ear_dist_ratio ?? 0.28}` : ''}
+                  {b.confidence != null && b.confidence !== '' ? ` · 置信度 ${b.confidence}` : ''}
                   {b.type === 'invigilator_absent' ? ` · 站立≥${b.min_standing ?? 2}` : ''}
                   {b.schedule_start && b.schedule_end ? ` · 时段 ${b.schedule_start}–${b.schedule_end}` : ''}
                   {b.enabled === false ? '（已关闭）' : ''}
@@ -539,6 +541,7 @@ function Tasks() {
               algorithm={algorithm}
               algorithmParameters={formData.algorithm_parameters}
               catalogPresets={catalog?.od_scene_presets}
+              taskConfidence={formData.confidence}
               onChange={(nextParams) => setFormData((prev) => ({
                 ...prev,
                 algorithm_parameters: nextParams,
@@ -554,6 +557,7 @@ function Tasks() {
           algorithm={algorithm}
           algorithmParameters={formData.algorithm_parameters}
           catalogPresets={catalog?.pose_scene_presets}
+          taskConfidence={formData.confidence}
           onChange={(nextParams) => setFormData((prev) => ({
             ...prev,
             algorithm_parameters: nextParams,
@@ -929,7 +933,7 @@ function Tasks() {
                 }
                 const engine = selectedAlg.engine || selectedAlg.type;
                 const tip = engine === 'object_detection'
-                  ? '可在下方添加多条检测规则/场景（缺席、手机、帽子等），同一任务只推理一次。'
+                  ? '可在下方添加多条检测规则/场景（缺席、手机、帽子、人员倒地等），同一任务只推理一次。倒地用目标检测，不用姿态。'
                   : engine === 'pose_behavior'
                     ? '可在下方添加多个姿态行为/场景（张望、手托下巴等），同一任务只推理一次。姿态算法需已绑定并发布 Pose 模型。'
                     : null;
@@ -962,6 +966,7 @@ function Tasks() {
                 value={formData.confidence}
                 onChange={(e) => setFormData({ ...formData, confidence: parseFloat(e.target.value) })}
                 inputProps={{ step: 0.1, min: 0, max: 1 }}
+                helperText="场景未单独设置时使用；场景有值时以场景为准"
               />
             </Grid>
 

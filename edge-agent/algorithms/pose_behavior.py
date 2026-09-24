@@ -1,16 +1,15 @@
 """
-姿态行为引擎：张望 / 低头 / 不看屏幕 / 手托下巴 / 倒地 / 手指屏幕 /
+姿态行为引擎：张望 / 低头 / 不看屏幕 / 手托下巴 / 手指屏幕 /
 捂嘴报题 / AI 智能眼镜 / 考试员不巡场。
 
 依赖姿态模型（YOLO-Pose 等）经 runtime.infer 返回 keypoints。
 几何判断按摄像头 mount_position（前/后/侧/正上方）切换，避免把俯视看屏判成违规。
 若当前 runtime 仅返回 boxes，则跳过关键点行为，并在日志中提示。
 """
-from .base import BaseAlgorithm
+from .base import BaseAlgorithm, effective_confidence
 from .pose_geometry import (
     is_chin_rest,
     is_cover_mouth,
-    is_fall,
     is_finger_point,
     is_gaze_away,
     is_head_down,
@@ -39,8 +38,6 @@ def _eval_behavior(btype, kps, box, spec, view):
         return is_chin_rest(kps, view)
     if btype == 'cover_mouth':
         return is_cover_mouth(kps, view)
-    if btype == 'fall':
-        return is_fall(kps, box, spec.get('_peer_boxes'), view)
     if btype == 'finger_point':
         return is_finger_point(kps, bool(spec.get('require_standing', True)), view)
     return False
@@ -48,7 +45,7 @@ def _eval_behavior(btype, kps, box, spec, view):
 
 POINTWISE_TYPES = frozenset({
     'gaze_away', 'look_aside', 'head_down', 'chin_rest',
-    'cover_mouth', 'fall', 'finger_point',
+    'cover_mouth', 'finger_point',
 })
 STATEFUL_BEHAVIORS = frozenset({'smart_glasses', 'invigilator_absent'})
 
@@ -97,7 +94,7 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
         for box, kps in persons:
             if kps is None:
                 continue
-            if is_wrist_near_ear(kps, spec.get('ear_dist_ratio', 0.45)):
+            if is_wrist_near_ear(kps, spec.get('ear_dist_ratio', 0.28)):
                 near = True
                 hit_box = box
                 break
@@ -157,7 +154,11 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
             parameters = config_dict.get('parameters', {})
             model_path = config_dict.get('model_local_path')
             algo_params = parameters.get('algorithm_parameters') or {}
-            confidence = float(parameters.get('confidence', 0.5))
+            task_confidence = float(parameters.get('confidence', 0.5))
+            confidence = min(
+                (effective_confidence(b, task_confidence) for b in behaviors),
+                default=task_confidence,
+            )
             alert_threshold = int(parameters.get('alertThreshold', 10))
             behaviors = [b for b in (algo_params.get('behaviors') or []) if b.get('enabled', True)]
             task_name = config_dict.get('task_id', 'unknown_task')
@@ -260,9 +261,21 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
                         hit_person = None
                         message = None
 
+                        if btype == 'fall':
+                            if not extra_state[bid].get('warned'):
+                                logger.warning("人员倒地已改为目标检测场景，姿态任务中的跌倒行为已忽略")
+                                extra_state[bid]['warned'] = True
+                            continue
+
+                        scene_conf = effective_confidence(spec, task_confidence)
+                        persons_for_spec = [
+                            (box, kps) for box, kps in persons
+                            if box is None or float(getattr(box, 'confidence', 0) or 0) >= scene_conf
+                        ]
+
                         if btype == 'smart_glasses':
                             ok, box = self._eval_smart_glasses(
-                                persons, spec, extra_state[bid], now
+                                persons_for_spec, spec, extra_state[bid], now
                             )
                             if ok:
                                 hit_person = (box, None)
@@ -272,7 +285,7 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
                                 )
                         elif btype == 'invigilator_absent':
                             ok, box, standing_n = self._eval_invigilator_absent(
-                                persons, spec, extra_state[bid], now, view
+                                persons_for_spec, spec, extra_state[bid], now, view
                             )
                             if ok:
                                 hit_person = (box, None)
@@ -282,16 +295,11 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
                                 )
                         elif btype in POINTWISE_TYPES:
                             seconds = float(spec.get('seconds', 3))
-                            peer_boxes = [b for b, _ in persons if b is not None]
-                            for box, kps in persons:
+                            for box, kps in persons_for_spec:
                                 if kps is None:
                                     continue
                                 try:
-                                    spec_eval = spec
-                                    if btype == 'fall':
-                                        spec_eval = dict(spec)
-                                        spec_eval['_peer_boxes'] = peer_boxes
-                                    if _eval_behavior(btype, kps, box, spec_eval, view):
+                                    if _eval_behavior(btype, kps, box, spec, view):
                                         hit_person = (box, kps)
                                         break
                                 except Exception as e:

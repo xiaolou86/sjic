@@ -8,9 +8,15 @@ def _class_ok(box, class_ids):
     return int(getattr(box, 'class_id', 0)) in class_ids
 
 
-def _boxes_in_roi(boxes, class_ids, roi_polygon):
+def _boxes_in_roi(boxes, class_ids, roi_polygon, min_confidence=None):
     matched = []
     for box in boxes:
+        if min_confidence is not None:
+            try:
+                if float(getattr(box, 'confidence', 0) or 0) < float(min_confidence):
+                    continue
+            except (TypeError, ValueError):
+                continue
         if not _class_ok(box, class_ids):
             continue
         if roi_polygon is not None:
@@ -37,6 +43,7 @@ class BaseRule:
             self.class_ids = [0]
         else:
             self.class_ids = [int(x) for x in raw_ids]
+        self.min_confidence = self.spec.get('_min_confidence')
         self._last_alert_time = None
         self._state_since = None
         if roi_points and len(roi_points) >= 3:
@@ -65,7 +72,7 @@ class BaseRule:
 
 class PresenceRule(BaseRule):
     def evaluate(self, boxes, now, logger):
-        matched = _boxes_in_roi(boxes, self.class_ids, self._roi_polygon)
+        matched = _boxes_in_roi(boxes, self.class_ids, self._roi_polygon, self.min_confidence)
         if not matched or not self._cooldown_ok(now):
             return None
         conf = max(b.confidence for b in matched)
@@ -79,7 +86,7 @@ class LingerRule(BaseRule):
         self.linger_seconds = float(self.spec.get('linger_seconds', 5))
 
     def evaluate(self, boxes, now, logger):
-        matched = _boxes_in_roi(boxes, self.class_ids, self._roi_polygon)
+        matched = _boxes_in_roi(boxes, self.class_ids, self._roi_polygon, self.min_confidence)
         if not matched:
             self._state_since = None
             return None
@@ -101,7 +108,7 @@ class AbsenceRule(BaseRule):
         self.absent_seconds = float(self.spec.get('absent_seconds', 600))
 
     def evaluate(self, boxes, now, logger):
-        matched = _boxes_in_roi(boxes, self.class_ids, self._roi_polygon)
+        matched = _boxes_in_roi(boxes, self.class_ids, self._roi_polygon, self.min_confidence)
         if matched:
             self._state_since = None
             return None
@@ -125,7 +132,7 @@ class CrowdCountRule(BaseRule):
         self.seconds = float(self.spec.get('seconds', 10))
 
     def evaluate(self, boxes, now, logger):
-        matched = _boxes_in_roi(boxes, self.class_ids, self._roi_polygon)
+        matched = _boxes_in_roi(boxes, self.class_ids, self._roi_polygon, self.min_confidence)
         if len(matched) < self.min_count:
             self._state_since = None
             return None

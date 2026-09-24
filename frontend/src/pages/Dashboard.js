@@ -183,7 +183,7 @@ function Dashboard() {
             key: 'uptime',
             label: '平台运行时长',
             value: formatUptime(uptime.seconds),
-            hint: uptime.started_at ? `自 ${formatTime(uptime.started_at)}` : '本次服务启动后',
+            hint: uptime.started_at ? `自首次启动 ${formatTime(uptime.started_at)}` : '自首次启动',
             icon: Timer,
             color: '#5c6bc0',
             path: null,

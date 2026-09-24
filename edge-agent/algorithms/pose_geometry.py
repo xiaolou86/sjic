@@ -276,7 +276,7 @@ def is_cover_mouth(kps, view=DEFAULT_MOUNT_POSITION):
     return False
 
 
-def is_wrist_near_ear(kps, dist_ratio=0.45):
+def is_wrist_near_ear(kps, dist_ratio=0.28):
     sw = _scale(kps)
     ears = [_kp(kps, ei) for ei in (L_EAR, R_EAR) if _kp_ok(kps, ei)]
     if not ears:

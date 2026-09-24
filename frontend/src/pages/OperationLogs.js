@@ -6,7 +6,7 @@ import {
 import axios from '../utils/axios';
 
 const ACTIONS = [
-  { value: '', label: '全部操作' },
+  { value: 'all', label: '全部操作' },
   { value: 'create', label: '创建' },
   { value: 'update', label: '修改' },
   { value: 'delete', label: '删除' },
@@ -15,7 +15,12 @@ const ACTIONS = [
   { value: 'operate', label: '其他操作' },
 ];
 
-const MODULES = ['', '认证', '视频源', '任务', '算法', '模型', '节点', '告警', '检测', '训练', '授权', '系统设置', '系统'];
+const MODULES = ['认证', '视频源', '任务', '算法', '模型', '节点', '告警', '检测', '训练', '授权', '系统设置', '系统'];
+const CUSTOMER_HIDDEN_MODULES = new Set(['模型', '训练']);
+
+function moduleLabel(value) {
+  return !value || value === 'all' ? '全部模块' : value;
+}
 
 const ACTION_LABEL = Object.fromEntries(ACTIONS.filter((item) => item.value).map((item) => [item.value, item.label]));
 
@@ -30,14 +35,19 @@ function formatTime(value) {
 }
 
 function OperationLogs() {
+  const isVendor = localStorage.getItem('user_role') === 'vendor';
+  const moduleOptions = [
+    'all',
+    ...MODULES.filter((name) => isVendor || !CUSTOMER_HIDDEN_MODULES.has(name)),
+  ];
   const [items, setItems] = useState([]);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(20);
   const [total, setTotal] = useState(0);
-  const [action, setAction] = useState('');
-  const [module, setModule] = useState('');
+  const [action, setAction] = useState('all');
+  const [module, setModule] = useState('all');
   const [keyword, setKeyword] = useState('');
-  const [applied, setApplied] = useState({ action: '', module: '', keyword: '' });
+  const [applied, setApplied] = useState({ action: 'all', module: 'all', keyword: '' });
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -48,8 +58,8 @@ function OperationLogs() {
           params: {
             page: page + 1,
             per_page: rowsPerPage,
-            action: applied.action || undefined,
-            module: applied.module || undefined,
+            action: applied.action && applied.action !== 'all' ? applied.action : undefined,
+            module: applied.module && applied.module !== 'all' ? applied.module : undefined,
             keyword: applied.keyword || undefined,
           },
         });
@@ -82,10 +92,14 @@ function OperationLogs() {
             label="操作"
             value={action}
             onChange={(e) => setAction(e.target.value)}
-            sx={{ minWidth: 140 }}
+            sx={{ minWidth: 160 }}
+            SelectProps={{
+              displayEmpty: true,
+              renderValue: (selected) => ACTIONS.find((item) => item.value === selected)?.label || '全部操作',
+            }}
           >
             {ACTIONS.map((item) => (
-              <MenuItem key={item.value || 'all'} value={item.value}>{item.label}</MenuItem>
+              <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
             ))}
           </TextField>
           <TextField
@@ -94,10 +108,14 @@ function OperationLogs() {
             label="模块"
             value={module}
             onChange={(e) => setModule(e.target.value)}
-            sx={{ minWidth: 140 }}
+            sx={{ minWidth: 160 }}
+            SelectProps={{
+              displayEmpty: true,
+              renderValue: (selected) => moduleLabel(selected),
+            }}
           >
-            {MODULES.map((item) => (
-              <MenuItem key={item || 'all'} value={item}>{item || '全部模块'}</MenuItem>
+            {moduleOptions.map((item) => (
+              <MenuItem key={item} value={item}>{moduleLabel(item)}</MenuItem>
             ))}
           </TextField>
           <TextField

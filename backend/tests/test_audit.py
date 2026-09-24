@@ -1,5 +1,5 @@
 import unittest
-from app.services.audit import describe_operation
+from app.services.audit import describe_operation, operation_visible_to, modules_for_role
 
 
 class TestDescribeOperation(unittest.TestCase):
@@ -37,6 +37,18 @@ class TestDescribeOperation(unittest.TestCase):
 
         power = describe_operation('POST', '/api/nodes/2/power', {'action': 'wake'})
         self.assertIn('唤醒', power['summary'])
+
+    def test_customer_cannot_see_super_admin_or_vendor_modules(self):
+        self.assertFalse(operation_visible_to('customer', 'super_admin', 'vendor', '节点'))
+        self.assertFalse(operation_visible_to('customer', 'super_admin', '', '认证'))
+        self.assertFalse(operation_visible_to('customer', 'admin', 'vendor', '视频源'))
+        self.assertFalse(operation_visible_to('customer', 'admin', 'customer', '模型'))
+        self.assertFalse(operation_visible_to('customer', 'admin', 'customer', '训练'))
+        self.assertTrue(operation_visible_to('customer', 'admin', 'customer', '告警'))
+        self.assertTrue(operation_visible_to('vendor', 'super_admin', 'vendor', '模型'))
+        self.assertNotIn('模型', modules_for_role('customer'))
+        self.assertNotIn('训练', modules_for_role('customer'))
+        self.assertIn('模型', modules_for_role('vendor'))
 
 
 if __name__ == '__main__':

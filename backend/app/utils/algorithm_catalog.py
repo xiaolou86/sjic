@@ -57,7 +57,7 @@ CATEGORIES = [
 
 CAMERA_MOUNT_POSITIONS = [
     {'value': 'front_top', 'label': '前上方', 'hint': '考生前方高处，能看到脸'},
-    {'value': 'back_top', 'label': '后上方', 'hint': '考生后方高处，主要看到后脑/后背（科目一考场常见）'},
+    {'value': 'back_top', 'label': '后上方', 'hint': '考生后方高处，主要看到后脑/后背'},
     {'value': 'side_top', 'label': '侧上方', 'hint': '侧面高处，以侧脸为主'},
     {'value': 'top', 'label': '正上方', 'hint': '接近天花板垂直向下'},
 ]
@@ -145,6 +145,17 @@ OD_SCENE_PRESETS = [
             'enabled': True,
         },
     },
+    {
+        'id': 'person_fall',
+        'type': 'presence',
+        'name': '人员倒地',
+        'description': '用目标检测模型识别倒地人员（模型需含跌倒类别），不使用姿态关键点',
+        'defaults': {
+            'alert_type': 'person_fall',
+            'class_ids': [0],
+            'enabled': True,
+        },
+    },
 ]
 
 POSE_SCENE_PRESETS = [
@@ -209,17 +220,6 @@ POSE_SCENE_PRESETS = [
         },
     },
     {
-        'id': 'person_fall',
-        'type': 'fall',
-        'name': '人员倒地',
-        'description': '躺倒在地。俯视考场坐姿/伏案不算；需姿态关键点且头不再明显高于肩',
-        'defaults': {
-            'seconds': 3,
-            'alert_type': 'person_fall',
-            'enabled': True,
-        },
-    },
-    {
         'id': 'cover_mouth',
         'type': 'cover_mouth',
         'name': '捂嘴报题',
@@ -238,6 +238,7 @@ POSE_SCENE_PRESETS = [
         'defaults': {
             'seconds': 30,
             'min_touches': 3,
+            'ear_dist_ratio': 0.28,
             'alert_type': 'smart_glasses',
             'enabled': True,
         },
@@ -279,7 +280,7 @@ PRODUCT_ALGORITHMS = [
         'type': 'object_detection',
         'engine': 'object_detection',
         'name': '目标检测',
-        'description': '一次推理挂多条规则：缺席、手机、帽子、火情、聚集、滞留等',
+        'description': '一次推理挂多条规则：缺席、手机、帽子、火情、聚集、滞留、人员倒地等',
         'category': 'exam',
         'parameter_schema': _od_schema(),
     },
@@ -423,14 +424,24 @@ def _merge_scene_presets(existing, catalog):
     return ordered
 
 
+# 已从姿态目录挪到目标检测的预设，合并时从姿态 schema 去掉，避免旧实例继续露出姿态版跌倒
+_POSE_DROPPED_PRESET_IDS = frozenset({'person_fall'})
+
+
 def merge_catalog_schema(existing_schema, engine: str, *, origin=None) -> dict:
     """用目录补齐/合并 scene_presets / ui / default_task_params，保留 publish_meta 等。"""
     base = schema_for_engine(engine)
     schema = dict(existing_schema or {})
     if base.get('scene_presets'):
-        schema['scene_presets'] = _merge_scene_presets(
+        merged_presets = _merge_scene_presets(
             schema.get('scene_presets'), base['scene_presets']
         )
+        if engine == 'pose_behavior':
+            merged_presets = [
+                p for p in merged_presets
+                if p.get('id') not in _POSE_DROPPED_PRESET_IDS and p.get('type') != 'fall'
+            ]
+        schema['scene_presets'] = merged_presets
     if not schema.get('ui') and base.get('ui'):
         schema['ui'] = base['ui']
     if 'default_task_params' not in schema and 'default_task_params' in base:

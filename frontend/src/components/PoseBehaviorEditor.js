@@ -8,7 +8,7 @@ import { Add, Delete } from '@mui/icons-material';
 /**
  * 姿态行为：从场景预设添加多条行为，同一 pose task 一次推理。
  */
-function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange, catalogPresets }) {
+function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange, catalogPresets, taskConfidence }) {
   const [addPreset, setAddPreset] = useState('');
 
   const behaviors = Array.isArray(algorithmParameters?.behaviors)
@@ -64,7 +64,7 @@ function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange, catalogP
       <Grid item xs={12}>
         <Typography variant="subtitle2" gutterBottom>姿态行为 / 场景</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-          同一任务只跑一次姿态推理；可叠加多个行为。场景可单独设置运行时段（优先于任务时段）。
+          同一任务只跑一次姿态推理；可叠加多个行为。场景时段、置信度优先于任务。人员倒地请用目标检测场景。
           张望/不看屏幕等几何判断取决于视频源的安装位置（前上方/后上方/侧上方/正上方），请在「视频源」页配置。
         </Typography>
       </Grid>
@@ -156,6 +156,20 @@ function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange, catalogP
                   />
                 </Grid>
               )}
+              {b.type === 'smart_glasses' && (
+                <Grid item xs={12} md={3}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    type="number"
+                    label="耳旁距离阈值"
+                    value={b.ear_dist_ratio ?? 0.28}
+                    onChange={(e) => patchBehavior(index, { ear_dist_ratio: parseFloat(e.target.value) })}
+                    inputProps={{ min: 0.05, max: 1, step: 0.01 }}
+                    helperText="相对肩宽，越小越要贴近耳朵"
+                  />
+                </Grid>
+              )}
               {b.type === 'invigilator_absent' && (
                 <Grid item xs={12} md={3}>
                   <TextField
@@ -169,13 +183,22 @@ function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange, catalogP
                   />
                 </Grid>
               )}
-              {b.type === 'fall' && (
-                <Grid item xs={12}>
-                  <Typography variant="caption" color="text.secondary">
-                    倒地需躺姿关键点；俯视考场里坐着考试、低头看屏不会报警。
-                  </Typography>
-                </Grid>
-              )}
+              <Grid item xs={12} md={3}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  type="number"
+                  label="场景置信度"
+                  value={b.confidence ?? ''}
+                  placeholder={taskConfidence != null ? String(taskConfidence) : '跟随任务'}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    patchBehavior(index, { confidence: v === '' ? null : parseFloat(v) });
+                  }}
+                  inputProps={{ step: 0.05, min: 0, max: 1 }}
+                  helperText="留空用任务置信度"
+                />
+              </Grid>
               <Grid item xs={12} md={3}>
                 <TextField
                   fullWidth

@@ -14,7 +14,7 @@ const TYPE_FIELDS = {
   crowd_count: ['min_count', 'seconds'],
 };
 
-function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChange, catalogPresets }) {
+function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChange, catalogPresets, taskConfidence }) {
   const [addPreset, setAddPreset] = useState('');
 
   const scenePresets = useMemo(() => {
@@ -63,7 +63,7 @@ function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChan
       <Grid item xs={12}>
         <Typography variant="subtitle2" gutterBottom>检测场景</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-          从预设添加场景（如人员缺席、识别手机）。同一任务只推理一次；场景可单独设置运行时段（优先于任务时段）。
+          从预设添加场景（如人员缺席、识别手机、人员倒地）。同一任务只推理一次。场景时段、置信度优先于任务。
         </Typography>
       </Grid>
 
@@ -156,6 +156,22 @@ function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChan
                     />
                   </Grid>
                 )}
+                <Grid item xs={12} md={4}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    type="number"
+                    label="场景置信度"
+                    value={rule.confidence ?? ''}
+                    placeholder={taskConfidence != null ? String(taskConfidence) : '跟随任务'}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      patchRule(index, { confidence: v === '' ? null : parseFloat(v) });
+                    }}
+                    inputProps={{ step: 0.05, min: 0, max: 1 }}
+                    helperText="留空用任务置信度"
+                  />
+                </Grid>
                 <Grid item xs={12} md={4}>
                   <TextField
                     fullWidth

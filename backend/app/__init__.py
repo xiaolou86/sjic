@@ -12,6 +12,37 @@ from app.extensions import db, migrate, socketio, cors, sock
 from app.logging_config import configure_logging
 
 
+def _load_platform_started_at(app):
+    """计时落在 instance 卷上。文件已有则沿用；没有则用库里最早记录，避免镜像重建后从零开始。"""
+    path = os.path.join(app.instance_path, 'platform_started_at.txt')
+    if os.path.isfile(path):
+        try:
+            raw = open(path, encoding='utf-8').read().strip()
+            return datetime.fromisoformat(raw)
+        except (OSError, ValueError) as exc:
+            app.logger.warning(f"platform_started_at unreadable ({exc}), will rewrite")
+    started = datetime.now().replace(microsecond=0)
+    try:
+        from sqlalchemy import func
+        from app.models.algorithm import Algorithm
+        from app.models.camera import Camera
+        stamps = []
+        for model in (Algorithm, Camera):
+            stamp = db.session.query(func.min(model.created_at)).scalar()
+            if stamp:
+                stamps.append(stamp.replace(microsecond=0) if stamp.microsecond else stamp)
+        if stamps:
+            started = min(stamps + [started])
+    except Exception as exc:
+        app.logger.info(f"platform uptime seed skipped: {exc}")
+    try:
+        with open(path, 'w', encoding='utf-8') as fh:
+            fh.write(started.isoformat())
+    except OSError as exc:
+        app.logger.warning(f"failed to persist platform_started_at: {exc}")
+    return started
+
+
 def create_app(config_class=Config):
     """
     创建并配置 Flask 应用实例。
@@ -24,7 +55,6 @@ def create_app(config_class=Config):
     """
     app = Flask(__name__)
     app.config.from_object(config_class)
-    app.config['APP_STARTED_AT'] = datetime.now()
 
     # 设置最大内容长度
     app.config['MAX_CONTENT_LENGTH'] = config_class.MAX_CONTENT_LENGTH
@@ -74,6 +104,7 @@ def create_app(config_class=Config):
 
     # 确保应用核心工作目录与实例目录存在
     os.makedirs(app.instance_path, exist_ok=True)
+    app.config['APP_STARTED_AT'] = datetime.now().replace(microsecond=0)
     for folder_key in ['MODEL_FOLDER', 'VIDEO_FOLDER', 'IMAGE_FOLDER', 'ALERT_FOLDER', 'LOG_FOLDER', 'BRANDING_FOLDER']:
         folder_path = app.config.get(folder_key)
         if folder_path:
@@ -96,6 +127,8 @@ def create_app(config_class=Config):
         # 注册全部 ORM 模型（供迁移 autogenerate 与运行时一致）
         # 注意：勿写 `import app.models`，会与局部变量 app(Flask 实例) 冲突
         from app import models as _orm_models  # noqa: F401
+
+        app.config['APP_STARTED_AT'] = _load_platform_started_at(app)
 
         if app.config.get('AUTO_CREATE_DB'):
             app.logger.warning(

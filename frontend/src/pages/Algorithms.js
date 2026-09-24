@@ -483,7 +483,7 @@ function Algorithms() {
                   value={formData.infer_fps}
                   onChange={(e) => setFormData({ ...formData, infer_fps: e.target.value })}
                   inputProps={{ min: 0.5, max: 30, step: 0.5 }}
-                  helperText="边缘每秒推理次数；目标检测常用 2～5，跌倒类姿态建议 ≥5"
+                  helperText="边缘每秒推理次数；目标检测（含跌倒）常用 2～5，姿态行为建议 ≥5"
                 />
               </Grid>
             )}

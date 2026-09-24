@@ -5,6 +5,21 @@ import os
 from shapely.geometry import Point, Polygon
 import numpy as np
 
+def effective_confidence(spec, task_confidence, default=0.5):
+    """场景单独设置了置信度时以场景为准，否则用任务置信度。"""
+    try:
+        task_v = float(task_confidence)
+    except (TypeError, ValueError):
+        task_v = float(default)
+    raw = spec.get('confidence') if isinstance(spec, dict) else None
+    if raw is None or raw == '':
+        return task_v
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return task_v
+
+
 class BaseAlgorithm(ABC):
     """边缘端算法纯净抽象基类，不依赖任何数据库和 Web 框架"""
 

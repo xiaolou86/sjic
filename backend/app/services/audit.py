@@ -30,6 +30,33 @@ _REVIEW_LABELS = {
     'pending': '重置为待确认',
 }
 
+OPERATION_MODULES = (
+    '认证', '视频源', '任务', '算法', '模型', '节点', '告警',
+    '检测', '训练', '授权', '系统设置', '系统',
+)
+# 与导航菜单一致：普通管理员（customer）看不到厂商专属模块。
+CUSTOMER_HIDDEN_MODULES = frozenset({'模型', '训练'})
+SUPER_ADMIN_USERNAME = 'super_admin'
+
+
+def modules_for_role(role):
+    if role == 'vendor':
+        return list(OPERATION_MODULES)
+    return [name for name in OPERATION_MODULES if name not in CUSTOMER_HIDDEN_MODULES]
+
+
+def operation_visible_to(viewer_role, log_username, log_role, log_module):
+    """普通管理员不能看 super_admin 的操作/登录，也不能看无权限模块。"""
+    if viewer_role == 'vendor':
+        return True
+    if (log_username or '').strip() == SUPER_ADMIN_USERNAME:
+        return False
+    if (log_role or '') == 'vendor':
+        return False
+    if log_module in CUSTOMER_HIDDEN_MODULES:
+        return False
+    return True
+
 
 def _name(body):
     if not isinstance(body, dict):
