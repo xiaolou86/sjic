@@ -2,9 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
     Grid, Paper, Table, TableBody, TableCell, TableContainer, TableHead,
     TableRow, Button, IconButton, Typography, Box, Dialog, DialogTitle,
-    DialogContent, DialogActions, TextField, Chip, Select, MenuItem, OutlinedInput,
-    Menu, ListItemIcon, ListItemText, Divider, LinearProgress, Tooltip, Snackbar, Alert, Stack,
-    FormControl, InputLabel
+    DialogContent, DialogActions,     TextField, Chip, MenuItem, Checkbox, FormGroup, FormControlLabel, FormLabel,
+    Menu, ListItemIcon, ListItemText, Divider, LinearProgress, Tooltip, Snackbar, Alert, Stack
 } from '@mui/material';
 import {
     Edit, Delete, Circle, RestartAlt, PowerSettingsNew, WifiTethering, SettingsBackupRestore, ContentCopy
@@ -225,6 +224,7 @@ function Nodes() {
                     <Table>
                         <TableHead>
                             <TableRow>
+                                <TableCell sx={{ width: 64 }}>序号</TableCell>
                                 <TableCell>状态</TableCell>
                                 <TableCell>名称</TableCell>
                                 <TableCell>IP 地址</TableCell>
@@ -236,7 +236,7 @@ function Nodes() {
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {nodes.map((node) => {
+                            {nodes.map((node, index) => {
                                 const statusColor = getStatusColor(node.status, node.last_heartbeat);
                                 const statusLabel = getStatusLabel(node.status, node.last_heartbeat);
                                 const boundIds = Array.isArray(node.bound_camera_ids) ? node.bound_camera_ids : [];
@@ -244,6 +244,7 @@ function Nodes() {
                                     .map(id => cameras.find(c => c.id === id)?.name || `ID=${id}`);
                                 return (
                                     <TableRow key={node.id}>
+                                        <TableCell>{index + 1}</TableCell>
                                         <TableCell>
                                             <Chip
                                                 icon={<Circle fontSize="small" />}
@@ -361,31 +362,49 @@ function Nodes() {
                             value={formData.name}
                             onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                         />
-                        <FormControl fullWidth sx={{ mt: 2 }}>
-                            <InputLabel id="bound-cameras-label">绑定视频源（可多选）</InputLabel>
-                            <Select
-                                labelId="bound-cameras-label"
-                                label="绑定视频源（可多选）"
-                                multiple
-                                value={formData.bound_camera_ids}
-                                onChange={(e) => {
-                                    const value = e.target.value;
-                                    setFormData(prev => ({ ...prev, bound_camera_ids: typeof value === 'string' ? value.split(',') : value }));
-                                }}
-                                input={<OutlinedInput label="绑定视频源（可多选）" />}
-                                renderValue={(selected) => {
-                                    if (!selected || selected.length === 0) return '未选择';
-                                    const names = selected.map(id => cameras.find(c => c.id === id)?.name || `ID=${id}`);
-                                    return names.join(', ');
-                                }}
-                            >
-                                {cameras.map((camera) => (
-                                    <MenuItem key={camera.id} value={camera.id}>
-                                        {camera.name}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
+                        <FormLabel sx={{ display: 'block', mt: 2.5, mb: 1 }}>绑定视频源（可多选）</FormLabel>
+                        <FormGroup
+                            sx={{
+                                maxHeight: 280,
+                                overflow: 'auto',
+                                border: '1px solid',
+                                borderColor: 'divider',
+                                borderRadius: 1,
+                                px: 1.5,
+                                py: 0.5,
+                            }}
+                        >
+                            {cameras.length === 0 && (
+                                <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+                                    暂无视频源
+                                </Typography>
+                            )}
+                            {cameras.map((camera) => {
+                                const checked = (formData.bound_camera_ids || []).some(
+                                    (id) => String(id) === String(camera.id)
+                                );
+                                return (
+                                    <FormControlLabel
+                                        key={camera.id}
+                                        control={(
+                                            <Checkbox
+                                                checked={checked}
+                                                onChange={(e) => {
+                                                    setFormData((prev) => {
+                                                        const current = prev.bound_camera_ids || [];
+                                                        const next = e.target.checked
+                                                            ? [...current.filter((id) => String(id) !== String(camera.id)), camera.id]
+                                                            : current.filter((id) => String(id) !== String(camera.id));
+                                                        return { ...prev, bound_camera_ids: next };
+                                                    });
+                                                }}
+                                            />
+                                        )}
+                                        label={camera.name}
+                                    />
+                                );
+                            })}
+                        </FormGroup>
                     </Box>
                 </DialogContent>
                 <DialogActions>

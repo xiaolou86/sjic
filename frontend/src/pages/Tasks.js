@@ -734,6 +734,7 @@ function Tasks() {
           <Table>
             <TableHead>
               <TableRow>
+                <TableCell sx={{ width: 64 }}>序号</TableCell>
                 <TableCell>名称</TableCell>
                 <TableCell>视频源</TableCell>
                 <TableCell>算力节点</TableCell>
@@ -744,8 +745,9 @@ function Tasks() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredTasks.map((task) => (
+              {filteredTasks.map((task, index) => (
                 <TableRow key={task.id}>
+                  <TableCell>{index + 1}</TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                       <span>{task.name}</span>

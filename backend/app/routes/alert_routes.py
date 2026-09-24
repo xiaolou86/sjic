@@ -7,7 +7,7 @@ import os
 import zipfile
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request, send_from_directory, send_file, current_app
+from flask import Blueprint, jsonify, request, send_from_directory, Response, current_app
 from sqlalchemy import or_
 from app.extensions import db, socketio
 from app.models import Alert, Camera
@@ -44,12 +44,16 @@ def _alert_to_client(alert):
     return data
 
 
-def _alert_query_from_args():
+EXPORT_LIMIT = 5000
+
+
+def _alert_query_from_args(source=None):
     """按关键字、时间段、处理状态过滤告警。"""
-    keyword = (request.args.get('keyword') or request.args.get('q') or '').strip()
-    start = _parse_dt(request.args.get('start') or request.args.get('start_time'))
-    end = _parse_dt(request.args.get('end') or request.args.get('end_time'))
-    review_status = (request.args.get('review_status') or request.args.get('status') or '').strip()
+    source = request.args if source is None else source
+    keyword = (source.get('keyword') or source.get('q') or '').strip()
+    start = _parse_dt(source.get('start') or source.get('start_time'))
+    end = _parse_dt(source.get('end') or source.get('end_time'))
+    review_status = (source.get('review_status') or source.get('status') or '').strip()
 
     query = Alert.query.outerjoin(Camera)
 
@@ -65,7 +69,7 @@ def _alert_query_from_args():
         query = query.filter(Alert.timestamp >= start)
     if end is not None:
         query = query.filter(Alert.timestamp <= end)
-    if review_status:
+    if review_status and review_status != 'all':
         if review_status == 'pending':
             query = query.filter(or_(
                 Alert.review_status == 'pending',
@@ -191,14 +195,69 @@ def review_alert(alert_id):
         return jsonify({'error': str(e)}), 500
 
 
-@alert_bp.route('/api/alerts/export', methods=['GET'])
+def _export_ids():
+    """只导出调用方明确勾选的记录，避免把整次查询（含其他页）全部打包。"""
+    raw = []
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        raw = data.get('ids') or []
+    else:
+        text = (request.args.get('ids') or '').strip()
+        raw = [part for part in text.split(',') if part.strip()] if text else []
+    if isinstance(raw, str):
+        raw = [part for part in raw.split(',') if part.strip()]
+    ids = []
+    seen = set()
+    for item in raw:
+        try:
+            alert_id = int(item)
+        except (TypeError, ValueError):
+            continue
+        if alert_id <= 0 or alert_id in seen:
+            continue
+        seen.add(alert_id)
+        ids.append(alert_id)
+        if len(ids) >= 500:
+            break
+    return ids
+
+
+@alert_bp.route('/api/alerts/export', methods=['GET', 'POST'])
 @token_required
 def export_alerts():
     """
     导出告警日志（含图片）为 ZIP：alerts.csv + images/
+    ids：只导出勾选记录。scope=query：导出当前筛选条件下的全部结果（跨页）。
     """
     try:
-        alerts = _alert_query_from_args().limit(5000).all()
+        body = request.get_json(silent=True) or {}
+        export_query = (
+            (request.method == 'POST' and body.get('scope') == 'query')
+            or request.args.get('scope') == 'query'
+        )
+        if export_query:
+            source = body if request.method == 'POST' else request.args
+            query = _alert_query_from_args(source)
+            matched = query.count()
+            if matched == 0:
+                return jsonify({'error': '没有找到可导出的告警记录'}), 404
+            if matched > EXPORT_LIMIT:
+                return jsonify({
+                    'error': f'查询结果共 {matched} 条，超过单次导出上限 {EXPORT_LIMIT} 条，请缩小时间范围后再导出'
+                }), 400
+            alerts = query.limit(EXPORT_LIMIT).all()
+        else:
+            ids = _export_ids()
+            if not ids:
+                return jsonify({'error': '请先勾选要导出的告警记录'}), 400
+            alerts = (
+                Alert.query.outerjoin(Camera)
+                .filter(Alert.id.in_(ids))
+                .order_by(Alert.timestamp.desc())
+                .all()
+            )
+            if not alerts:
+                return jsonify({'error': '没有找到可导出的告警记录'}), 404
         alert_folder = current_app.config['ALERT_FOLDER']
 
         buf = io.BytesIO()
@@ -240,13 +299,16 @@ def export_alerts():
 
             zf.writestr('alerts.csv', csv_buf.getvalue().encode('utf-8-sig'))
 
-        buf.seek(0)
+        payload = buf.getvalue()
         stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        return send_file(
-            buf,
+        filename = f'alerts_export_{stamp}.zip'
+        return Response(
+            payload,
             mimetype='application/zip',
-            as_attachment=True,
-            download_name=f'alerts_export_{stamp}.zip',
+            headers={
+                'Content-Disposition': f'attachment; filename="{filename}"',
+                'Content-Length': str(len(payload)),
+            },
         )
     except Exception as e:
         current_app.logger.error(f"Error exporting alerts: {str(e)}")

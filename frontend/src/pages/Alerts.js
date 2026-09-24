@@ -3,7 +3,7 @@ import {
   Grid, Card, CardContent, Typography, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Paper, Dialog, DialogTitle, DialogContent,
   DialogActions, TablePagination, IconButton, TextField, Button, Box, Stack,
-  Chip, MenuItem, Alert as MuiAlert, InputAdornment
+  Chip, MenuItem, Alert as MuiAlert, InputAdornment, Checkbox
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import {
@@ -160,7 +160,8 @@ function Alerts() {
   const [appliedFilters, setAppliedFilters] = useState({
     keyword: '', start: '', end: '', review_status: 'pending',
   });
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState('');
+  const [selectedIds, setSelectedIds] = useState([]);
   const [reviewDialog, setReviewDialog] = useState(null);
   const [reviewNote, setReviewNote] = useState('');
   const [reviewing, setReviewing] = useState(false);
@@ -199,6 +200,7 @@ function Alerts() {
   };
 
   const handleSearch = () => {
+    setSelectedIds([]);
     setPage(0);
     setAppliedFilters({
       keyword: keyword.trim(),
@@ -209,6 +211,7 @@ function Alerts() {
   };
 
   const handleClearFilters = () => {
+    setSelectedIds([]);
     setKeyword('');
     setStartTime('');
     setEndTime('');
@@ -217,32 +220,99 @@ function Alerts() {
     setAppliedFilters({ keyword: '', start: '', end: '', review_status: 'all' });
   };
 
-  const handleExport = async () => {
-    setExporting(true);
+  const readExportError = async (payload) => {
+    if (payload instanceof Blob) {
+      try {
+        const json = JSON.parse(await payload.text());
+        return json.error || '导出失败，请稍后重试';
+      } catch (err) {
+        return '导出失败，请稍后重试';
+      }
+    }
+    return payload?.error || '导出失败，请稍后重试';
+  };
+
+  const toggleSelected = (id) => {
+    setSelectedIds((prev) => (
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    ));
+  };
+
+  const togglePageSelected = (checked) => {
+    const pageIds = alerts.map((alert) => alert.id);
+    setSelectedIds((prev) => {
+      if (checked) {
+        return Array.from(new Set([...prev, ...pageIds]));
+      }
+      return prev.filter((id) => !pageIds.includes(id));
+    });
+  };
+
+  const downloadExportBlob = async (blob) => {
+    if (!(blob instanceof Blob)) {
+      throw new Error('导出响应无效');
+    }
+    const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+    if (head[0] !== 0x50 || head[1] !== 0x4b) {
+      window.alert(await readExportError(blob));
+      return;
+    }
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `alerts_export_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleExportSelected = async () => {
+    if (selectedIds.length === 0) {
+      window.alert('请先勾选要导出的告警记录');
+      return;
+    }
+    setExporting('selected');
     try {
-      const blob = await axios.get('/api/alerts/export', {
-        params: buildFilterParams({
-          keyword: keyword.trim() || appliedFilters.keyword,
-          start: startTime || appliedFilters.start,
-          end: endTime || appliedFilters.end,
-          review_status: reviewStatus || appliedFilters.review_status,
-        }),
+      const blob = await axios.post('/api/alerts/export', { ids: selectedIds }, {
         responseType: 'blob',
         timeout: 120000,
       });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `alerts_export_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      await downloadExportBlob(blob);
     } catch (error) {
       console.error('Error exporting alerts:', error);
-      window.alert('导出失败，请稍后重试');
+      window.alert(await readExportError(error.response?.data));
     } finally {
-      setExporting(false);
+      setExporting('');
+    }
+  };
+
+  const handleExportQuery = async () => {
+    if (total <= 0) {
+      window.alert('当前查询没有可导出的告警记录');
+      return;
+    }
+    if (!window.confirm(`将导出本次查询的全部 ${total} 条记录，包含其他页。`)) {
+      return;
+    }
+    setExporting('query');
+    try {
+      const blob = await axios.post('/api/alerts/export', {
+        scope: 'query',
+        keyword: appliedFilters.keyword,
+        start: appliedFilters.start,
+        end: appliedFilters.end,
+        review_status: appliedFilters.review_status,
+      }, {
+        responseType: 'blob',
+        timeout: 120000,
+      });
+      await downloadExportBlob(blob);
+    } catch (error) {
+      console.error('Error exporting alerts:', error);
+      window.alert(await readExportError(error.response?.data));
+    } finally {
+      setExporting('');
     }
   };
 
@@ -379,10 +449,18 @@ function Alerts() {
                 <Button
                   variant="outlined"
                   startIcon={<FileDownload />}
-                  onClick={handleExport}
-                  disabled={exporting}
+                  onClick={handleExportSelected}
+                  disabled={Boolean(exporting) || selectedIds.length === 0}
                 >
-                  {exporting ? '导出中…' : '导出(含图片)'}
+                  {exporting === 'selected' ? '导出中…' : `导出选中(${selectedIds.length})`}
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<FileDownload />}
+                  onClick={handleExportQuery}
+                  disabled={Boolean(exporting) || total === 0}
+                >
+                  {exporting === 'query' ? '导出中…' : `导出查询结果(${total})`}
                 </Button>
               </Box>
             </Stack>
@@ -391,6 +469,19 @@ function Alerts() {
               <Table>
                 <TableHead>
                   <TableRow>
+                    <TableCell padding="checkbox">
+                      <Checkbox
+                        size="small"
+                        indeterminate={
+                          alerts.some((alert) => selectedIds.includes(alert.id))
+                          && !alerts.every((alert) => selectedIds.includes(alert.id))
+                        }
+                        checked={alerts.length > 0 && alerts.every((alert) => selectedIds.includes(alert.id))}
+                        onChange={(e) => togglePageSelected(e.target.checked)}
+                        inputProps={{ 'aria-label': '全选本页' }}
+                      />
+                    </TableCell>
+                    <TableCell sx={{ width: 64 }}>序号</TableCell>
                     <TableCell>时间</TableCell>
                     <TableCell>视频源</TableCell>
                     <TableCell>场景</TableCell>
@@ -402,8 +493,17 @@ function Alerts() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {alerts.map((alert) => (
-                    <TableRow key={alert.id}>
+                  {alerts.map((alert, index) => (
+                    <TableRow key={alert.id} selected={selectedIds.includes(alert.id)}>
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          size="small"
+                          checked={selectedIds.includes(alert.id)}
+                          onChange={() => toggleSelected(alert.id)}
+                          inputProps={{ 'aria-label': `选择第 ${page * rowsPerPage + index + 1} 条` }}
+                        />
+                      </TableCell>
+                      <TableCell>{page * rowsPerPage + index + 1}</TableCell>
                       <TableCell>{new Date(alert.timestamp).toLocaleString()}</TableCell>
                       <TableCell>{alert.camera_name}</TableCell>
                       <TableCell>{alert.alert_type_label || alert.alert_type}</TableCell>
@@ -477,7 +577,7 @@ function Alerts() {
                   ))}
                   {alerts.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={8} align="center">
+                      <TableCell colSpan={10} align="center">
                         <Typography variant="body2" color="text.secondary" sx={{ py: 3 }}>
                           暂无告警记录
                         </Typography>

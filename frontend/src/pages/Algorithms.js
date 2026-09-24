@@ -203,6 +203,7 @@ function Algorithms() {
       <Table size="small">
         <TableHead>
           <TableRow>
+            <TableCell sx={{ width: 64 }}>序号</TableCell>
             <TableCell>名称</TableCell>
             <TableCell>引擎</TableCell>
             <TableCell>分类</TableCell>
@@ -212,19 +213,20 @@ function Algorithms() {
         <TableBody>
           {rows.length === 0 && (
             <TableRow>
-              <TableCell colSpan={4}>
+              <TableCell colSpan={5}>
                 <Typography variant="body2" color="text.secondary">
                   暂无系统模板（重启后端同步目录后出现）
                 </Typography>
               </TableCell>
             </TableRow>
           )}
-          {rows.map((algorithm) => {
+          {rows.map((algorithm, index) => {
             const presetCount = Array.isArray(algorithm.parameter_schema?.scene_presets)
               ? algorithm.parameter_schema.scene_presets.length
               : 0;
             return (
               <TableRow key={algorithm.id}>
+                <TableCell>{index + 1}</TableCell>
                 <TableCell>
                   {algorithm.name}
                   {presetCount > 0 && (
@@ -262,6 +264,7 @@ function Algorithms() {
       <Table size="small">
         <TableHead>
           <TableRow>
+            <TableCell sx={{ width: 64 }}>序号</TableCell>
             <TableCell>名称</TableCell>
             {isSuperAdmin && <TableCell>引擎</TableCell>}
             <TableCell>分类</TableCell>
@@ -274,20 +277,21 @@ function Algorithms() {
         <TableBody>
           {rows.length === 0 && (
             <TableRow>
-              <TableCell colSpan={isSuperAdmin ? 7 : 2}>
+              <TableCell colSpan={isSuperAdmin ? 8 : 3}>
                 <Typography variant="body2" color="text.secondary">
                   {isSuperAdmin ? '暂无上架算法，请到「系统模板」页签派生' : '暂无可用算法'}
                 </Typography>
               </TableCell>
             </TableRow>
           )}
-          {rows.map((algorithm) => {
+          {rows.map((algorithm, index) => {
             const amodel = models.find((m) => String(m.id) === String(algorithm.model_id));
             const presetCount = Array.isArray(algorithm.parameter_schema?.scene_presets)
               ? algorithm.parameter_schema.scene_presets.length
               : 0;
             return (
               <TableRow key={algorithm.id}>
+                <TableCell>{index + 1}</TableCell>
                 <TableCell>
                   {algorithm.name}
                   {presetCount > 0 && (

@@ -123,8 +123,9 @@ function License() {
               </Button>
             </Stack>
 
-            <Divider sx={{ my: 1.5 }} />
-            <Grid container spacing={1}>
+            <Divider sx={{ my: 4 }} />
+            <Typography variant="subtitle1" sx={{ mb: 2 }}>授权信息</Typography>
+            <Grid container spacing={2}>
               <Grid item xs={12} sm={6} md={3}>
                 <Typography variant="caption" color="text.secondary">视频路数上限</Typography>
                 <Typography>
