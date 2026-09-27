@@ -205,12 +205,13 @@ class TaskManager:
             task_config['model_local_path'] = model_path
 
             # 定义告警回调
-            def handle_alert(alert_type, confidence, image_frame, message=None):
+            def handle_alert(alert_type, confidence, image_frame, message=None, raw_frame=None):
                 self._upload_alert(
                     task_config['camera']['id'],
                     alert_type,
                     confidence,
                     image_frame=image_frame,
+                    raw_frame=raw_frame,
                     message=message,
                     task_id=task_config.get('task_id'),
                     algorithm_id=task_config.get('algorithm_id'),
@@ -318,7 +319,7 @@ class TaskManager:
             }
             self.mqtt_client.publish_task_status(payload)
 
-    def _upload_alert(self, camera_id, alert_type, confidence, image_frame=None, image_path=None, message=None, task_id=None, algorithm_id=None):
+    def _upload_alert(self, camera_id, alert_type, confidence, image_frame=None, image_path=None, raw_frame=None, message=None, task_id=None, algorithm_id=None):
         """HTTP POST 上传告警到云端"""
         url = f"{self.api_base_url}/alerts"
         try:
@@ -342,6 +343,11 @@ class TaskManager:
                 success, encoded_image = cv2.imencode('.jpg', image_frame)
                 if success:
                     files['image'] = ('alert.jpg', encoded_image.tobytes(), 'image/jpeg')
+            if raw_frame is not None and hasattr(raw_frame, 'any') and raw_frame.any():
+                import cv2
+                success, encoded_raw = cv2.imencode('.jpg', raw_frame)
+                if success:
+                    files['raw_image'] = ('alert_raw.jpg', encoded_raw.tobytes(), 'image/jpeg')
 
             response = requests.post(url, data=data, files=files if files else None, timeout=5)
             if response.ok:

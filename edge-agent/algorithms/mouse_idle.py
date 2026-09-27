@@ -80,7 +80,8 @@ class MouseIdleAlgorithm(BaseAlgorithm):
                         continue
 
                     message = f"超过 {idle_seconds:.0f}s 无鼠标操作（已空闲 {idle_for:.0f}s）"
-                    alert_frame = frame if (frame is not None and is_valid_frame(frame)) else None
+                    raw_frame = frame if (frame is not None and is_valid_frame(frame)) else None
+                    alert_frame = raw_frame
                     if alert_frame is not None:
                         alert_frame = self.draw_alert_overlay(alert_frame, caption=message)
                     logger.info(f"Triggering {alert_type} for {task_name}")
@@ -90,6 +91,7 @@ class MouseIdleAlgorithm(BaseAlgorithm):
                             confidence=1.0,
                             image_frame=alert_frame,
                             message=message,
+                            raw_frame=raw_frame,
                         )
                     last_alert_time = now
                     time.sleep(1.0)

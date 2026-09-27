@@ -93,9 +93,10 @@ class BaseAlgorithm(ABC):
 
         return frame
 
-    def draw_alert_overlay(self, frame, boxes=None, roi_points=None, caption=None):
-        """在告警截图上画规则 ROI、检测框和说明文字。"""
+    def draw_alert_overlay(self, frame, boxes=None, roi_points=None, caption=None, skeletons=None):
+        """在告警截图上画规则 ROI、检测框、姿态骨骼和说明文字。"""
         vis = frame.copy()
+        _draw_pose_skeletons(vis, skeletons)
         if roi_points and len(roi_points) >= 3:
             pts = np.array(roi_points, dtype=np.int32).reshape((-1, 1, 2))
             overlay = vis.copy()
@@ -115,6 +116,49 @@ class BaseAlgorithm(ABC):
         if caption:
             vis = _put_text(vis, caption, (8, 8), color_bgr=(255, 255, 255))
         return vis
+
+
+# COCO-17：头、肩、手臂、躯干、腿。与姿态判断使用的关键点一致。
+_POSE_EDGES = (
+    (0, 1), (0, 2), (1, 3), (2, 4),
+    (5, 6),
+    (5, 7), (7, 9),
+    (6, 8), (8, 10),
+    (5, 11), (6, 12), (11, 12),
+    (11, 13), (13, 15),
+    (12, 14), (14, 16),
+)
+
+
+def _pose_points(kps, min_conf=0.25):
+    if kps is None:
+        return []
+    points = []
+    for i in range(len(kps)):
+        row = kps[i]
+        x, y = float(row[0]), float(row[1])
+        conf = float(row[2]) if len(row) > 2 else 1.0
+        points.append((x, y, conf >= min_conf and x > 0 and y > 0))
+    return points
+
+
+def _draw_pose_skeletons(vis, skeletons, min_conf=0.25):
+    """把用于判断的可见骨骼点和连线画到告警图上。"""
+    if vis is None or not skeletons:
+        return vis
+    for kps in skeletons:
+        pts = _pose_points(kps, min_conf)
+        for a, b in _POSE_EDGES:
+            if a >= len(pts) or b >= len(pts) or not (pts[a][2] and pts[b][2]):
+                continue
+            p1 = (int(pts[a][0]), int(pts[a][1]))
+            p2 = (int(pts[b][0]), int(pts[b][1]))
+            cv2.line(vis, p1, p2, (255, 200, 0), 2, cv2.LINE_AA)
+        for x, y, ok in pts:
+            if not ok:
+                continue
+            cv2.circle(vis, (int(x), int(y)), 4, (0, 140, 255), -1, cv2.LINE_AA)
+    return vis
 
 
 _FONT_CACHE = {}

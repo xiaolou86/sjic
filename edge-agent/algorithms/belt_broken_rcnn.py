@@ -61,6 +61,7 @@ class BeltBrokenRCNNAlgorithm(BaseAlgorithm):
                 result = runtime.infer(frame, conf=confidence)
                 
                 if result.count > 0:
+                    raw_frame = frame.copy()
                     defect_regions = []
                     total_defect_area_px = 0
                     
@@ -197,7 +198,8 @@ class BeltBrokenRCNNAlgorithm(BaseAlgorithm):
                             on_alert(
                                 alert_type="belt_broken",
                                 confidence=max(r['confidence'] for r in defect_regions),
-                                image_frame=frame
+                                image_frame=frame,
+                                raw_frame=raw_frame,
                             )
                 
                 time.sleep(0.01)

@@ -44,7 +44,7 @@ def _alert_to_client(alert):
     return data
 
 
-EXPORT_LIMIT = 5000
+EXPORT_LIMIT = 1000
 
 
 def _alert_query_from_args(source=None):
@@ -418,6 +418,10 @@ def get_alert_image(filename):
         description: 图片未找到
     """
     try:
+        base = os.path.basename(filename)
+        stem, _ext = os.path.splitext(base)
+        if stem.endswith('_raw'):
+            return jsonify({'error': 'Image not found'}), 404
         return send_from_directory(current_app.config['ALERT_FOLDER'], filename)
     except Exception as e:
         current_app.logger.error(f"Error getting alert image: {str(e)}")

@@ -226,6 +226,7 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                             confidence=hit['confidence'],
                             image_frame=alert_frame,
                             message=message,
+                            raw_frame=processed,
                         )
             finally:
                 pump.release()

@@ -124,7 +124,8 @@ class BeltDeviationDetection(BaseAlgorithm):
                                 on_alert(
                                     alert_type="belt_deviation_detection",
                                     confidence=1.0,
-                                    image_frame=vis_frame
+                                    image_frame=vis_frame,
+                                    raw_frame=processed_numpy,
                                 )
                 
                 time.sleep(0.01)

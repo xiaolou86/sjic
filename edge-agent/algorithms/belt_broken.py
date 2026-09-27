@@ -57,7 +57,7 @@ class BeltBrokenAlgorithm(BaseAlgorithm):
                         
                         # 把告警抛给上游（由 TaskManager 负责 HTTP POST 给云端并通知 PLC）
                         if on_alert:
-                            on_alert("belt_broken", max_conf, alert_frame)
+                            on_alert("belt_broken", max_conf, alert_frame, raw_frame=frame)
 
             except Exception as e:
                 logger.error(f"Inference error: {str(e)}")

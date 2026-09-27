@@ -91,12 +91,14 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
         window = float(spec.get('seconds', 30))
         near = False
         hit_box = None
+        hit_kps = None
         for box, kps in persons:
             if kps is None:
                 continue
             if is_wrist_near_ear(kps, spec.get('ear_dist_ratio', 0.28)):
                 near = True
                 hit_box = box
+                hit_kps = kps
                 break
 
         if near and not state.get('near'):
@@ -116,8 +118,8 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
             state['touches'] = 0
             state['window_start'] = None
             state['near'] = False
-            return True, hit_box
-        return False, None
+            return True, hit_box, hit_kps
+        return False, None, None
 
     def _eval_invigilator_absent(self, persons, spec, state, now, view):
         """站立人数持续少于 min_standing 达到 seconds（默认 120s）则告警。"""
@@ -155,12 +157,12 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
             model_path = config_dict.get('model_local_path')
             algo_params = parameters.get('algorithm_parameters') or {}
             task_confidence = float(parameters.get('confidence', 0.5))
+            alert_threshold = int(parameters.get('alertThreshold', 10))
+            behaviors = [b for b in (algo_params.get('behaviors') or []) if b.get('enabled', True)]
             confidence = min(
                 (effective_confidence(b, task_confidence) for b in behaviors),
                 default=task_confidence,
             )
-            alert_threshold = int(parameters.get('alertThreshold', 10))
-            behaviors = [b for b in (algo_params.get('behaviors') or []) if b.get('enabled', True)]
             task_name = config_dict.get('task_id', 'unknown_task')
             task_sched_start = parameters.get('schedule_start') or algo_params.get('schedule_start')
             task_sched_end = parameters.get('schedule_end') or algo_params.get('schedule_end')
@@ -274,11 +276,11 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
                         ]
 
                         if btype == 'smart_glasses':
-                            ok, box = self._eval_smart_glasses(
+                            ok, box, kps = self._eval_smart_glasses(
                                 persons_for_spec, spec, extra_state[bid], now
                             )
                             if ok:
-                                hit_person = (box, None)
+                                hit_person = (box, kps)
                                 message = (
                                     f"行为[{spec.get('name') or btype}] "
                                     f"镜脚触碰达 {spec.get('min_touches', 3)} 次"
@@ -322,11 +324,18 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
                         if la and (now - la).total_seconds() < alert_threshold:
                             continue
 
-                        box, _ = hit_person
+                        box, kps = hit_person
+                        if btype == 'invigilator_absent':
+                            skeletons = [pk for _, pk in persons_for_spec if pk is not None]
+                        elif kps is not None:
+                            skeletons = [kps]
+                        else:
+                            skeletons = None
                         alert_frame = self.draw_alert_overlay(
                             processed,
                             boxes=[box] if box is not None else None,
                             caption=message or f"行为[{spec.get('name') or btype}]",
+                            skeletons=skeletons,
                         )
                         logger.info(f"Triggering {alert_type} for {task_name}")
                         if on_alert:
@@ -335,6 +344,7 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
                                 confidence=float(getattr(box, 'confidence', 1.0) or 1.0) if box else 1.0,
                                 image_frame=alert_frame,
                                 message=message,
+                                raw_frame=processed,
                             )
                         last_alert[bid] = now
                         if btype not in STATEFUL_BEHAVIORS:

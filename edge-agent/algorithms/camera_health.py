@@ -71,6 +71,7 @@ class CameraHealthAlgorithm(BaseAlgorithm):
                             confidence=1.0,
                             image_frame=alert_frame,
                             message=message,
+                            raw_frame=frame,
                         )
                     last_alert_time = now
                     bad_since = now
