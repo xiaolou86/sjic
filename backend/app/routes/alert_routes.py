@@ -93,6 +93,15 @@ def _image_filename(alert):
     return raw.lstrip('/')
 
 
+def _raw_image_filename(filename):
+    """带框图 edge_alert_xxx.jpg 对应的原图 edge_alert_xxx_raw.jpg。"""
+    base = os.path.basename(filename or '')
+    stem, ext = os.path.splitext(base)
+    if not stem or stem.endswith('_raw'):
+        return None
+    return f"{stem}_raw{ext or '.jpg'}"
+
+
 @alert_bp.route('/api/alerts', methods=['GET'])
 @token_required
 def get_alerts():
@@ -226,7 +235,7 @@ def _export_ids():
 @token_required
 def export_alerts():
     """
-    导出告警日志（含图片）为 ZIP：alerts.csv + images/
+    导出告警日志（含带框图和原图）为 ZIP：alerts.csv + images/
     ids：只导出勾选记录。scope=query：导出当前筛选条件下的全部结果（跨页）。
     """
     try:
@@ -268,17 +277,23 @@ def export_alerts():
                 'id', 'timestamp', 'camera_id', 'camera_name',
                 'alert_type', 'alert_type_label', 'message', 'confidence',
                 'review_status', 'reviewed_by', 'reviewed_at', 'review_note',
-                'image_file'
+                'image_file', 'raw_image_file'
             ])
 
             for alert in alerts:
                 filename = _image_filename(alert)
                 archived_name = ''
+                raw_archived_name = ''
                 if filename:
-                    src = os.path.join(alert_folder, filename)
+                    src = os.path.join(alert_folder, os.path.basename(filename))
                     if os.path.isfile(src):
                         archived_name = f'{alert.id}_{os.path.basename(filename)}'
                         zf.write(src, arcname=f'images/{archived_name}')
+                    raw_name = _raw_image_filename(filename)
+                    raw_src = os.path.join(alert_folder, raw_name) if raw_name else ''
+                    if raw_src and os.path.isfile(raw_src):
+                        raw_archived_name = f'{alert.id}_{raw_name}'
+                        zf.write(raw_src, arcname=f'images/{raw_archived_name}')
 
                 camera_name = alert.camera.name if alert.camera else ''
                 writer.writerow([
@@ -295,6 +310,7 @@ def export_alerts():
                     alert.reviewed_at.isoformat() if alert.reviewed_at else '',
                     alert.review_note or '',
                     archived_name,
+                    raw_archived_name,
                 ])
 
             zf.writestr('alerts.csv', csv_buf.getvalue().encode('utf-8-sig'))
