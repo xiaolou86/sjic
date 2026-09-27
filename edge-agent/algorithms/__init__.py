@@ -6,6 +6,7 @@ from .belt_broken_series import BeltBrokenSeriesAlgorithm
 from .camera_health import CameraHealthAlgorithm
 from .pose_behavior import PoseBehaviorAlgorithm
 from .mouse_idle import MouseIdleAlgorithm
+from .exam_pipeline import ExamPipelineAlgorithm
 
 # 引擎注册表：云端下发 algorithm_type = Algorithm.engine
 ALGORITHM_REGISTRY = {
@@ -17,6 +18,7 @@ ALGORITHM_REGISTRY = {
     "camera_health": CameraHealthAlgorithm,
     "pose_behavior": PoseBehaviorAlgorithm,
     "mouse_idle": MouseIdleAlgorithm,
+    "exam_pipeline": ExamPipelineAlgorithm,
 }
 
 # 无需下载模型即可启动的引擎

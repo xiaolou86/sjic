@@ -17,6 +17,107 @@ def _is_algorithm_published(algorithm):
     return bool(publish_meta.get('published', False))
 
 
+def _blank_id(value):
+    if value is None or value == '':
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return value
+
+
+def _normalize_binding_ids(data):
+    for key in ('algorithm_id', 'od_algorithm_id', 'pose_algorithm_id'):
+        if key in data:
+            data[key] = _blank_id(data[key])
+
+
+def _check_published_algorithm(algorithm_id, expected_engine=None):
+    """返回 (algorithm, error_response)。algorithm_id 为空时两者都是 None。"""
+    if not algorithm_id:
+        return None, None
+    algorithm = Algorithm.query.get(algorithm_id)
+    if not algorithm:
+        return None, (jsonify({'error': 'Algorithm not found'}), 400)
+    if not _is_algorithm_published(algorithm):
+        return None, (jsonify({'error': 'Algorithm is not published. Please publish it in Algorithms first.'}), 400)
+    if algorithm.is_system_template():
+        return None, (jsonify({
+            'error': 'Cannot create task from system template. Use a published algorithm instance derived from the template.',
+        }), 400)
+    algorithm.ensure_catalog_schema(persist=True)
+    from app.utils.algorithm_catalog import engine_needs_model
+    engine = algorithm.resolved_engine()
+    if expected_engine and engine != expected_engine:
+        label = '目标检测' if expected_engine == 'object_detection' else '姿态'
+        return None, (jsonify({'error': f'绑定的算法不是{label}算法'}), 400)
+    if engine_needs_model(engine) and not algorithm.model_id:
+        return None, (jsonify({'error': 'Algorithm has no bound model. Please bind a model in Algorithms edit, then publish.'}), 400)
+    allowed, deny_reason = license_service.is_algorithm_allowed(algorithm.type)
+    if not allowed:
+        return None, (jsonify({'error': f'Algorithm not allowed by license: {deny_reason}'}), 403)
+    return algorithm, None
+
+
+def _apply_exam_or_single(data, existing=None):
+    """
+    混合任务：algorithm_id 为空，od/pose 至少一个。
+    单算法任务：沿用 algorithm_id。
+    返回 (error_response or None)。
+    """
+    from app.utils.exam_task import sanitize_exam_params, validate_scene_bindings
+
+    od_id = data.get('od_algorithm_id', getattr(existing, 'od_algorithm_id', None) if existing else None)
+    pose_id = data.get('pose_algorithm_id', getattr(existing, 'pose_algorithm_id', None) if existing else None)
+    algorithm_id = data.get('algorithm_id', getattr(existing, 'algorithm_id', None) if existing else None)
+    if 'od_algorithm_id' in data:
+        od_id = data['od_algorithm_id']
+    if 'pose_algorithm_id' in data:
+        pose_id = data['pose_algorithm_id']
+    if 'algorithm_id' in data:
+        algorithm_id = data['algorithm_id']
+
+    if od_id or pose_id:
+        if algorithm_id:
+            return (jsonify({'error': '驾考混合任务不要再绑定单个算法'}), 400)
+        _, err = _check_published_algorithm(od_id, 'object_detection')
+        if err:
+            return err
+        _, err = _check_published_algorithm(pose_id, 'pose_behavior')
+        if err:
+            return err
+        params = sanitize_exam_params(data.get('algorithm_parameters') or (existing.algorithm_parameters if existing else {}) or {})
+        scene_err = validate_scene_bindings(params, od_id, pose_id)
+        if scene_err:
+            return (jsonify({'error': scene_err}), 400)
+        data['algorithm_id'] = None
+        data['od_algorithm_id'] = od_id
+        data['pose_algorithm_id'] = pose_id
+        data['algorithm_parameters'] = params
+        return None
+
+    if not algorithm_id:
+        return (jsonify({'error': 'algorithm_id is required'}), 400)
+    algorithm, err = _check_published_algorithm(algorithm_id)
+    if err:
+        return err
+    data['algorithm_id'] = algorithm_id
+    data['od_algorithm_id'] = None
+    data['pose_algorithm_id'] = None
+
+    params = dict(data.get('algorithm_parameters') or {})
+    defaults = (algorithm.parameter_schema or {}).get('default_task_params') or {}
+    if defaults and not existing:
+        merged = dict(defaults)
+        merged.update(params)
+        if not params.get('rules') and defaults.get('rules'):
+            merged['rules'] = defaults['rules']
+        if not params.get('behaviors') and defaults.get('behaviors'):
+            merged['behaviors'] = defaults['behaviors']
+        data['algorithm_parameters'] = merged
+    return None
+
+
 @task_bp.route('/api/tasks/edge/<mac_address>', methods=['GET'])
 def get_edge_tasks(mac_address):
     """
@@ -87,6 +188,8 @@ def create_tasks():
     data.pop('algorithm_type', None)
     data.pop('algorithm_engine', None)
     data.pop('algorithm_camera_role', None)
+    data.pop('pipeline', None)
+    data.pop('warnings', None)
     data.pop('id', None)
     data.pop('created_at', None)
     data.pop('status', None)
@@ -102,55 +205,11 @@ def create_tasks():
     if data.get('schedule_start') and data.get('schedule_end'):
         data.setdefault('schedule_paused', False)
 
-    algorithm_id = data.get('algorithm_id')
-    if not algorithm_id:
-        current_app.logger.warning("Create task rejected: algorithm_id is required")
-        return jsonify({'error': 'algorithm_id is required'}), 400
-
-    algorithm = Algorithm.query.get(algorithm_id)
-    if not algorithm:
-        current_app.logger.warning(f"Create task rejected: Algorithm {algorithm_id} not found")
-        return jsonify({'error': 'Algorithm not found'}), 400
-    if not _is_algorithm_published(algorithm):
-        current_app.logger.warning(
-            f"Create task rejected: Algorithm {algorithm_id} ({algorithm.type}) is not published"
-        )
-        return jsonify({'error': 'Algorithm is not published. Please publish it in Algorithms first.'}), 400
-    if algorithm.is_system_template():
-        current_app.logger.warning(
-            f"Create task rejected: Algorithm {algorithm_id} is a system template"
-        )
-        return jsonify({
-            'error': 'Cannot create task from system template. Use a published algorithm instance derived from the template.',
-        }), 400
-
-    algorithm.ensure_catalog_schema(persist=True)
-    from app.utils.algorithm_catalog import engine_needs_model
-    if engine_needs_model(algorithm.resolved_engine()) and not algorithm.model_id:
-        current_app.logger.warning(
-            f"Create task rejected: Algorithm {algorithm_id} ({algorithm.type}) has no bound model"
-        )
-        return jsonify({'error': 'Algorithm has no bound model. Please bind a pose/detection model in Algorithms edit, then publish.'}), 400
-
-    allowed, deny_reason = license_service.is_algorithm_allowed(algorithm.type)
-    if not allowed:
-        current_app.logger.warning(
-            f"Create task rejected: Algorithm {algorithm.type} not allowed by license ({deny_reason})"
-        )
-        return jsonify({'error': f'Algorithm not allowed by license: {deny_reason}'}), 403
-
-    # 新建任务时合并算法模板默认参数（前端未传 rules/behaviors 时）
-    params = dict(data.get('algorithm_parameters') or {})
-    defaults = (algorithm.parameter_schema or {}).get('default_task_params') or {}
-    if defaults:
-        merged = dict(defaults)
-        merged.update(params)
-        # rules/behaviors：仅当任务侧为空时用模板预设
-        if not params.get('rules') and defaults.get('rules'):
-            merged['rules'] = defaults['rules']
-        if not params.get('behaviors') and defaults.get('behaviors'):
-            merged['behaviors'] = defaults['behaviors']
-        data['algorithm_parameters'] = merged
+    _normalize_binding_ids(data)
+    bind_err = _apply_exam_or_single(data)
+    if bind_err:
+        current_app.logger.warning(f"Create task rejected: {bind_err[0].get_json()}")
+        return bind_err
 
     try:
         task = Task(**data)
@@ -158,7 +217,12 @@ def create_tasks():
         db.session.add(task)
         db.session.commit()
         current_app.logger.info(f"Task created successfully: id={task.id} name={task.name}")
-        return jsonify(task.to_dict()), 201
+        body = task.to_dict()
+        from app.utils.exam_task import camera_pipeline_warnings
+        warnings = camera_pipeline_warnings(task.cameraId, exclude_task_id=task.id)
+        if warnings:
+            body['warnings'] = warnings
+        return jsonify(body), 201
     except Exception as e:
         current_app.logger.error(f"Error creating task: {str(e)}", exc_info=True)
         db.session.rollback()
@@ -201,6 +265,8 @@ def update_tasks(task_id):
       data.pop('is_scheduled', None)
       data.pop('algorithm_type', None)
       data.pop('algorithm_engine', None)
+      data.pop('pipeline', None)
+      data.pop('warnings', None)
       data.pop('created_at', None)
       data.pop('id', None)
 
@@ -212,19 +278,10 @@ def update_tasks(task_id):
 
       task = Task.query.get_or_404(task_id)
 
-      next_algorithm_id = data.get('algorithm_id', task.algorithm_id)
-      if next_algorithm_id:
-        algorithm = Algorithm.query.get(next_algorithm_id)
-        if not algorithm:
-          return jsonify({'error': 'Algorithm not found'}), 400
-        if not _is_algorithm_published(algorithm):
-          return jsonify({'error': 'Algorithm is not published'}), 400
-        from app.utils.algorithm_catalog import engine_needs_model
-        if engine_needs_model(algorithm.resolved_engine()) and not algorithm.model_id:
-          return jsonify({'error': 'Algorithm has no bound model. Please bind a model in edit first.'}), 400
-        allowed, deny_reason = license_service.is_algorithm_allowed(algorithm.type)
-        if not allowed:
-          return jsonify({'error': f'Algorithm not allowed by license: {deny_reason}'}), 403
+      _normalize_binding_ids(data)
+      bind_err = _apply_exam_or_single(data, existing=task)
+      if bind_err:
+        return bind_err
 
       for key, value in data.items():
         if hasattr(task, key):

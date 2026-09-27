@@ -291,6 +291,48 @@ def is_wrist_near_ear(kps, dist_ratio=0.28):
     return False
 
 
+def _head_rect(kps):
+    """耳、眼、鼻围成的头部区域，向外扩一点肩宽。点不够时返回 None。"""
+    idxs = (NOSE, L_EYE, R_EYE, L_EAR, R_EAR)
+    pts = [_kp(kps, idx) for idx in idxs if _kp_ok(kps, idx)]
+    if len(pts) < 2:
+        return None
+    pad = 0.35 * _scale(kps)
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    return (min(xs) - pad, min(ys) - pad, max(xs) + pad, max(ys) + pad)
+
+
+def _point_in_rect(x, y, rect):
+    x1, y1, x2, y2 = rect
+    return x1 <= x <= x2 and y1 <= y <= y2
+
+
+def _point_in_upper_body(box, x, y):
+    if box is None:
+        return False
+    x1, y1, x2, y2 = float(box.x1), float(box.y1), float(box.x2), float(box.y2)
+    if x2 <= x1 or y2 <= y1:
+        return False
+    return x1 <= x <= x2 and y1 <= y <= y1 + 0.5 * (y2 - y1)
+
+
+def person_has_glasses(box, kps, glasses_boxes):
+    """眼镜框中心落在头部区域（关键点不足时用人体框上半部分）才算戴着眼镜。"""
+    if not glasses_boxes:
+        return False
+    head = _head_rect(kps) if kps is not None else None
+    for glasses in glasses_boxes:
+        cx, cy = glasses.center
+        if head is not None:
+            if _point_in_rect(cx, cy, head):
+                return True
+            continue
+        if _point_in_upper_body(box, cx, cy):
+            return True
+    return False
+
+
 def is_standing(kps, box=None, view=DEFAULT_MOUNT_POSITION):
     view = normalize_mount_position(view)
     if kps is not None:

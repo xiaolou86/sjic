@@ -231,19 +231,6 @@ POSE_SCENE_PRESETS = [
         },
     },
     {
-        'id': 'smart_glasses',
-        'type': 'smart_glasses',
-        'name': 'AI智能眼镜拍摄题目',
-        'description': '手指多次触摸智能眼镜镜脚（耳朵附近）',
-        'defaults': {
-            'seconds': 30,
-            'min_touches': 3,
-            'ear_dist_ratio': 0.28,
-            'alert_type': 'smart_glasses',
-            'enabled': True,
-        },
-    },
-    {
         'id': 'invigilator_absent',
         'type': 'invigilator_absent',
         'name': '考试员不巡场',
@@ -252,6 +239,26 @@ POSE_SCENE_PRESETS = [
             'seconds': 120,
             'min_standing': 2,
             'alert_type': 'invigilator_absent',
+            'enabled': True,
+        },
+    },
+]
+
+
+# 同一帧需要目标检测框 + 姿态关键点的场景。只在驾考混合任务里可选。
+FUSION_SCENE_PRESETS = [
+    {
+        'id': 'smart_glasses',
+        'type': 'smart_glasses',
+        'name': 'AI智能眼镜拍摄题目',
+        'description': '先检出眼镜，再统计戴镜人员手指触碰镜脚（耳朵附近）的次数',
+        'requires': ['object_detection', 'pose_behavior'],
+        'defaults': {
+            'seconds': 30,
+            'min_touches': 3,
+            'ear_dist_ratio': 0.28,
+            'class_ids': [],
+            'alert_type': 'smart_glasses',
             'enabled': True,
         },
     },
@@ -288,7 +295,7 @@ PRODUCT_ALGORITHMS = [
         'type': 'pose_behavior',
         'engine': 'pose_behavior',
         'name': '姿态行为检测',
-        'description': '一次推理挂多个行为：不看屏幕、张望、捂嘴报题、智能眼镜、巡场等',
+        'description': '一次推理挂多个行为：不看屏幕、张望、捂嘴报题、巡场等',
         'category': 'exam',
         'parameter_schema': _pose_schema(),
     },
@@ -424,8 +431,9 @@ def _merge_scene_presets(existing, catalog):
     return ordered
 
 
-# 已从姿态目录挪到目标检测的预设，合并时从姿态 schema 去掉，避免旧实例继续露出姿态版跌倒
-_POSE_DROPPED_PRESET_IDS = frozenset({'person_fall'})
+# 合并时从姿态 schema 去掉：跌倒改由目标检测；智能眼镜改由驾考混合任务的融合场景
+_POSE_DROPPED_PRESET_IDS = frozenset({'person_fall', 'smart_glasses'})
+_POSE_DROPPED_TYPES = frozenset({'fall', 'smart_glasses'})
 
 
 def merge_catalog_schema(existing_schema, engine: str, *, origin=None) -> dict:
@@ -439,7 +447,7 @@ def merge_catalog_schema(existing_schema, engine: str, *, origin=None) -> dict:
         if engine == 'pose_behavior':
             merged_presets = [
                 p for p in merged_presets
-                if p.get('id') not in _POSE_DROPPED_PRESET_IDS and p.get('type') != 'fall'
+                if p.get('id') not in _POSE_DROPPED_PRESET_IDS and p.get('type') not in _POSE_DROPPED_TYPES
             ]
         schema['scene_presets'] = merged_presets
     if not schema.get('ui') and base.get('ui'):
@@ -469,6 +477,7 @@ def catalog_for_api():
         ],
         'od_scene_presets': OD_SCENE_PRESETS,
         'pose_scene_presets': POSE_SCENE_PRESETS,
+        'fusion_scene_presets': FUSION_SCENE_PRESETS,
         'camera_mount_positions': CAMERA_MOUNT_POSITIONS,
         'alert_type_labels': alert_type_labels(),
     }
@@ -477,7 +486,7 @@ def catalog_for_api():
 def alert_type_labels():
     """alert_type → 客户可读场景名（概览/告警列表用）。"""
     labels = {}
-    for preset in OD_SCENE_PRESETS + POSE_SCENE_PRESETS:
+    for preset in OD_SCENE_PRESETS + POSE_SCENE_PRESETS + FUSION_SCENE_PRESETS:
         at = (preset.get('defaults') or {}).get('alert_type')
         if at and preset.get('name'):
             labels[at] = preset['name']

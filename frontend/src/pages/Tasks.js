@@ -11,6 +11,7 @@ import BeltCalibrationTool from '../components/BeltCalibrationTool';
 import BeltDeviationCalibrationTool from '../components/BeltDeviationCalibrationTool';
 import DetectionRulesEditor from '../components/DetectionRulesEditor';
 import PoseBehaviorEditor from '../components/PoseBehaviorEditor';
+import FusionScenesEditor from '../components/FusionScenesEditor';
 
 function mergeAlgoDefaults(algorithm, prevParams = {}) {
   const defaults = algorithm?.parameter_schema?.default_task_params || {};
@@ -28,11 +29,41 @@ function mergeAlgoDefaults(algorithm, prevParams = {}) {
   return next;
 }
 
+function cameraShareWarning(tasks, formData, editingTask) {
+  if (formData?.pipeline !== 'exam' || !formData.cameraId) return '';
+  const others = (tasks || []).filter((task) => (
+    task.cameraId === formData.cameraId && task.id !== editingTask?.id
+  ));
+  const hit = others.filter((task) => (
+    task.od_algorithm_id
+    || task.pose_algorithm_id
+    || task.algorithm_engine === 'object_detection'
+    || task.algorithm_engine === 'pose_behavior'
+  ));
+  if (!hit.length) return '';
+  return `该摄像头已有任务「${hit.map((task) => task.name).join('、')}」在使用目标检测或姿态，同时运行会各拉一路视频`;
+}
+
+function taskAlgorithmLabel(task, algorithms) {
+  if (task?.pipeline === 'exam' || task?.od_algorithm_id || task?.pose_algorithm_id) {
+    const names = [];
+    if (task.od_algorithm_id) {
+      names.push(algorithms.find((item) => item.id === task.od_algorithm_id)?.name || '目标检测');
+    }
+    if (task.pose_algorithm_id) {
+      names.push(algorithms.find((item) => item.id === task.pose_algorithm_id)?.name || '姿态行为检测');
+    }
+    return names.join(' + ') || '驾考混合';
+  }
+  return algorithms.find((item) => item.id === task?.algorithm_id)?.name || '';
+}
+
 function getTaskSceneNames(task) {
   const params = task?.algorithm_parameters || {};
   const items = [
     ...(Array.isArray(params.rules) ? params.rules : []),
     ...(Array.isArray(params.behaviors) ? params.behaviors : []),
+    ...(Array.isArray(params.fusions) ? params.fusions : []),
   ];
   return items
     .filter((item) => item && item.enabled !== false)
@@ -55,7 +86,10 @@ function Tasks() {
     edge_node_id: '',
     confidence: 0.5,
     notificationEnabled: true,
+    pipeline: 'single',
     algorithm_id: '',
+    od_algorithm_id: '',
+    pose_algorithm_id: '',
     schedule_start: '',
     schedule_end: '',
     algorithm_parameters: {
@@ -79,6 +113,9 @@ function Tasks() {
 
   const taskAlgorithms = algorithms.filter((a) => a.published === true);
   const selectedAlgorithm = algorithms.find((a) => a.id === formData.algorithm_id);
+  const odAlgorithms = taskAlgorithms.filter((a) => (a.engine || a.type) === 'object_detection');
+  const poseAlgorithms = taskAlgorithms.filter((a) => (a.engine || a.type) === 'pose_behavior');
+  const isExamPipeline = formData.pipeline === 'exam';
 
   const extractApiError = (error, fallback) => {
     const data = error?.response?.data;
@@ -142,10 +179,32 @@ function Tasks() {
     }
   };
 
+  const buildTaskPayload = (source) => {
+    const payload = {
+      ...source,
+      algorithm_parameters: { ...(source.algorithm_parameters || {}) },
+    };
+    delete payload.pipeline;
+    delete payload.id;
+    if (source.pipeline === 'exam') {
+      payload.algorithm_id = null;
+      payload.od_algorithm_id = source.od_algorithm_id || null;
+      payload.pose_algorithm_id = source.pose_algorithm_id || null;
+    } else {
+      payload.od_algorithm_id = null;
+      payload.pose_algorithm_id = null;
+    }
+    return payload;
+  };
+
   const handleCreate = async () => {
     setFormError('');
+    if (formData.pipeline === 'exam' && !formData.od_algorithm_id && !formData.pose_algorithm_id) {
+      setFormError('请至少绑定一个目标检测或姿态算法');
+      return;
+    }
     try {
-      const response = await axios.post('/api/tasks', formData);
+      const response = await axios.post('/api/tasks', buildTaskPayload(formData));
       setTasks([...tasks, response]);
       setOpenDialog(false);
       resetForm();
@@ -158,8 +217,12 @@ function Tasks() {
 
   const handleUpdate = async () => {
     setFormError('');
+    if (formData.pipeline === 'exam' && !formData.od_algorithm_id && !formData.pose_algorithm_id) {
+      setFormError('请至少绑定一个目标检测或姿态算法');
+      return;
+    }
     try {
-      await axios.put(`/api/tasks/${editingTask.id}`, formData);
+      await axios.put(`/api/tasks/${editingTask.id}`, buildTaskPayload(formData));
       setOpenDialog(false);
       resetForm();
       fetchTasks();
@@ -185,7 +248,10 @@ function Tasks() {
       id: task.id,
       name: task.name,
       cameraId: task.cameraId,
-      algorithm_id: task.algorithm_id,
+      pipeline: (task.pipeline === 'exam' || task.od_algorithm_id || task.pose_algorithm_id) ? 'exam' : 'single',
+      algorithm_id: task.algorithm_id || '',
+      od_algorithm_id: task.od_algorithm_id || '',
+      pose_algorithm_id: task.pose_algorithm_id || '',
       edge_node_id: task.edge_node_id || '',
       confidence: task.confidence,
       alertThreshold: task.alertThreshold,
@@ -209,7 +275,10 @@ function Tasks() {
       confidence: 0.5,
       alertThreshold: 3,
       notificationEnabled: true,
+      pipeline: 'single',
       algorithm_id: '',
+      od_algorithm_id: '',
+      pose_algorithm_id: '',
       schedule_start: '',
       schedule_end: '',
       algorithm_parameters: {
@@ -221,7 +290,8 @@ function Tasks() {
         },
         regions: [],
         rules: [],
-        behaviors: []
+        behaviors: [],
+        fusions: []
       }
     });
   };
@@ -303,6 +373,14 @@ function Tasks() {
   };
 
   const renderAlgorithmParams = (task) => {
+    if (task.pipeline === 'exam' || task.od_algorithm_id || task.pose_algorithm_id) {
+      const scenes = getTaskSceneNames(task);
+      return (
+        <Typography variant="body2">
+          {scenes.length ? scenes.join('、') : '尚未添加场景'}
+        </Typography>
+      );
+    }
     const algorithm = algorithms.find(a => a.id === task.algorithm_id);
     if (!algorithm) return null;
 
@@ -524,7 +602,56 @@ function Tasks() {
   };
 
   // 渲染算法特定参数
+  const renderExamPipelineParams = () => {
+    const odAlgorithm = algorithms.find((item) => item.id === formData.od_algorithm_id);
+    const poseAlgorithm = algorithms.find((item) => item.id === formData.pose_algorithm_id);
+    const patchParams = (nextParams) => setFormData((prev) => ({
+      ...prev,
+      algorithm_parameters: nextParams,
+    }));
+    return (
+      <>
+        {odAlgorithm && (
+          <Grid item xs={12}>
+            <DetectionRulesEditor
+              cameraId={formData.cameraId}
+              algorithm={odAlgorithm}
+              algorithmParameters={formData.algorithm_parameters}
+              catalogPresets={catalog?.od_scene_presets}
+              taskConfidence={formData.confidence}
+              onChange={patchParams}
+            />
+          </Grid>
+        )}
+        {poseAlgorithm && (
+          <Grid item xs={12}>
+            <PoseBehaviorEditor
+              algorithm={poseAlgorithm}
+              algorithmParameters={formData.algorithm_parameters}
+              catalogPresets={catalog?.pose_scene_presets}
+              taskConfidence={formData.confidence}
+              excludePresetIds={['smart_glasses']}
+              onChange={patchParams}
+            />
+          </Grid>
+        )}
+        {odAlgorithm && poseAlgorithm && (
+          <Grid item xs={12}>
+            <FusionScenesEditor
+              algorithmParameters={formData.algorithm_parameters}
+              catalogPresets={catalog?.fusion_scene_presets}
+              taskConfidence={formData.confidence}
+              labelmap={odAlgorithm.model_labelmap}
+              onChange={patchParams}
+            />
+          </Grid>
+        )}
+      </>
+    );
+  };
+
   const renderAlgorithmSpecificParams = () => {
+    if (isExamPipeline) return renderExamPipelineParams();
     if (!formData.algorithm_id) return null;
 
     const algorithm = algorithms.find(a => a.id === formData.algorithm_id);
@@ -682,7 +809,7 @@ function Tasks() {
           </Button>
         </div>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-          同一摄像头按引擎建任务：目标检测挂多条规则，姿态检测挂多个行为；不要为每个小场景单独建任务。
+          驾考可以建一个混合任务，同一路视频里同时挂检测场景和姿态场景。只有检测时不跑姿态，只有姿态时不跑检测；两者都有或包含智能眼镜时，同一帧先检测再姿态。皮带、画面健康等仍是单算法任务。
         </Typography>
 
         {/* 高级过滤栏 */}
@@ -775,7 +902,7 @@ function Tasks() {
                     })()}
                   </TableCell>
                   <TableCell>{nodes.find(n => n.id === task.edge_node_id)?.name || "无"}</TableCell>
-                  <TableCell>{algorithms.find(a => a.id === task.algorithm_id)?.name}</TableCell>
+                  <TableCell>{taskAlgorithmLabel(task, algorithms)}</TableCell>
                   <TableCell>
                     {(() => {
                       const scenes = getTaskSceneNames(task);
@@ -875,6 +1002,94 @@ function Tasks() {
             <Grid item xs={12} md={6}>
               <Select
                 fullWidth
+                value={formData.pipeline || 'single'}
+                onChange={(e) => {
+                  const pipeline = e.target.value;
+                  setFormError('');
+                  setFormData((prev) => ({
+                    ...prev,
+                    pipeline,
+                    algorithm_id: '',
+                    od_algorithm_id: '',
+                    pose_algorithm_id: '',
+                    algorithm_parameters: {
+                      ...(prev.algorithm_parameters || {}),
+                      rules: [],
+                      behaviors: [],
+                      fusions: [],
+                    },
+                  }));
+                }}
+              >
+                <MenuItem value="single">单算法</MenuItem>
+                <MenuItem value="exam">驾考混合（检测 + 姿态）</MenuItem>
+              </Select>
+            </Grid>
+
+            {isExamPipeline ? (
+              <>
+                <Grid item xs={12} md={6}>
+                  <Select
+                    fullWidth
+                    value={formData.od_algorithm_id || ''}
+                    onChange={(e) => {
+                      setFormError('');
+                      setFormData((prev) => ({
+                        ...prev,
+                        od_algorithm_id: e.target.value,
+                        algorithm_parameters: {
+                          ...(prev.algorithm_parameters || {}),
+                          rules: [],
+                          fusions: [],
+                        },
+                      }));
+                    }}
+                    displayEmpty
+                  >
+                    <MenuItem value="">目标检测算法（可选）</MenuItem>
+                    {odAlgorithms.map((algorithm) => (
+                      <MenuItem key={algorithm.id} value={algorithm.id}>{algorithm.name}</MenuItem>
+                    ))}
+                  </Select>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Select
+                    fullWidth
+                    value={formData.pose_algorithm_id || ''}
+                    onChange={(e) => {
+                      setFormError('');
+                      setFormData((prev) => ({
+                        ...prev,
+                        pose_algorithm_id: e.target.value,
+                        algorithm_parameters: {
+                          ...(prev.algorithm_parameters || {}),
+                          behaviors: [],
+                        },
+                      }));
+                    }}
+                    displayEmpty
+                  >
+                    <MenuItem value="">姿态算法（可选）</MenuItem>
+                    {poseAlgorithms.map((algorithm) => (
+                      <MenuItem key={algorithm.id} value={algorithm.id}>{algorithm.name}</MenuItem>
+                    ))}
+                  </Select>
+                </Grid>
+                <Grid item xs={12}>
+                  <Alert severity="info">
+                    只选检测时，这一帧不跑姿态；只选姿态时，不跑检测。两个都选并且场景同时需要时，同一帧先检测再姿态。智能眼镜需要两个都选，并指定眼镜类别。
+                  </Alert>
+                  {cameraShareWarning(tasks, formData, editingTask) && (
+                    <Alert severity="warning" sx={{ mt: 1 }}>
+                      {cameraShareWarning(tasks, formData, editingTask)}
+                    </Alert>
+                  )}
+                </Grid>
+              </>
+            ) : (
+            <Grid item xs={12} md={6}>
+              <Select
+                fullWidth
                 value={formData.algorithm_id}
                 onChange={(e) => {
                   const algId = e.target.value;
@@ -919,7 +1134,6 @@ function Tasks() {
                     </Alert>
                   );
                 }
-                // vendor 响应含 model_id；未绑模型时提前提示
                 if (
                   selectedAlg.needs_model
                   && Object.prototype.hasOwnProperty.call(selectedAlg, 'model_id')
@@ -935,12 +1149,13 @@ function Tasks() {
                 const tip = engine === 'object_detection'
                   ? '可在下方添加多条检测规则/场景（缺席、手机、帽子、人员倒地等），同一任务只推理一次。倒地用目标检测，不用姿态。'
                   : engine === 'pose_behavior'
-                    ? '可在下方添加多个姿态行为/场景（张望、手托下巴等），同一任务只推理一次。姿态算法需已绑定并发布 Pose 模型。'
+                    ? '可在下方添加多个姿态行为/场景（张望、手托下巴等），同一任务只推理一次。智能眼镜请用驾考混合任务。'
                     : null;
                 if (!tip) return null;
                 return <Alert severity="info" sx={{ mt: 1 }}>{tip}</Alert>;
               })()}
             </Grid>
+            )}
 
             <Grid item xs={12} md={6}>
               <Select
@@ -1065,7 +1280,7 @@ function Tasks() {
                   </Grid>
                   <Grid item xs={12} md={6}>
                     <Typography>
-                      算法：{algorithms.find(a => a.id === selectedTask.algorithm_id)?.name}
+                      算法：{taskAlgorithmLabel(selectedTask, algorithms)}
                     </Typography>
                   </Grid>
                   <Grid item xs={12} md={6}>

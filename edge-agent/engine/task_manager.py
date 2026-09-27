@@ -71,21 +71,27 @@ class TaskManager:
 
         logger.info(f"Initializing task {task_id} ({task_config.get('task_name')})")
         task_config.setdefault('paths', self.config.get('paths') or {})
+        task_config.setdefault('architecture', self.config.get('architecture'))
 
         # 1. 检查并下载模型（部分引擎无需模型）
         from algorithms import NO_MODEL_ENGINES
         algo_type = task_config.get('algorithm_type')
-        model_info = task_config.get('model', {}) or {}
-        needs_model = model_info.get('required', algo_type not in NO_MODEL_ENGINES)
-
         model_path = None
-        if needs_model:
-            model_path = self._ensure_model_exists(model_info)
-            if not model_path:
-                self._report_status(task_id, "failed", "Model download failed")
+        if algo_type == 'exam_pipeline':
+            err = self._prepare_pipeline_models(task_id, task_config)
+            if err:
+                self._report_status(task_id, "failed", err)
                 return
         else:
-            logger.info(f"Task {task_id} engine={algo_type} does not require a model")
+            model_info = task_config.get('model', {}) or {}
+            needs_model = model_info.get('required', algo_type not in NO_MODEL_ENGINES)
+            if needs_model:
+                model_path = self._ensure_model_exists(model_info)
+                if not model_path:
+                    self._report_status(task_id, "failed", "Model download failed")
+                    return
+            else:
+                logger.info(f"Task {task_id} engine={algo_type} does not require a model")
 
         # 2. 准备运行 (创建线程)
         stop_event = threading.Event()
@@ -141,6 +147,24 @@ class TaskManager:
                 thread.join(timeout=remaining)
             except Exception:
                 pass
+
+    def _prepare_pipeline_models(self, task_id, task_config):
+        """下载驾考混合任务实际会用到的模型。返回错误文案，成功则返回 None。"""
+        models = task_config.get('models') or {}
+        local = {}
+        for key in ('object_detection', 'pose_behavior'):
+            info = models.get(key) or {}
+            if not info.get('required'):
+                continue
+            path = self._ensure_model_exists(info)
+            if not path:
+                return f"Model download failed: {key}"
+            local[key] = path
+        if not local:
+            return "exam_pipeline has no models"
+        task_config['model_local_paths'] = local
+        logger.info(f"Task {task_id} pipeline models: {local}")
+        return None
 
     def _ensure_model_exists(self, model_info):
         """如果本地没有 `.engine` 或 `.onnx`，从云端下载"""
@@ -205,7 +229,7 @@ class TaskManager:
             task_config['model_local_path'] = model_path
 
             # 定义告警回调
-            def handle_alert(alert_type, confidence, image_frame, message=None, raw_frame=None):
+            def handle_alert(alert_type, confidence, image_frame, message=None, raw_frame=None, algorithm_id=None):
                 self._upload_alert(
                     task_config['camera']['id'],
                     alert_type,
@@ -214,7 +238,7 @@ class TaskManager:
                     raw_frame=raw_frame,
                     message=message,
                     task_id=task_config.get('task_id'),
-                    algorithm_id=task_config.get('algorithm_id'),
+                    algorithm_id=algorithm_id if algorithm_id is not None else task_config.get('algorithm_id'),
                 )
 
             # 让纯业务代码接管！彻底剥离调度！

@@ -8,7 +8,7 @@ import { Add, Delete } from '@mui/icons-material';
 /**
  * 姿态行为：从场景预设添加多条行为，同一 pose task 一次推理。
  */
-function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange, catalogPresets, taskConfidence }) {
+function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange, catalogPresets, taskConfidence, excludePresetIds }) {
   const [addPreset, setAddPreset] = useState('');
 
   const behaviors = Array.isArray(algorithmParameters?.behaviors)
@@ -17,9 +17,13 @@ function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange, catalogP
 
   const scenePresets = useMemo(() => {
     const fromSchema = algorithm?.parameter_schema?.scene_presets;
-    if (Array.isArray(fromSchema) && fromSchema.length > 0) return fromSchema;
-    return Array.isArray(catalogPresets) ? catalogPresets : [];
-  }, [algorithm, catalogPresets]);
+    const source = Array.isArray(fromSchema) && fromSchema.length > 0
+      ? fromSchema
+      : (Array.isArray(catalogPresets) ? catalogPresets : []);
+    const excluded = new Set(excludePresetIds || []);
+    if (excluded.size === 0) return source;
+    return source.filter((preset) => !excluded.has(preset.id) && !excluded.has(preset.type));
+  }, [algorithm, catalogPresets, excludePresetIds]);
 
   const patchBehavior = (index, patch) => {
     const next = behaviors.map((b, i) => (i === index ? { ...b, ...patch } : b));
