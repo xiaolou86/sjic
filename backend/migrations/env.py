@@ -11,6 +11,10 @@ from logging.config import fileConfig
 from alembic import context
 from flask import current_app
 
+from app.utils.pyc_alembic import install_pyc_revision_support
+
+install_pyc_revision_support()
+
 config = context.config
 fileConfig(config.config_file_name)
 logger = logging.getLogger('alembic.env')

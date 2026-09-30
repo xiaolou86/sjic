@@ -31,6 +31,8 @@ _LICENSE_EXEMPT_PREFIXES = (
 def _is_license_exempt(path):
     if not path:
         return True
+    if path == '/api/health':
+        return True
     if path.startswith('/api/license'):
         return True
     for prefix in _LICENSE_EXEMPT_PREFIXES:

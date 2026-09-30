@@ -1,14 +1,10 @@
-version: '3.8'
+name: sjic-platform
 
-# 开发 / 首次构建镜像：docker compose up -d --build
-# 现场挂载升级：见 deploy/README.md，使用 deploy/platform/docker-compose.yml
-# Edge 侧在 edge-agent/config.yaml 配置平台地址，自行拼接模型下载基址
+# 初次构建镜像仍用仓库根目录的 docker-compose.yml（打上 sjic-backend:runtime / sjic-frontend:runtime）。
+# 本文件只挂载 /opt/sjic/current 里的应用目录，升级时不重新构建镜像。
 
 services:
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
     image: sjic-backend:runtime
     container_name: sjic-backend
     restart: unless-stopped
@@ -16,14 +12,17 @@ services:
       - "38881:38881"
       - "38883:38883"
     volumes:
-      - ./backend/instance:/app/instance
-      - ./data:/app/data
-      - ./alerts:/app/alerts
-      - ./models:/app/models
-      - ./videos:/app/videos
-      - ./logs:/app/logs
-      - ./branding:/app/branding
-      # Linux 生产环境建议挂载，授权绑定宿主机/虚机；Windows Docker Desktop 请勿启用
+      - /opt/sjic/current/backend:/app
+      - /opt/sjic/data/instance:/app/instance
+      - /opt/sjic/data/data:/app/data
+      - /opt/sjic/data/alerts:/app/alerts
+      - /opt/sjic/data/models:/app/models
+      - /opt/sjic/data/videos:/app/videos
+      - /opt/sjic/data/logs:/app/logs
+      - /opt/sjic/data/branding:/app/branding
+      - /opt/sjic/data/upgrades:/opt/sjic/data/upgrades
+      - /opt/sjic/incoming:/opt/sjic/incoming
+      - /opt/sjic/updater:/opt/sjic/updater:ro
       - /etc/machine-id:/host/etc/machine-id:ro
     environment:
       - FLASK_ENV=production
@@ -38,22 +37,22 @@ services:
       - DOWNLOAD_SECURE_KEY=${DOWNLOAD_SECURE_KEY:-my-super-secret-key-for-nginx}
       - LICENSE_SIGNING_KEY=${LICENSE_SIGNING_KEY:-change-me-sjic-license-signing-key}
       - SJIC_IN_CONTAINER=1
-      # 可选：无 machine-id 挂载时显式传入宿主机标识
+      - SJIC_UPGRADES=/opt/sjic/data/upgrades
+      - SJIC_INCOMING=/opt/sjic/incoming
       - HOST_MACHINE_ID=${HOST_MACHINE_ID:-}
     networks:
       - sjic-network
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
     image: sjic-frontend:runtime
     container_name: sjic-frontend
     restart: unless-stopped
     ports:
       - "38880:38880"
     volumes:
-      - ./models:/usr/share/nginx/models:ro
+      - /opt/sjic/current/frontend/build:/usr/share/nginx/html:ro
+      - /opt/sjic/data/models:/usr/share/nginx/models:ro
+      - /opt/sjic/data/upgrades:/usr/share/nginx/upgrades:ro
     environment:
       - TZ=Asia/Shanghai
       - DOWNLOAD_SECURE_KEY=${DOWNLOAD_SECURE_KEY:-my-super-secret-key-for-nginx}

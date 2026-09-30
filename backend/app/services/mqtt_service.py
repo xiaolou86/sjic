@@ -59,6 +59,8 @@ class MqttService:
             # 处理任务状态反馈: sjic/edge/{mac}/task/status
             elif topic.endswith('/task/status'):
                 self._handle_task_status(data)
+            elif topic.endswith('/upgrade/status'):
+                self._handle_upgrade_status(data)
         except Exception as e:
             logger.error(f"Error processing MQTT message: {str(e)}")
 
@@ -94,6 +96,7 @@ class MqttService:
                 node.status = reported_status
                 node.last_heartbeat = datetime.now()
                 node.hardware_status = data.get('hardware', {})
+                self._apply_version_report(node, data)
                 
                 # 同步任务状态
                 reported_task_ids = [int(tid) for tid in data.get('running_tasks', [])]
@@ -120,6 +123,7 @@ class MqttService:
                     node.status = reported_status
                     node.last_heartbeat = datetime.now()
                     node.hardware_status = data.get('hardware', {})
+                    self._apply_version_report(node, data)
                     db.session.commit()
 
     def _handle_task_status(self, data):
@@ -157,6 +161,49 @@ class MqttService:
             except Exception as e:
                 db.session.rollback()
                 logger.error(f"Error updating task status: {str(e)}")
+
+    def _apply_version_report(self, node, data):
+        reported_version = str(data.get('version') or '').strip()
+        if reported_version:
+            node.agent_version = reported_version[:40]
+        reported_upgrade = str(data.get('upgrade_status') or '').strip()
+        if reported_upgrade in ('queued', 'downloading', 'installing', 'success', 'failed'):
+            node.upgrade_status = reported_upgrade[:20]
+            node.upgrade_message = str(data.get('upgrade_message') or '')[:255]
+        target = (node.upgrade_target_version or '').strip()
+        if target and reported_version == target:
+            node.upgrade_status = 'success'
+            node.upgrade_message = ''
+
+    def _handle_upgrade_status(self, data):
+        if not self.app:
+            return
+        with self.app.app_context():
+            mac = data.get('edge_id')
+            if not mac:
+                return
+            try:
+                node = EdgeNode.query.filter_by(mac_address=mac).first()
+                if not node:
+                    return
+                self._apply_version_report(node, {
+                    'version': data.get('version'),
+                    'upgrade_status': data.get('status'),
+                    'upgrade_message': data.get('message'),
+                })
+                db.session.commit()
+            except Exception as exc:
+                db.session.rollback()
+                logger.error(f"Error updating upgrade status: {exc}")
+
+    def publish_agent_upgrade(self, mac_address, payload):
+        """下发边缘安装包地址。盒子下载后由宿主机脚本覆盖代码并重建容器。"""
+        topic = f"sjic/edge/{mac_address}/agent/upgrade"
+        body = dict(payload or {})
+        body['timestamp'] = int(datetime.now().timestamp())
+        body['msg_id'] = uuid.uuid4().hex[:12]
+        self.client.publish(topic, json.dumps(body), qos=1)
+        logger.info(f"Published agent upgrade to {mac_address}: version={body.get('version')}")
 
     def publish_task_start(self, mac_address, task_payload):
         """下发任务配置到盒子"""

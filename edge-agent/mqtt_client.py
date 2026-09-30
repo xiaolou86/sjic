@@ -65,6 +65,7 @@ class EdgeMqttClient:
             client.subscribe(f"{self.topic_prefix}/task/stop")
             client.subscribe(f"{self.topic_prefix}/agent/restart")
             client.subscribe(f"{self.topic_prefix}/agent/power")
+            client.subscribe(f"{self.topic_prefix}/agent/upgrade")
         else:
             logger.error(f"Failed to connect, return code {rc}")
 
@@ -87,6 +88,8 @@ class EdgeMqttClient:
                 self._handle_agent_restart(data)
             elif msg.topic.endswith("/agent/power"):
                 self._handle_agent_power(data)
+            elif msg.topic.endswith("/agent/upgrade"):
+                self._handle_agent_upgrade(data)
         except Exception as e:
             logger.error(f"Error handling message: {str(e)}")
 
@@ -143,6 +146,37 @@ class EdgeMqttClient:
                     self._power_lock.release()
 
         threading.Thread(target=_power, name=f"agent-{action}", daemon=True).start()
+
+    def publish_upgrade_status(self, status, message='', version=''):
+        payload = {
+            'edge_id': self.edge_id,
+            'status': status,
+            'message': message,
+            'version': version,
+        }
+        self.client.publish(f"{self.topic_prefix}/upgrade/status", json.dumps(payload), qos=1)
+
+    def _handle_agent_upgrade(self, data):
+        if not self._power_lock.acquire(blocking=False):
+            logger.warning('Agent upgrade ignored because power/restart/upgrade is already running')
+            return
+        logger.warning('Agent upgrade requested via MQTT version=%s', (data or {}).get('version'))
+
+        def _run():
+            try:
+                from utils.upgrade import run_upgrade
+                run_upgrade(self, self.config, self.task_manager, data)
+            except Exception as exc:
+                logger.error(f'Agent upgrade failed: {exc}')
+                try:
+                    self.publish_upgrade_status('failed', '升级失败', '')
+                except Exception:
+                    pass
+            finally:
+                if self._power_lock.locked():
+                    self._power_lock.release()
+
+        threading.Thread(target=_run, name='agent-upgrade', daemon=True).start()
 
     def publish_heartbeat(self, status_payload):
         topic = f"{self.topic_prefix}/heartbeat"

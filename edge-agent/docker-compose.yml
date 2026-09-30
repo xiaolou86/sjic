@@ -2,7 +2,9 @@
 #
 # Jetson（默认）:
 #   1. 编辑 config.yaml：architecture=jetson，填入平台 MQTT/API 地址
-#   2. docker compose up -d --build
+#   2. docker compose build
+#   3. sudo bash deploy/install-host.sh
+# 日常升级走管理平台下发的安装包，见 JETSON_DEPLOY.md。不要为了升级重新构建镜像。
 #   RTSP 默认走 NVDEC（nvv4l2decoder）；失败回退 avdec_h264。SJIC_RTSP_HWDEC=0 可强制软解。
 #
 # 远程重启 Agent：平台下发 agent/restart → 容器进程退出 → restart: unless-stopped 自动拉起

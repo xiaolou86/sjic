@@ -121,8 +121,10 @@ python export.py
 
 ```bash
 # 1. 编辑 config.yaml：architecture: jetson，并填写平台 MQTT / API 地址
-# 2. 构建并启动
-docker compose up -d --build
+# 2. 构建镜像
+docker compose build
+# 3. 挂载应用目录并启动
+sudo bash deploy/install-host.sh
 ```
 
 步骤说明见 [JETSON_DEPLOY.md](JETSON_DEPLOY.md)。

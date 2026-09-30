@@ -14,4 +14,7 @@ if [ -d /app/models ]; then
 fi
 
 echo "[INIT] Mosquitto started on port 38883. Starting Flask application..."
+if [ -f /app/run.pyc ]; then
+  exec python /app/run.pyc
+fi
 exec python run.py

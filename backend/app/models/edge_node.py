@@ -12,6 +12,10 @@ class EdgeNode(db.Model):
     status = db.Column(db.String(20), default='offline') # online, offline, fault
     last_heartbeat = db.Column(db.DateTime)
     hardware_status = db.Column(db.JSON) # CPU, RAM, GPU, current running tasks
+    agent_version = db.Column(db.String(40))
+    upgrade_status = db.Column(db.String(20))
+    upgrade_target_version = db.Column(db.String(40))
+    upgrade_message = db.Column(db.String(255))
     # 节点可用视频源列表（camera_id 列表）。用于：
     # - 任务创建时过滤“该节点可访问的视频源”
     # - 本地视频源（例如文件路径/USB索引）通常只能在对应节点上访问
@@ -36,6 +40,10 @@ class EdgeNode(db.Model):
             'status': self.status,
             'last_heartbeat': self.last_heartbeat.strftime('%Y-%m-%d %H:%M:%S') if self.last_heartbeat else None,
             'hardware_status': self.hardware_status,
+            'agent_version': self.agent_version,
+            'upgrade_status': self.upgrade_status,
+            'upgrade_target_version': self.upgrade_target_version,
+            'upgrade_message': self.upgrade_message,
             'bound_camera_ids': bound_camera_ids,
             'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else None,
             'updated_at': self.updated_at.strftime('%Y-%m-%d %H:%M:%S') if self.updated_at else None

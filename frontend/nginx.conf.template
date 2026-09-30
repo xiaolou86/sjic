@@ -18,6 +18,24 @@ server {
         add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
     }
 
+    # 边缘安装包下发，签名算法与 /static-models/ 相同
+    location /static-upgrades/ {
+        alias /usr/share/nginx/upgrades/;
+
+        secure_link $arg_md5,$arg_expires;
+        secure_link_md5 "${DOWNLOAD_SECURE_KEY}$uri$arg_expires";
+
+        if ($secure_link = "") {
+            return 403;
+        }
+        if ($secure_link = "0") {
+            return 410;
+        }
+
+        add_header 'Access-Control-Allow-Origin' '*' always;
+        default_type application/octet-stream;
+    }
+
     # 模型静态下发：与 backend 共享 ./models；签名约定见 backend NginxLocalStorage
     # md5_base64url( secret + "/static-models/" + filename + expire )
     location /static-models/ {

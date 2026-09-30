@@ -156,10 +156,11 @@ def create_app(config_class=Config):
             app.logger.warning(f"Database inspection skipped: {e}")
 
         try:
-            from app.utils.db_compat import ensure_alert_camera_optional
+            from app.utils.db_compat import ensure_alert_camera_optional, ensure_edge_upgrade_columns
             ensure_alert_camera_optional()
+            ensure_edge_upgrade_columns()
         except Exception as e:
-            app.logger.warning(f"Alert camera_id schema check skipped: {e}")
+            app.logger.warning(f"Schema check skipped: {e}")
 
 
         # 注册错误处理器
@@ -171,6 +172,9 @@ def create_app(config_class=Config):
 
         from app.services.audit import register_audit
         register_audit(app)
+
+    if os.environ.get('SJIC_MIGRATE_ONLY') == '1':
+        return app
 
     # 初始化 MQTT
     from app.services.mqtt_service import mqtt_service

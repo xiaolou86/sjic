@@ -51,6 +51,15 @@ def get_hardware_status(architecture):
         logger.debug(f"platform hardware extras skipped: {e}")
     return base
 
+def read_version():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'VERSION')
+    try:
+        with open(path, encoding='utf-8') as handle:
+            return handle.read().strip() or '1.0.0'
+    except OSError:
+        return '1.0.0'
+
+
 def main():
     config = load_config()
     arch = config.get('architecture', 'x86')
@@ -64,6 +73,14 @@ def main():
     mqtt_client = EdgeMqttClient(config, task_manager)
     task_manager.set_mqtt_client(mqtt_client) # 反向注入以便发状态
     mqtt_client.start()
+
+    try:
+        from utils.upgrade import read_host_status
+        host_status = read_host_status()
+        if host_status and host_status.get('state') == 'failed':
+            mqtt_client.publish_upgrade_status('failed', host_status.get('message') or '升级失败', read_version())
+    except Exception as exc:
+        logger.debug(f'upgrade status file skipped: {exc}')
     
     # 3. 自动恢复重启前的任务
     task_manager.reload_tasks()
@@ -76,6 +93,7 @@ def main():
         "status": "online",
         "hardware": get_hardware_status(arch),
         "ip_address": get_local_ip_address(),
+        "version": read_version(),
     }
 
     # 4. 守护循环：周期推送心跳

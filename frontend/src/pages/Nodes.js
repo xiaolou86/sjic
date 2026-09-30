@@ -6,7 +6,7 @@ import {
     Menu, ListItemIcon, ListItemText, Divider, LinearProgress, Tooltip, Snackbar, Alert, Stack
 } from '@mui/material';
 import {
-    Edit, Delete, Circle, RestartAlt, PowerSettingsNew, WifiTethering, SettingsBackupRestore, ContentCopy
+    Edit, Delete, Circle, RestartAlt, PowerSettingsNew, WifiTethering, SettingsBackupRestore, ContentCopy, Upgrade
 } from '@mui/icons-material';
 import axios from '../utils/axios';
 
@@ -20,12 +20,16 @@ function Nodes() {
     const [powerBusyId, setPowerBusyId] = useState(null);
     const [powerMenu, setPowerMenu] = useState({ anchor: null, node: null });
     const [copyMsg, setCopyMsg] = useState({ open: false, type: 'success', text: '' });
+    const [edgeRelease, setEdgeRelease] = useState('');
 
     useEffect(() => {
         fetchNodes();
         fetchCameras();
-        // 自动刷新心跳状态
-        const interval = setInterval(fetchNodes, 5000);
+        fetchEdgeRelease();
+        const interval = setInterval(() => {
+            fetchNodes();
+            fetchEdgeRelease();
+        }, 5000);
         return () => clearInterval(interval);
     }, []);
 
@@ -44,6 +48,16 @@ function Nodes() {
             setCameras(response || []);
         } catch (error) {
             console.error('Error fetching cameras:', error);
+        }
+    };
+
+    const fetchEdgeRelease = async () => {
+        if (!canPower) return;
+        try {
+            const data = await axios.get('/api/admin/upgrades');
+            setEdgeRelease(data?.edge?.staged_version || '');
+        } catch (error) {
+            setEdgeRelease('');
         }
     };
 
@@ -116,6 +130,32 @@ function Nodes() {
         } finally {
             setPowerBusyId(null);
         }
+    };
+
+    const handleNodeUpgrade = async (node) => {
+        closePowerMenu();
+        if (!edgeRelease) return;
+        if (!window.confirm(`确定将「${node.name}」升级到 ${edgeRelease}？\n任务会短暂停止，失败时盒子会退回上一版。`)) {
+            return;
+        }
+        setPowerBusyId(node.id);
+        try {
+            const result = await axios.post(`/api/nodes/${node.id}/upgrade`);
+            window.alert(result.message || '升级指令已下发');
+            fetchNodes();
+        } catch (error) {
+            window.alert('升级失败: ' + (error.response?.data?.error || error.message));
+        } finally {
+            setPowerBusyId(null);
+        }
+    };
+
+    const upgradeLabel = {
+        queued: '等待',
+        downloading: '下载中',
+        installing: '安装中',
+        success: '成功',
+        failed: '失败',
     };
 
     const getStatusColor = (status, lastHeartbeat) => {
@@ -229,6 +269,7 @@ function Nodes() {
                                 <TableCell>名称</TableCell>
                                 <TableCell>IP 地址</TableCell>
                                 <TableCell>机器型号</TableCell>
+                                <TableCell>版本</TableCell>
                                 <TableCell>资源占用</TableCell>
                                 <TableCell>绑定视频源</TableCell>
                                 <TableCell>最近更新时间</TableCell>
@@ -257,6 +298,15 @@ function Nodes() {
                                         <TableCell><b>{node.name}</b></TableCell>
                                         <TableCell>{node.ip_address || "-"}</TableCell>
                                         <TableCell>{node.architecture || "-"}</TableCell>
+                                        <TableCell>
+                                            <Typography variant="body2">{node.agent_version || '-'}</Typography>
+                                            {node.upgrade_status && (
+                                                <Typography variant="caption" color={node.upgrade_status === 'failed' ? 'error' : 'text.secondary'} display="block">
+                                                    {upgradeLabel[node.upgrade_status] || node.upgrade_status}
+                                                    {node.upgrade_message ? ` ${node.upgrade_message}` : ''}
+                                                </Typography>
+                                            )}
+                                        </TableCell>
                                         <TableCell>{renderHardware(node)}</TableCell>
                                         <TableCell>
                                             {boundNames.length === 0 ? '-' : (
@@ -291,7 +341,7 @@ function Nodes() {
                             })}
                             {nodes.length === 0 && (
                                 <TableRow>
-                                    <TableCell colSpan={9} align="center" sx={{ py: 5 }}>
+                                    <TableCell colSpan={10} align="center" sx={{ py: 5 }}>
                                         <Typography color="textSecondary">
                                             暂无注册的边缘节点。请在下位机中配置 MQTT 连接并启动 Edge Agent。
                                         </Typography>
@@ -347,6 +397,16 @@ function Nodes() {
                     <ListItemText
                         primary="重启程序"
                         secondary={!hostLikelyOn ? '节点离线，无法下发' : '仅重启程序，不关闭主机'}
+                    />
+                </MenuItem>
+                <MenuItem
+                    disabled={!hostLikelyOn || !edgeRelease}
+                    onClick={() => powerMenuNode && handleNodeUpgrade(powerMenuNode)}
+                >
+                    <ListItemIcon><Upgrade fontSize="small" /></ListItemIcon>
+                    <ListItemText
+                        primary="升级程序"
+                        secondary={!hostLikelyOn ? '节点离线，无法下发' : (edgeRelease ? `安装 ${edgeRelease}` : '请先在系统设置上传边缘安装包')}
                     />
                 </MenuItem>
             </Menu>

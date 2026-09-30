@@ -21,6 +21,7 @@ from app.routes.license_routes import license_bp
 from app.routes.dashboard_routes import dashboard_bp
 from app.routes.admin_routes import admin_bp
 from app.routes.analytics_routes import analytics_bp
+from app.routes.upgrade_routes import upgrade_bp
 
 
 def register_blueprints(app):
@@ -42,6 +43,7 @@ def register_blueprints(app):
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(analytics_bp)
+    app.register_blueprint(upgrade_bp)
 
     # 在应用启动时创建错误图像
     create_error_image()

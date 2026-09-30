@@ -23,7 +23,7 @@ COPY --from=build /app/build /usr/share/nginx/html
 # 使用官方 entrypoint 的 envsubst：注入 DOWNLOAD_SECURE_KEY
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 
-RUN mkdir -p /usr/share/nginx/models
+RUN mkdir -p /usr/share/nginx/models /usr/share/nginx/upgrades
 
 # 暴露前端 / 模型下载端口
 EXPOSE 38880

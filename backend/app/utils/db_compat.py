@@ -64,6 +64,26 @@ def apply_alert_camera_optional(operations, bind):
             batch.alter_column('camera_id', existing_type=sa.Integer(), nullable=True)
 
 
+def ensure_edge_upgrade_columns():
+    """边缘节点的版本和升级状态列。升级流程会跑迁移，这里避免旧库在迁移前查询失败。"""
+    columns = (
+        ('agent_version', 'VARCHAR(40)'),
+        ('upgrade_status', 'VARCHAR(20)'),
+        ('upgrade_target_version', 'VARCHAR(40)'),
+        ('upgrade_message', 'VARCHAR(255)'),
+    )
+    engine = db.engine
+    if not inspect(engine).has_table('edge_nodes'):
+        return
+    existing = {col['name'] for col in inspect(engine).get_columns('edge_nodes')}
+    missing = [(name, column_type) for name, column_type in columns if name not in existing]
+    if not missing:
+        return
+    with engine.begin() as connection:
+        for name, column_type in missing:
+            connection.execute(text(f'ALTER TABLE edge_nodes ADD COLUMN {name} {column_type}'))
+
+
 def ensure_alert_camera_optional():
     """已有库在启动或删除视频源时补齐，不依赖是否已经执行过迁移。"""
     engine = db.engine

@@ -45,6 +45,10 @@ class TestDescribeOperation(unittest.TestCase):
         power = describe_operation('POST', '/api/nodes/2/power', {'action': 'wake'})
         self.assertIn('唤醒', power['summary'])
 
+        upgrade = describe_operation('POST', '/api/nodes/5/upgrade', {})
+        self.assertEqual(upgrade['module'], '节点')
+        self.assertIn('#5', upgrade['summary'])
+
     def test_customer_cannot_see_super_admin_or_vendor_modules(self):
         self.assertFalse(operation_visible_to('customer', 'super_admin', 'vendor', '节点'))
         self.assertFalse(operation_visible_to('customer', 'super_admin', '', '认证'))

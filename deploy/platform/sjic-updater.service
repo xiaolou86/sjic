@@ -1,0 +1,14 @@
+[Unit]
+Description=SJIC platform release updater
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/opt/sjic/updater/sjic-updater.sh
+Restart=always
+RestartSec=3
+WorkingDirectory=/opt/sjic/updater
+
+[Install]
+WantedBy=multi-user.target
