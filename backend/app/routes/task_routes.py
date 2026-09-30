@@ -198,6 +198,7 @@ def create_tasks():
     data.pop('status', None)
     data.pop('run_status', None)
     data.pop('is_scheduled', None)
+    data.pop('notificationEnabled', None)
 
     # 规范化时段：空串视为未设置
     for key in ('schedule_start', 'schedule_end'):
@@ -272,6 +273,7 @@ def update_tasks(task_id):
       data.pop('warnings', None)
       data.pop('created_at', None)
       data.pop('id', None)
+      data.pop('notificationEnabled', None)
 
       for key in ('schedule_start', 'schedule_end'):
         if key in data and not str(data.get(key) or '').strip():

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Grid, Paper, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, Button, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Switch, FormControlLabel, Select, MenuItem, IconButton,
+  TextField, Select, MenuItem, IconButton,
   Typography, Divider, Box, InputAdornment, Alert, Chip
 } from '@mui/material';
 import { Add, Edit, Delete, PlayArrow, Stop, Info, Search } from '@mui/icons-material';
@@ -85,7 +85,6 @@ function Tasks() {
     cameraId: '',
     edge_node_id: '',
     confidence: 0.5,
-    notificationEnabled: true,
     pipeline: 'single',
     algorithm_id: '',
     od_algorithm_id: '',
@@ -255,7 +254,6 @@ function Tasks() {
       edge_node_id: task.edge_node_id || '',
       confidence: task.confidence,
       alertThreshold: task.alertThreshold,
-      notificationEnabled: task.notificationEnabled,
       schedule_start: task.schedule_start || '',
       schedule_end: task.schedule_end || '',
       algorithm_parameters: task.algorithm_parameters || {}
@@ -274,7 +272,6 @@ function Tasks() {
       edge_node_id: (filterNodeId !== 'all' && filterNodeId !== 'unassigned') ? filterNodeId : '',
       confidence: 0.5,
       alertThreshold: 3,
-      notificationEnabled: true,
       pipeline: 'single',
       algorithm_id: '',
       od_algorithm_id: '',
@@ -1222,18 +1219,6 @@ function Tasks() {
                     ? '已设为定时任务（场景时段优先）'
                     : '留空则需手动启停'
                 }
-              />
-            </Grid>
-
-            <Grid item xs={12}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={formData.notificationEnabled}
-                    onChange={(e) => setFormData({ ...formData, notificationEnabled: e.target.checked })}
-                  />
-                }
-                label="启用通知"
               />
             </Grid>
 
