@@ -1,0 +1,25 @@
+# 克隆仓库后在仓库根目录打包，本机不需要安装 Python / Node。
+# 产物写到仓库 dist/：sjic-platform-<版本>.tar.gz 与 sjic-edge-<版本>.tar.gz
+#
+#   SJIC_VERSION=1.0.1 docker compose -f deploy/docker-compose.pack.yml run --rm pack
+#
+# 只打其中一个：SJIC_COMPONENT=platform 或 edge
+
+name: sjic-pack
+
+services:
+  pack:
+    build:
+      context: ./pack
+    image: sjic-pack:3.10
+    working_dir: /src
+    volumes:
+      - ..:/src
+      - pack_node_modules:/src/frontend/node_modules
+    environment:
+      SJIC_VERSION: ${SJIC_VERSION:-}
+      SJIC_COMPONENT: ${SJIC_COMPONENT:-all}
+    command: ["sh", "/src/deploy/pack/pack.sh"]
+
+volumes:
+  pack_node_modules:
