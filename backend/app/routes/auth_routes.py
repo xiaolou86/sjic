@@ -6,7 +6,15 @@ from flask_cors import cross_origin
 import jwt
 from datetime import datetime, timedelta
 from config import Config
-from app.middleware.auth import token_required
+from app.extensions import db
+from app.middleware.auth import token_required, get_token_payload
+from app.models import Setting
+from app.services.accounts import (
+    BUILTIN_ACCOUNTS,
+    MIN_PASSWORD_LENGTH,
+    authenticate,
+    hash_password,
+)
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -54,12 +62,8 @@ def login():
 
     current_app.logger.info(f"Processing login for username: {username}")
 
-    # 验证账号密码
-    role = None
-    if username == 'super_admin' and password == '123123':
-        role = 'vendor'
-    elif username == 'admin' and password == '123123':
-        role = 'customer'
+    settings = Setting.query.first()
+    role = authenticate(username, password, settings.config if settings else None)
 
     if role:
         token = jwt.encode({
@@ -87,3 +91,44 @@ def login():
 def logout():
     """记录退出登录。审计由 after_request 写入。"""
     return jsonify({'status': 'ok'})
+
+
+@auth_bp.route('/api/auth/password', methods=['POST'])
+@token_required
+def change_password():
+    """修改当前登录账号的密码。"""
+    payload = get_token_payload() or {}
+    username = payload.get('user') if isinstance(payload.get('user'), str) else ''
+    username = username.strip()
+    if username not in BUILTIN_ACCOUNTS:
+        return jsonify({'error': '当前账号不支持修改密码'}), 400
+
+    data = request.get_json(silent=True) or {}
+    old_password = data.get('old_password') if isinstance(data.get('old_password'), str) else ''
+    new_password = data.get('new_password') if isinstance(data.get('new_password'), str) else ''
+    if len(new_password) < MIN_PASSWORD_LENGTH:
+        return jsonify({'error': f'新密码至少 {MIN_PASSWORD_LENGTH} 位'}), 400
+    if new_password == old_password:
+        return jsonify({'error': '新密码不能与原密码相同'}), 400
+
+    try:
+        settings = Setting.query.first()
+        if not settings:
+            settings = Setting()
+            db.session.add(settings)
+
+        if not authenticate(username, old_password, settings.config):
+            db.session.rollback()
+            return jsonify({'error': '原密码不正确'}), 400
+
+        settings.update({
+            'accounts': {
+                username: {'password_hash': hash_password(new_password)},
+            }
+        })
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Failed to change password for {username}: {e}")
+        return jsonify({'error': '修改密码失败'}), 500
+    return jsonify({'message': '密码已更新，下次登录请使用新密码'})

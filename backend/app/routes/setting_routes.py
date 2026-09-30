@@ -65,6 +65,8 @@ def update_settings():
     """更新系统设置（品牌相关字段仅服务商超管可改）"""
     try:
         data = request.get_json() or {}
+        # 密码哈希只允许走 /api/auth/password，避免保存设置时被覆盖
+        data.pop('accounts', None)
         current_app.logger.info(f"Received settings update: {data}")
 
         from app.middleware.auth import get_token_payload

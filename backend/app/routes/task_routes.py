@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify, request, current_app
 from app.extensions import db
 from app.models import Task, Algorithm
 from app.middleware.auth import token_required
+from app.middleware.license_guard import REASON_MESSAGES
 from app.utils.calibration import get_calibration_image
 from app.services.license_service import license_service
 
@@ -38,12 +39,12 @@ def _check_published_algorithm(algorithm_id, expected_engine=None):
         return None, None
     algorithm = Algorithm.query.get(algorithm_id)
     if not algorithm:
-        return None, (jsonify({'error': 'Algorithm not found'}), 400)
+        return None, (jsonify({'error': '算法不存在'}), 400)
     if not _is_algorithm_published(algorithm):
-        return None, (jsonify({'error': 'Algorithm is not published. Please publish it in Algorithms first.'}), 400)
+        return None, (jsonify({'error': '算法尚未发布，请先在算法管理中发布'}), 400)
     if algorithm.is_system_template():
         return None, (jsonify({
-            'error': 'Cannot create task from system template. Use a published algorithm instance derived from the template.',
+            'error': '不能使用系统模板创建任务，请使用从模板派生并已发布的算法实例',
         }), 400)
     algorithm.ensure_catalog_schema(persist=True)
     from app.utils.algorithm_catalog import engine_needs_model
@@ -52,10 +53,12 @@ def _check_published_algorithm(algorithm_id, expected_engine=None):
         label = '目标检测' if expected_engine == 'object_detection' else '姿态'
         return None, (jsonify({'error': f'绑定的算法不是{label}算法'}), 400)
     if engine_needs_model(engine) and not algorithm.model_id:
-        return None, (jsonify({'error': 'Algorithm has no bound model. Please bind a model in Algorithms edit, then publish.'}), 400)
+        return None, (jsonify({'error': '算法未绑定模型，请先在算法编辑中绑定模型并发布'}), 400)
     allowed, deny_reason = license_service.is_algorithm_allowed(algorithm.type)
     if not allowed:
-        return None, (jsonify({'error': f'Algorithm not allowed by license: {deny_reason}'}), 403)
+        return None, (jsonify({
+            'error': REASON_MESSAGES.get(deny_reason, deny_reason or '当前授权不允许使用该算法'),
+        }), 403)
     return algorithm, None
 
 
@@ -97,7 +100,7 @@ def _apply_exam_or_single(data, existing=None):
         return None
 
     if not algorithm_id:
-        return (jsonify({'error': 'algorithm_id is required'}), 400)
+        return (jsonify({'error': '请选择要绑定的算法'}), 400)
     algorithm, err = _check_published_algorithm(algorithm_id)
     if err:
         return err
@@ -178,7 +181,7 @@ def create_tasks():
     """
     ok, reason = license_service.ensure_valid()
     if not ok:
-        return jsonify({'error': f'License invalid: {reason}'}), 403
+        return jsonify({'error': REASON_MESSAGES.get(reason, reason or '授权无效')}), 403
 
     data = request.json or {}
     current_app.logger.info(f"Creating new task: {data}")
@@ -257,7 +260,7 @@ def update_tasks(task_id):
     try:
       ok, reason = license_service.ensure_valid()
       if not ok:
-        return jsonify({'error': f'License invalid: {reason}'}), 403
+        return jsonify({'error': REASON_MESSAGES.get(reason, reason or '授权无效')}), 403
 
       data = request.json or {}
       # 任务更新忽略 modelId，模型由算法绑定决定

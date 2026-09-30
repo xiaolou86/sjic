@@ -31,6 +31,13 @@ class TestDescribeOperation(unittest.TestCase):
         logout = describe_operation('POST', '/api/logout', {})
         self.assertEqual(logout['action'], 'logout')
 
+        changed = describe_operation('POST', '/api/auth/password', {
+            'old_password': 'secret',
+            'new_password': 'secret2',
+        })
+        self.assertEqual(changed['summary'], '修改登录密码')
+        self.assertNotIn('secret', changed['summary'])
+
         review = describe_operation('PATCH', '/api/alerts/4/review', {'review_status': 'false_positive'})
         self.assertEqual(review['module'], '告警')
         self.assertIn('误报', review['summary'])

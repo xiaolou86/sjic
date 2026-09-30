@@ -2,15 +2,37 @@
 摄像头管理路由蓝图
 """
 from flask import Blueprint, jsonify, request, Response, current_app
+from sqlalchemy.orm.attributes import flag_modified
 from app.extensions import db
-from app.models import Camera, Task, EdgeNode
+from app.models import Alert, Camera, Task, EdgeNode
 from app.models.camera import MOUNT_POSITIONS, DEFAULT_MOUNT_POSITION
 from app.middleware.auth import token_required
 from app.services.mqtt_service import mqtt_service
 from app.services.license_service import license_service
+from app.utils.db_compat import ensure_alert_camera_optional
 import cv2
 
 camera_bp = Blueprint('camera', __name__)
+
+
+def _unbind_camera_from_nodes(camera_id):
+    for node in EdgeNode.query.all():
+        if not isinstance(node.bound_cameras, list):
+            continue
+        kept = []
+        removed = False
+        for raw in node.bound_cameras:
+            try:
+                value = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if value == camera_id:
+                removed = True
+                continue
+            kept.append(value)
+        if removed:
+            node.bound_cameras = kept
+            flag_modified(node, 'bound_cameras')
 
 
 @camera_bp.route('/api/cameras', methods=['GET'])
@@ -134,24 +156,40 @@ def delete_camera(camera_id):
       204:
         description: 删除成功
     """
+    ensure_alert_camera_optional()
     camera = Camera.query.get_or_404(camera_id)
     related_tasks = Task.query.filter_by(cameraId=camera_id).all()
+    task_ids = {task.id for task in related_tasks}
+    camera_name = camera.name
 
     try:
-      # Delete cloud task records and proactively stop edge runtime tasks.
-      for task in related_tasks:
-        if task.edge_node_id:
-          edge_node = EdgeNode.query.get(task.edge_node_id)
-          if edge_node:
-            mqtt_service.publish_task_stop(edge_node.mac_address, task.id)
-        db.session.delete(task)
+        # 保留告警和图片，只解开外键。名称先记下来，页面上仍能看出是哪一路。
+        alerts = Alert.query.filter(Alert.camera_id == camera_id).all()
+        if task_ids:
+            linked = Alert.query.filter(Alert.task_id.in_(task_ids)).all()
+            known = {alert.id for alert in alerts}
+            alerts.extend(alert for alert in linked if alert.id not in known)
+        for alert in alerts:
+            if not (alert.camera_name or '').strip():
+                alert.camera_name = camera_name
+            if alert.task_id in task_ids:
+                alert.task_id = None
+        db.session.flush()
 
-      db.session.delete(camera)
-      db.session.commit()
+        for task in related_tasks:
+            if task.edge_node_id:
+                edge_node = EdgeNode.query.get(task.edge_node_id)
+                if edge_node:
+                    mqtt_service.publish_task_stop(edge_node.mac_address, task.id)
+            db.session.delete(task)
+
+        _unbind_camera_from_nodes(camera_id)
+        db.session.delete(camera)
+        db.session.commit()
     except Exception as e:
-      db.session.rollback()
-      current_app.logger.error(f"Failed to delete camera {camera_id}: {str(e)}", exc_info=True)
-      return jsonify({'error': str(e)}), 500
+        db.session.rollback()
+        current_app.logger.error(f"Failed to delete camera {camera_id}: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
 
     return '', 204
 

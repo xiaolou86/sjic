@@ -63,6 +63,7 @@ def _alert_query_from_args(source=None):
             Alert.alert_type.ilike(like),
             Alert.message.ilike(like),
             Camera.name.ilike(like),
+            Alert.camera_name.ilike(like),
             Alert.review_note.ilike(like),
         ))
     if start is not None:
@@ -295,7 +296,7 @@ def export_alerts():
                         raw_archived_name = f'{alert.id}_{raw_name}'
                         zf.write(raw_src, arcname=f'images/{raw_archived_name}')
 
-                camera_name = alert.camera.name if alert.camera else ''
+                camera_name = alert.camera.name if alert.camera else (alert.camera_name or '')
                 writer.writerow([
                     alert.id,
                     alert.timestamp.isoformat() if alert.timestamp else '',
@@ -371,6 +372,7 @@ def create_alert():
 
     alert = Alert(
         camera_id=data['camera_id'],
+        camera_name=camera.name,
         alert_type=data['alert_type'],
         confidence=data.get('confidence'),
         image_url=data.get('image_url'),

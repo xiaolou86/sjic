@@ -38,8 +38,10 @@ class DetectorService:
             
     def create_alert(self, camera_id, alert_type, confidence, image_url):
         """创建告警记录"""
+        camera = Camera.query.get(camera_id)
         alert = Alert(
             camera_id=camera_id,
+            camera_name=camera.name if camera else None,
             alert_type=alert_type,
             confidence=confidence,
             image_url=image_url,
@@ -280,6 +282,7 @@ class DetectorService:
                 return {"success": False, "message": "Task not found"}
 
             task.status = 'stopped'
+            task.run_status = 'stopped'
             # pause_schedule=True：用户手动停止，不再自动拉起
             # pause_schedule=False：调度器按时段停止，次日仍可自动启动
             # None：若为定时任务则视为手动暂停
@@ -298,6 +301,41 @@ class DetectorService:
         except Exception as e:
             current_app.logger.error(f"Error stopping detection: {str(e)}")
             return {"success": False, "message": str(e)}
+
+    def stop_tasks_for_unbound_cameras(self, edge_node_id, camera_ids):
+        """节点解绑视频源后，停掉该节点上仍在跑的对应任务，并暂停定时拉起。"""
+        ids = []
+        for raw in camera_ids or []:
+            try:
+                ids.append(int(raw))
+            except (TypeError, ValueError):
+                continue
+        if not edge_node_id or not ids:
+            return []
+
+        active = {'running', 'syncing', 'starting'}
+        tasks = Task.query.filter(
+            Task.edge_node_id == edge_node_id,
+            Task.cameraId.in_(ids),
+        ).all()
+        stopped = []
+        for task in tasks:
+            is_active = (task.status or '').lower() in active or (task.run_status or '').lower() in active
+            if is_active:
+                result = self.stop_detection(task.id, pause_schedule=True)
+                if result.get('success'):
+                    stopped.append(task.id)
+                continue
+            # 当前不在跑，但到点会被调度器拉起；解绑后不再自动启动
+            if task.has_schedule() and not task.schedule_paused:
+                task.schedule_paused = True
+                db.session.commit()
+                stopped.append(task.id)
+        if stopped:
+            current_app.logger.info(
+                f"Stopped tasks {stopped} after unbinding cameras {ids} from node {edge_node_id}"
+            )
+        return stopped
         
 
     # Legacy `_detect_loop`, `_send_alert_to_external_api` functions have been completely migrated to Edge-Agent task_manager 

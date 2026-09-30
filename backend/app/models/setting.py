@@ -62,14 +62,13 @@ class Setting(db.Model):
 
     def to_dict(self):
         merged = self.merged_config(self.config)
+        # 密码哈希只给登录校验用，不进设置接口和日志
+        merged.pop('accounts', None)
         current_app.logger.info(f"Converting to dict, current config: {merged}")
         return merged
 
     def update(self, data):
         """更新设置（与默认值合并后写入）"""
-        current_app.logger.info(f"Updating config with data: {data}")
-        current_app.logger.info(f"Current config before update: {self.config}")
-
         if self.config is None:
             current_app.logger.warning("Config was None, resetting to default")
             self.config = copy.deepcopy(self.DEFAULT_CONFIG)
@@ -78,7 +77,6 @@ class Setting(db.Model):
             # 先与默认合并，再应用提交数据，确保新增配置节可写入
             base = self.merged_config(self.config)
             self.config = self.deep_merge(base, data or {})
-            current_app.logger.info(f"Config after update: {self.config}")
             flag_modified(self, 'config')
         except Exception as e:
             current_app.logger.error(f"Error updating config: {str(e)}")

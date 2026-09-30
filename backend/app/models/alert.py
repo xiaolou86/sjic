@@ -11,7 +11,9 @@ class Alert(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     timestamp = db.Column(db.DateTime, default=datetime.now)
-    camera_id = db.Column(db.Integer, db.ForeignKey('cameras.id'), nullable=False)
+    # 视频源删除后置空，告警和图片仍保留；名称见 camera_name
+    camera_id = db.Column(db.Integer, db.ForeignKey('cameras.id'), nullable=True)
+    camera_name = db.Column(db.String(100), nullable=True)
     task_id = db.Column(db.Integer, db.ForeignKey('tasks.id'), nullable=True)
     algorithm_id = db.Column(db.Integer, db.ForeignKey('algorithms.id'), nullable=True)
     alert_type = db.Column(db.String(50), nullable=False)
@@ -35,7 +37,7 @@ class Alert(db.Model):
         return {
             'id': self.id,
             'camera_id': self.camera_id,
-            'camera_name': self.camera.name if self.camera else None,
+            'camera_name': self.camera.name if self.camera else (self.camera_name or None),
             'task_id': self.task_id,
             'algorithm_id': self.algorithm_id,
             'alert_type': self.alert_type,

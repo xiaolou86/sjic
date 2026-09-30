@@ -1,12 +1,24 @@
 from flask import Blueprint, jsonify, request, current_app
 from app.extensions import db, socketio
-from app.models import Alert, EdgeNode
+from app.models import Alert, Camera, EdgeNode
 from app.middleware.auth import token_required
 import os
 from datetime import datetime
 from config import Config
 
 edge_bp = Blueprint('edge', __name__)
+
+
+def _camera_id_set(values):
+    ids = set()
+    if not isinstance(values, list):
+        return ids
+    for raw in values:
+        try:
+            ids.add(int(raw))
+        except (TypeError, ValueError):
+            continue
+    return ids
 
 @edge_bp.route('/api/edge/alerts', methods=['POST'])
 def receive_alert():
@@ -77,9 +89,16 @@ def receive_alert():
                 stem, ext = os.path.splitext(filename)
                 raw_file.save(os.path.join(save_dir, f"{stem}_raw{ext or '.jpg'}"))
 
-        # 写入数据库
+        # 写入数据库。名称一并记下，视频源日后删除时告警仍能显示来源。
+        camera = None
+        if camera_id not in (None, ''):
+            try:
+                camera = Camera.query.get(int(camera_id))
+            except (TypeError, ValueError):
+                camera = None
         alert = Alert(
             camera_id=camera_id,
+            camera_name=camera.name if camera else None,
             task_id=int(task_id) if task_id else None,
             algorithm_id=int(algorithm_id) if algorithm_id else None,
             alert_type=alert_type,
@@ -168,10 +187,13 @@ def update_node(node_id):
         if 'name' in data:
             node.name = data['name']
         # 新版：节点可用视频源列表（多选）
+        removed_camera_ids = set()
         if 'bound_camera_ids' in data:
+            old_ids = _camera_id_set(node.bound_cameras)
             ids = data.get('bound_camera_ids')
             if ids in ("", None):
                 node.bound_cameras = None
+                new_ids = set()
             elif not isinstance(ids, list):
                 return jsonify({"error": "bound_camera_ids 必须是数组"}), 400
             else:
@@ -185,10 +207,17 @@ def update_node(node_id):
                         return jsonify({"error": f"bound_camera_ids 包含非法值: {x}"}), 400
                 # 去重并排序，便于一致性展示
                 node.bound_cameras = sorted(list(set(normalized)))
+                new_ids = set(node.bound_cameras)
+            removed_camera_ids = old_ids - new_ids
+
+        if removed_camera_ids:
+            from app.services.detector import DetectorService
+            DetectorService().stop_tasks_for_unbound_cameras(node.id, removed_camera_ids)
 
         db.session.commit()
         return jsonify(node.to_dict()), 200
     except Exception as e:
+        db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
 @edge_bp.route('/api/nodes/<int:node_id>', methods=['DELETE'])

@@ -155,6 +155,12 @@ def create_app(config_class=Config):
         except Exception as e:
             app.logger.warning(f"Database inspection skipped: {e}")
 
+        try:
+            from app.utils.db_compat import ensure_alert_camera_optional
+            ensure_alert_camera_optional()
+        except Exception as e:
+            app.logger.warning(f"Alert camera_id schema check skipped: {e}")
+
 
         # 注册错误处理器
         _register_error_handlers(app)

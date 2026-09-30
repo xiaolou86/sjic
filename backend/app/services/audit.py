@@ -88,6 +88,9 @@ def describe_operation(method, path, body):
     if path == '/api/logout' and method == 'POST':
         return {'action': 'logout', 'module': '认证', 'summary': '退出登录'}
 
+    if path == '/api/auth/password' and method == 'POST':
+        return {'action': 'update', 'module': '认证', 'summary': '修改登录密码'}
+
     rules = (
         ('POST', r'^/api/cameras$', 'create', '视频源', f'创建视频源 {name}'.strip()),
         ('PUT', r'^/api/cameras/(\d+)$', 'update', '视频源', f'修改视频源 {name or "#"}'),

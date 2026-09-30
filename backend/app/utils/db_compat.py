@@ -1,3 +1,6 @@
+import sqlalchemy as sa
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from sqlalchemy import inspect, text
 
 from app.extensions import db
@@ -40,4 +43,33 @@ def ensure_legacy_schema(app):
             connection.execute(
                 text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
             )
+
+
+def apply_alert_camera_optional(operations, bind):
+    """告警的 camera_id 改为可空，并补上 camera_name，便于视频源删除后保留历史告警。"""
+    insp = inspect(bind)
+    if not insp.has_table('alerts'):
+        return
+    cols = {col['name']: col for col in insp.get_columns('alerts')}
+    if 'camera_id' not in cols:
+        return
+    needs_name = 'camera_name' not in cols
+    needs_null = not cols['camera_id'].get('nullable', False)
+    if not needs_name and not needs_null:
+        return
+    with operations.batch_alter_table('alerts') as batch:
+        if needs_name:
+            batch.add_column(sa.Column('camera_name', sa.String(length=100), nullable=True))
+        if needs_null:
+            batch.alter_column('camera_id', existing_type=sa.Integer(), nullable=True)
+
+
+def ensure_alert_camera_optional():
+    """已有库在启动或删除视频源时补齐，不依赖是否已经执行过迁移。"""
+    engine = db.engine
+    if not inspect(engine).has_table('alerts'):
+        return
+    with engine.begin() as connection:
+        context = MigrationContext.configure(connection)
+        apply_alert_camera_optional(Operations(context), connection)
 
