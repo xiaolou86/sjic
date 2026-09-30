@@ -3,7 +3,7 @@ import {
   Grid, TextField, Button, Typography, Snackbar, Alert,
   Card, CardContent, Box, Avatar, Stack
 } from '@mui/material';
-import { Save, CloudUpload, Delete, RestartAlt, Lock } from '@mui/icons-material';
+import { Save, CloudUpload, Delete, RestartAlt } from '@mui/icons-material';
 import axios, { getBaseUrl } from '../utils/axios';
 import { UI_THEME_OPTIONS, DEFAULT_UI_THEME } from '../theme';
 
@@ -38,13 +38,6 @@ function Settings() {
   const [openSnackbar, setOpenSnackbar] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [restartingBackend, setRestartingBackend] = useState(false);
-  const [passwordForm, setPasswordForm] = useState({
-    old_password: '',
-    new_password: '',
-    confirm_password: '',
-  });
-  const [changingPassword, setChangingPassword] = useState(false);
-  const username = localStorage.getItem('username') || '';
 
   const showMsg = (type, content) => {
     setMessage({ type, content });
@@ -191,34 +184,6 @@ function Settings() {
     }
   };
 
-  const handleChangePassword = async () => {
-    if (!passwordForm.old_password || !passwordForm.new_password) {
-      showMsg('error', '请填写原密码和新密码');
-      return;
-    }
-    if (passwordForm.new_password.length < 6) {
-      showMsg('error', '新密码至少 6 位');
-      return;
-    }
-    if (passwordForm.new_password !== passwordForm.confirm_password) {
-      showMsg('error', '两次输入的新密码不一致');
-      return;
-    }
-    setChangingPassword(true);
-    try {
-      const result = await axios.post('/api/auth/password', {
-        old_password: passwordForm.old_password,
-        new_password: passwordForm.new_password,
-      });
-      setPasswordForm({ old_password: '', new_password: '', confirm_password: '' });
-      showMsg('success', result.message || '密码已更新');
-    } catch (error) {
-      showMsg('error', '修改失败: ' + (error.response?.data?.error || error.message));
-    } finally {
-      setChangingPassword(false);
-    }
-  };
-
   const logoSrc = settings.branding.logo_url
     ? `${getBaseUrl()}${settings.branding.logo_url}`
     : '';
@@ -227,54 +192,6 @@ function Settings() {
     <Grid container spacing={3}>
       <Grid item xs={12}>
         <Typography variant="h5" gutterBottom>系统设置</Typography>
-      </Grid>
-
-      <Grid item xs={12} md={6}>
-        <Card>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>修改密码</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              当前账号：{username || '-'}。保存后当前登录仍然有效，下次登录使用新密码。
-            </Typography>
-            <TextField
-              fullWidth
-              type="password"
-              label="原密码"
-              value={passwordForm.old_password}
-              onChange={(e) => setPasswordForm((prev) => ({ ...prev, old_password: e.target.value }))}
-              margin="normal"
-              autoComplete="current-password"
-            />
-            <TextField
-              fullWidth
-              type="password"
-              label="新密码"
-              value={passwordForm.new_password}
-              onChange={(e) => setPasswordForm((prev) => ({ ...prev, new_password: e.target.value }))}
-              margin="normal"
-              autoComplete="new-password"
-              helperText="至少 6 位"
-            />
-            <TextField
-              fullWidth
-              type="password"
-              label="确认新密码"
-              value={passwordForm.confirm_password}
-              onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirm_password: e.target.value }))}
-              margin="normal"
-              autoComplete="new-password"
-            />
-            <Button
-              variant="contained"
-              startIcon={<Lock />}
-              onClick={handleChangePassword}
-              disabled={changingPassword}
-              sx={{ mt: 1 }}
-            >
-              {changingPassword ? '提交中…' : '修改密码'}
-            </Button>
-          </CardContent>
-        </Card>
       </Grid>
 
       <Grid item xs={12}>

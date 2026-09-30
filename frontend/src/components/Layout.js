@@ -1,11 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  Box, Drawer, AppBar, Toolbar, List, Typography, ListItem, ListItemIcon, ListItemText, IconButton, Avatar, Stack, Alert
+  Box, Drawer, AppBar, Toolbar, List, Typography, ListItem, ListItemIcon, ListItemText,
+  Avatar, Stack, Alert, Button, Menu, MenuItem, Divider, Dialog, DialogTitle,
+  DialogContent, DialogActions, TextField, Snackbar
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import {
-  Videocam, ModelTraining, Settings, Build, NotificationsActive, Task, Code, Logout, Computer, Dashboard as DashboardIcon, VpnKey, History, TouchApp
+  Videocam, ModelTraining, Settings, Build, NotificationsActive, Task, Code, Logout, Computer,
+  Dashboard as DashboardIcon, VpnKey, History, TouchApp, Lock
 } from '@mui/icons-material';
 import axios, { getBaseUrl } from '../utils/axios';
 import ClickTracker from './ClickTracker';
@@ -33,12 +36,29 @@ const DEFAULT_BRANDING = {
   logo_url: '',
 };
 
+const ROLE_LABELS = {
+  vendor: '服务商',
+  customer: '管理员',
+};
+
+const EMPTY_PASSWORD = {
+  old_password: '',
+  new_password: '',
+  confirm_password: '',
+};
+
 function Layout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [branding, setBranding] = useState(DEFAULT_BRANDING);
   const [licenseValid, setLicenseValid] = useState(null);
   const [licenseMessage, setLicenseMessage] = useState('');
+  const [menuAnchor, setMenuAnchor] = useState(null);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [passwordForm, setPasswordForm] = useState(EMPTY_PASSWORD);
+  const [passwordError, setPasswordError] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [notice, setNotice] = useState('');
 
   const loadBranding = useCallback(async () => {
     try {
@@ -89,6 +109,7 @@ function Layout({ children }) {
   }, [loadLicense]);
 
   const handleLogout = async () => {
+    setMenuAnchor(null);
     try {
       await axios.post('/api/logout');
     } catch (e) {
@@ -100,7 +121,46 @@ function Layout({ children }) {
     navigate('/login');
   };
 
+  const openPasswordDialog = () => {
+    setMenuAnchor(null);
+    setPasswordForm(EMPTY_PASSWORD);
+    setPasswordError('');
+    setPasswordOpen(true);
+  };
+
+  const handleChangePassword = async () => {
+    if (!passwordForm.old_password || !passwordForm.new_password) {
+      setPasswordError('请填写原密码和新密码');
+      return;
+    }
+    if (passwordForm.new_password.length < 6) {
+      setPasswordError('新密码至少 6 位');
+      return;
+    }
+    if (passwordForm.new_password !== passwordForm.confirm_password) {
+      setPasswordError('两次输入的新密码不一致');
+      return;
+    }
+    setChangingPassword(true);
+    setPasswordError('');
+    try {
+      const result = await axios.post('/api/auth/password', {
+        old_password: passwordForm.old_password,
+        new_password: passwordForm.new_password,
+      });
+      setPasswordOpen(false);
+      setNotice(result.message || '密码已更新，下次登录请使用新密码');
+    } catch (error) {
+      setPasswordError(error.response?.data?.error || error.message || '修改失败');
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   const userRole = localStorage.getItem('user_role');
+  const username = localStorage.getItem('username') || '';
+  const roleLabel = ROLE_LABELS[userRole] || '';
+  const avatarLetter = (username || '?').slice(0, 1).toUpperCase();
   const filteredMenuItems = menuItems.filter(item => {
     if (item.role && item.role !== userRole) return false;
     return true;
@@ -129,21 +189,109 @@ function Layout({ children }) {
               {branding.product_name}
             </Typography>
           </Stack>
-          <IconButton
+          <Button
             color="inherit"
-            aria-label="退出登录"
-            onClick={handleLogout}
+            aria-label="个人中心"
+            aria-haspopup="true"
+            onClick={(e) => setMenuAnchor(e.currentTarget)}
             sx={{
+              textTransform: 'none',
               border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.25)}`,
               '&:hover': {
                 backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.12),
               },
             }}
           >
-            <Logout />
-          </IconButton>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Avatar
+                sx={{
+                  width: 28,
+                  height: 28,
+                  fontSize: '0.85rem',
+                  bgcolor: (theme) => alpha(theme.palette.primary.main, 0.25),
+                  color: 'inherit',
+                }}
+              >
+                {avatarLetter}
+              </Avatar>
+              <Box sx={{ textAlign: 'left', lineHeight: 1.15 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>{username || '未登录'}</Typography>
+                {roleLabel && (
+                  <Typography variant="caption" sx={{ opacity: 0.75 }}>{roleLabel}</Typography>
+                )}
+              </Box>
+            </Stack>
+          </Button>
+          <Menu
+            anchorEl={menuAnchor}
+            open={Boolean(menuAnchor)}
+            onClose={() => setMenuAnchor(null)}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          >
+            <MenuItem onClick={openPasswordDialog}>
+              <ListItemIcon><Lock fontSize="small" /></ListItemIcon>
+              修改密码
+            </MenuItem>
+            <Divider />
+            <MenuItem onClick={handleLogout}>
+              <ListItemIcon><Logout fontSize="small" /></ListItemIcon>
+              退出登录
+            </MenuItem>
+          </Menu>
         </Toolbar>
       </AppBar>
+      <Dialog open={passwordOpen} onClose={() => !changingPassword && setPasswordOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>修改密码</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            当前账号：{username || '-'}。保存后本次登录仍然有效，下次登录使用新密码。
+          </Typography>
+          {passwordError && (
+            <Alert severity="error" sx={{ mb: 1 }}>{passwordError}</Alert>
+          )}
+          <TextField
+            fullWidth
+            type="password"
+            label="原密码"
+            margin="dense"
+            value={passwordForm.old_password}
+            autoComplete="current-password"
+            onChange={(e) => setPasswordForm((prev) => ({ ...prev, old_password: e.target.value }))}
+          />
+          <TextField
+            fullWidth
+            type="password"
+            label="新密码"
+            margin="dense"
+            helperText="至少 6 位"
+            value={passwordForm.new_password}
+            autoComplete="new-password"
+            onChange={(e) => setPasswordForm((prev) => ({ ...prev, new_password: e.target.value }))}
+          />
+          <TextField
+            fullWidth
+            type="password"
+            label="确认新密码"
+            margin="dense"
+            value={passwordForm.confirm_password}
+            autoComplete="new-password"
+            onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirm_password: e.target.value }))}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPasswordOpen(false)} disabled={changingPassword}>取消</Button>
+          <Button variant="contained" onClick={handleChangePassword} disabled={changingPassword}>
+            {changingPassword ? '提交中…' : '保存'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Snackbar
+        open={Boolean(notice)}
+        autoHideDuration={3000}
+        onClose={() => setNotice('')}
+        message={notice}
+      />
       <Drawer
         variant="permanent"
         sx={{
