@@ -125,6 +125,8 @@ python export.py
 docker compose up -d --build
 ```
 
+步骤说明见 [JETSON_DEPLOY.md](JETSON_DEPLOY.md)。
+
 ### x86 / CPU 调试
 
 ```bash
