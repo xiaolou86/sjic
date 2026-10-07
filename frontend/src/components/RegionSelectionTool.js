@@ -15,10 +15,7 @@ function RegionSelectionTool({ cameraId, onSelect, existingRegion, buttonLabel =
 
   const canvasRef = useRef(null);
   const snapshotImgRef = useRef(null);
-  const pointsRef = useRef(points);
-  const editSeqRef = useRef(0);
   const seededRef = useRef(false);
-  pointsRef.current = points;
   const {
     isStreaming,
     imageUrl,
@@ -36,22 +33,12 @@ function RegionSelectionTool({ cameraId, onSelect, existingRegion, buttonLabel =
 
   // 加载已有的区域数据
   useEffect(() => {
-    const incoming = existingRegion?.detection_region?.points || [];
-    const localPts = pointsRef.current || [];
-    // #region agent log
-    fetch('http://127.0.0.1:7251/ingest/387b31b9-2966-4bad-b868-c60425ce2af4',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'15f7e1'},body:JSON.stringify({sessionId:'15f7e1',runId:'pre-fix',hypothesisId:'H3',location:'RegionSelectionTool.js:loadEffect',message:'existingRegion effect ran',data:{open,incomingCount:incoming.length,localCount:localPts.length,editSeq:editSeqRef.current,incomingSig:incoming.map(p=>`${Math.round(p.x)},${Math.round(p.y)}`).join(';').slice(0,180),localSig:localPts.map(p=>`${Math.round(p.x)},${Math.round(p.y)}`).join(';').slice(0,180),calKeys:existingRegion?.calibration?Object.keys(existingRegion.calibration):[],hasImageData:Boolean(existingRegion?.calibration?.image_data),hasFrame:Boolean(existingRegion?.calibration?.frame),willOverwrite:Boolean(open&&existingRegion?.detection_region?.points)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     if (!open) {
       seededRef.current = false;
       return;
     }
     // 任务列表每 5 秒刷新会使 existingRegion 换成新对象。只在打开弹窗时灌入一次，避免把正在编辑的顶点盖回去。
-    if (seededRef.current) {
-      // #region agent log
-      fetch('http://127.0.0.1:7251/ingest/387b31b9-2966-4bad-b868-c60425ce2af4',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'15f7e1'},body:JSON.stringify({sessionId:'15f7e1',runId:'post-fix',hypothesisId:'H3',location:'RegionSelectionTool.js:loadEffect',message:'skip reseed after task refresh',data:{incomingCount:incoming.length,localCount:localPts.length,editSeq:editSeqRef.current,sameShape:incoming.map(p=>`${Math.round(p.x)},${Math.round(p.y)}`).join(';')===localPts.map(p=>`${Math.round(p.x)},${Math.round(p.y)}`).join(';')},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      return;
-    }
+    if (seededRef.current) return;
     seededRef.current = true;
     if (open && existingRegion && existingRegion.detection_region) {
       if (existingRegion.calibration && existingRegion.calibration.image_data) {
@@ -70,10 +57,6 @@ function RegionSelectionTool({ cameraId, onSelect, existingRegion, buttonLabel =
 
   // 开始预览
   const handleStartPreview = () => {
-    // #region agent log
-    fetch('http://127.0.0.1:7251/ingest/387b31b9-2966-4bad-b868-c60425ce2af4',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'15f7e1'},body:JSON.stringify({sessionId:'15f7e1',runId:'pre-fix',hypothesisId:'H2',location:'RegionSelectionTool.js:handleStartPreview',message:'start preview clears points and image',data:{pointsBefore:pointsRef.current.length,editSeq:editSeqRef.current,hasImageUrl:Boolean(imageUrl),isStreaming},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    editSeqRef.current += 1;
     clearImage();
     startStreaming();
   };
@@ -84,9 +67,6 @@ function RegionSelectionTool({ cameraId, onSelect, existingRegion, buttonLabel =
   };
 
   const handlePauseAndFreeze = async () => {
-    // #region agent log
-    fetch('http://127.0.0.1:7251/ingest/387b31b9-2966-4bad-b868-c60425ce2af4',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'15f7e1'},body:JSON.stringify({sessionId:'15f7e1',runId:'pre-fix',hypothesisId:'H1',location:'RegionSelectionTool.js:handlePauseAndFreeze',message:'pause freeze',data:{pointsLen:pointsRef.current.length,editSeq:editSeqRef.current,hasImageUrl:Boolean(imageUrl),isStreaming,frameSize},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     // 本地冻结当前帧（避免 UI 闪烁）并立即断流。
     // 仅当本地快照失败（如 canvas taint/CORS）时，才回退到服务端截帧。
     const imgEl = videoRef.current;
@@ -149,7 +129,6 @@ function RegionSelectionTool({ cameraId, onSelect, existingRegion, buttonLabel =
     setHoveredPointIndex(hoverIndex);
 
     if (draggingPointIndex !== null) {
-      editSeqRef.current += 1;
       setPoints(prev => prev.map((p, i) => i === draggingPointIndex ? pos : p));
     } else if (!isComplete) {
       setCurrentPoint(pos);
@@ -189,10 +168,6 @@ function RegionSelectionTool({ cameraId, onSelect, existingRegion, buttonLabel =
   };
 
   const handleReset = () => {
-    // #region agent log
-    fetch('http://127.0.0.1:7251/ingest/387b31b9-2966-4bad-b868-c60425ce2af4',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'15f7e1'},body:JSON.stringify({sessionId:'15f7e1',runId:'pre-fix',hypothesisId:'H4',location:'RegionSelectionTool.js:handleReset',message:'user reset region',data:{pointsBefore:pointsRef.current.length,editSeq:editSeqRef.current},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    editSeqRef.current += 1;
     setPoints([]);
     setCurrentPoint(null);
     setIsComplete(false);
@@ -231,13 +206,6 @@ function RegionSelectionTool({ cameraId, onSelect, existingRegion, buttonLabel =
   }, [imageUrl]);
 
   useEffect(() => { if (imageUrl) drawCanvas(); }, [imageUrl, points, currentPoint, isComplete, draggingPointIndex]);
-
-  useEffect(() => {
-    if (!open) return;
-    // #region agent log
-    fetch('http://127.0.0.1:7251/ingest/387b31b9-2966-4bad-b868-c60425ce2af4',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'15f7e1'},body:JSON.stringify({sessionId:'15f7e1',runId:'pre-fix',hypothesisId:'H1',location:'RegionSelectionTool.js:view',message:'region view branch',data:{isStreaming,hasImageUrl:Boolean(imageUrl),pointsLen:points.length,showLiveImg:Boolean(isStreaming&&!imageUrl),showCanvas:Boolean(imageUrl),editSeq:editSeqRef.current,pointSig:points.map(p=>`${Math.round(p.x)},${Math.round(p.y)}`).join(';').slice(0,180)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-  }, [open, isStreaming, imageUrl, points]);
 
   return (
     <>

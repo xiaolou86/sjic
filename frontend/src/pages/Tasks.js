@@ -173,9 +173,6 @@ function Tasks() {
     try {
       const tasksRes = await axios.get('/api/tasks');
       setTasks(tasksRes || []);
-      // #region agent log
-      fetch('http://127.0.0.1:7251/ingest/387b31b9-2966-4bad-b868-c60425ce2af4',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'15f7e1'},body:JSON.stringify({sessionId:'15f7e1',runId:'pre-fix',hypothesisId:'H3',location:'Tasks.js:fetchTasks',message:'task list refreshed',data:{count:Array.isArray(tasksRes)?tasksRes.length:0},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
     } catch (error) {
       console.error('Error fetching tasks:', error);
     }
