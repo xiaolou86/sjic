@@ -13,7 +13,7 @@ class Task(db.Model):
     modelId = db.Column(db.Integer, db.ForeignKey('detection_models.id'))
     cameraId = db.Column(db.Integer, db.ForeignKey('cameras.id'))
     algorithm_id = db.Column(db.Integer, db.ForeignKey('algorithms.id'))
-    # 驾考混合任务：各最多绑定一个已发布算法（一个模型）。单算法任务这两列为空。
+    # 混合任务：各最多绑定一个已发布算法（一个模型）。单算法任务这两列为空。
     od_algorithm_id = db.Column(db.Integer, db.ForeignKey('algorithms.id'), nullable=True)
     pose_algorithm_id = db.Column(db.Integer, db.ForeignKey('algorithms.id'), nullable=True)
     algorithm_parameters = db.Column(db.JSON)  # 所有算法特定参数

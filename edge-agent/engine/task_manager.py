@@ -149,7 +149,7 @@ class TaskManager:
                 pass
 
     def _prepare_pipeline_models(self, task_id, task_config):
-        """下载驾考混合任务实际会用到的模型。返回错误文案，成功则返回 None。"""
+        """下载混合任务实际会用到的模型。返回错误文案，成功则返回 None。"""
         models = task_config.get('models') or {}
         local = {}
         for key in ('object_detection', 'pose_behavior'):
@@ -161,7 +161,7 @@ class TaskManager:
                 return f"Model download failed: {key}"
             local[key] = path
         if not local:
-            return "exam_pipeline has no models"
+            return "mixed task has no models"
         task_config['model_local_paths'] = local
         logger.info(f"Task {task_id} pipeline models: {local}")
         return None

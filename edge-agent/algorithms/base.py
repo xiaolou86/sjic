@@ -102,16 +102,16 @@ class BaseAlgorithm(ABC):
             overlay = vis.copy()
             cv2.fillPoly(overlay, [pts], (0, 255, 255))
             vis = cv2.addWeighted(overlay, 0.18, vis, 0.82, 0)
-            cv2.polylines(vis, [pts], isClosed=True, color=(0, 255, 255), thickness=2)
+            cv2.polylines(vis, [pts], isClosed=True, color=(0, 255, 255), thickness=1)
 
         for box in boxes or []:
             x1, y1, x2, y2 = int(box.x1), int(box.y1), int(box.x2), int(box.y2)
-            cv2.rectangle(vis, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.rectangle(vis, (x1, y1), (x2, y2), (0, 255, 0), 1)
             label = f"cls{getattr(box, 'class_id', 0)}:{float(box.confidence):.2f}"
-            vis = _put_text(vis, label, (x1, max(y1 - 22, 4)), color_bgr=(0, 255, 0))
+            vis = _put_text(vis, label, (x1, max(y1 - 16, 2)), color_bgr=(0, 255, 0))
             if hasattr(box, 'foot_center'):
                 fx, fy = box.foot_center
-                cv2.circle(vis, (int(fx), int(fy)), 4, (0, 0, 255), -1)
+                cv2.circle(vis, (int(fx), int(fy)), 2, (0, 0, 255), 1, cv2.LINE_AA)
 
         if caption:
             vis = _put_text(vis, caption, (8, 8), color_bgr=(255, 255, 255))
@@ -153,18 +153,18 @@ def _draw_pose_skeletons(vis, skeletons, min_conf=0.25):
                 continue
             p1 = (int(pts[a][0]), int(pts[a][1]))
             p2 = (int(pts[b][0]), int(pts[b][1]))
-            cv2.line(vis, p1, p2, (255, 200, 0), 2, cv2.LINE_AA)
+            cv2.line(vis, p1, p2, (255, 200, 0), 1, cv2.LINE_AA)
         for x, y, ok in pts:
             if not ok:
                 continue
-            cv2.circle(vis, (int(x), int(y)), 4, (0, 140, 255), -1, cv2.LINE_AA)
+            cv2.circle(vis, (int(x), int(y)), 2, (0, 140, 255), 1, cv2.LINE_AA)
     return vis
 
 
 _FONT_CACHE = {}
 
 
-def _load_cjk_font(size=20):
+def _load_cjk_font(size=14):
     if size in _FONT_CACHE:
         return _FONT_CACHE[size]
     try:
@@ -202,7 +202,7 @@ def _put_text(img, text, origin, color_bgr=(255, 255, 255)):
     if not text:
         return img
     x, y = int(origin[0]), int(origin[1])
-    font = _load_cjk_font(20)
+    font = _load_cjk_font(14)
     if font is not None:
         try:
             from PIL import Image, ImageDraw
@@ -215,8 +215,8 @@ def _put_text(img, text, origin, color_bgr=(255, 255, 255)):
                 tw, th = draw.textsize(text, font=font)
                 bbox = (x, y, x + tw, y + th)
             draw.rectangle(
-                [bbox[0] - 4, bbox[1] - 2, bbox[2] + 4, bbox[3] + 2],
-                fill=(0, 0, 0, 160),
+                [bbox[0] - 2, bbox[1] - 1, bbox[2] + 2, bbox[3] + 1],
+                fill=(0, 0, 0, 120),
             )
             draw.text(
                 (x, y),
@@ -234,7 +234,7 @@ def _put_text(img, text, origin, color_bgr=(255, 255, 255)):
         ascii_only = all(ord(ch) < 128 for ch in str(text))
     if ascii_only:
         cv2.putText(
-            img, text, (x, y + 16),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_bgr, 1, cv2.LINE_AA,
+            img, text, (x, y + 12),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.4, color_bgr, 1, cv2.LINE_AA,
         )
     return img

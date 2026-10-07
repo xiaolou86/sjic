@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box, Drawer, AppBar, Toolbar, List, Typography, ListItem, ListItemIcon, ListItemText,
@@ -11,6 +11,7 @@ import {
   Dashboard as DashboardIcon, VpnKey, History, TouchApp, Lock
 } from '@mui/icons-material';
 import axios, { getBaseUrl } from '../utils/axios';
+import { clearLocalSession, isUserIdle, markUserActivity } from '../utils/idleLogout';
 import ClickTracker from './ClickTracker';
 
 const drawerWidth = 240;
@@ -108,18 +109,60 @@ function Layout({ children }) {
     return () => window.removeEventListener('license-updated', onLicense);
   }, [loadLicense]);
 
+  const loggedOut = useRef(false);
+
   const handleLogout = async () => {
+    if (loggedOut.current) return;
+    loggedOut.current = true;
     setMenuAnchor(null);
     try {
       await axios.post('/api/logout');
     } catch (e) {
       // 网络失败也要清掉本地登录态
     }
-    localStorage.removeItem('token');
-    localStorage.removeItem('user_role');
-    localStorage.removeItem('username');
-    navigate('/login');
+    clearLocalSession();
+    navigate('/login', { replace: true });
   };
+
+  useEffect(() => {
+    if (!localStorage.getItem('token')) return undefined;
+    if (isUserIdle()) {
+      handleLogout();
+      return undefined;
+    }
+    markUserActivity(true);
+
+    const onActivity = () => markUserActivity(false);
+    const events = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'mousemove'];
+    events.forEach((name) => window.addEventListener(name, onActivity, { passive: true }));
+    window.addEventListener('scroll', onActivity, { passive: true, capture: true });
+
+    const tick = () => {
+      if (isUserIdle()) handleLogout();
+    };
+    const timer = window.setInterval(tick, 15000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') tick();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    const onStorage = (event) => {
+      if (event.key === 'token' && !event.newValue) {
+        loggedOut.current = true;
+        navigate('/login', { replace: true });
+        return;
+      }
+      tick();
+    };
+    window.addEventListener('storage', onStorage);
+
+    return () => {
+      events.forEach((name) => window.removeEventListener(name, onActivity));
+      window.removeEventListener('scroll', onActivity, { capture: true });
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [navigate]);
 
   const openPasswordDialog = () => {
     setMenuAnchor(null);

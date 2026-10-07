@@ -53,7 +53,7 @@ function taskAlgorithmLabel(task, algorithms) {
     if (task.pose_algorithm_id) {
       names.push(algorithms.find((item) => item.id === task.pose_algorithm_id)?.name || '姿态行为检测');
     }
-    return names.join(' + ') || '驾考混合';
+    return names.join(' + ') || '混合';
   }
   return algorithms.find((item) => item.id === task?.algorithm_id)?.name || '';
 }
@@ -1019,7 +1019,7 @@ function Tasks() {
                 }}
               >
                 <MenuItem value="single">单算法</MenuItem>
-                <MenuItem value="exam">驾考混合（检测 + 姿态）</MenuItem>
+                <MenuItem value="exam">混合（检测 + 姿态）</MenuItem>
               </Select>
             </Grid>
 
@@ -1146,7 +1146,7 @@ function Tasks() {
                 const tip = engine === 'object_detection'
                   ? '可在下方添加多条检测规则/场景（缺席、手机、帽子、人员倒地等），同一任务只推理一次。倒地用目标检测，不用姿态。'
                   : engine === 'pose_behavior'
-                    ? '可在下方添加多个姿态行为/场景（张望、手托下巴等），同一任务只推理一次。智能眼镜请用驾考混合任务。'
+                    ? '可在下方添加多个姿态行为/场景（张望、手托下巴等），同一任务只推理一次。智能眼镜请用混合任务。'
                     : null;
                 if (!tip) return null;
                 return <Alert severity="info" sx={{ mt: 1 }}>{tip}</Alert>;

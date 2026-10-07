@@ -34,10 +34,6 @@ const FALLBACK_ENGINES = [
   { value: 'pose_behavior', label: '姿态行为检测' },
   { value: 'camera_health', label: '画面健康检测' },
   { value: 'mouse_idle', label: '鼠标空闲检测' },
-  { value: 'belt_broken', label: '皮带破损检测' },
-  { value: 'belt_deviation_detection', label: '皮带跑偏检测' },
-  { value: 'belt_broken_series', label: '皮带撕裂序列检测' },
-  { value: 'belt_broken_high', label: '高精度皮带撕裂检测' },
 ];
 
 function Algorithms() {

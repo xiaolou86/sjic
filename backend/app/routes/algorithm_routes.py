@@ -84,6 +84,12 @@ def get_algorithms():
     if allowed_types:
         algorithms = [a for a in algorithms if a.type in allowed_types]
 
+    from app.utils.algorithm_catalog import is_hidden_algorithm
+    algorithms = [
+        a for a in algorithms
+        if not is_hidden_algorithm(a.resolved_engine(), a.type, a.category)
+    ]
+
     payload = get_token_payload() or {}
     is_vendor = payload.get('role') == 'vendor'
     if not is_vendor:

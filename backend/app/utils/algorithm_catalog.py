@@ -31,21 +31,25 @@ ENGINES = {
         'label': '皮带破损检测',
         'needs_model': True,
         'description': '工业：皮带表面故障',
+        'hidden': True,
     },
     'belt_deviation_detection': {
         'label': '皮带跑偏检测',
         'needs_model': True,
         'description': '工业：皮带跑偏',
+        'hidden': True,
     },
     'belt_broken_series': {
         'label': '皮带撕裂序列检测',
         'needs_model': True,
         'description': '工业：连续撕裂',
+        'hidden': True,
     },
     'belt_broken_high': {
         'label': '高精度皮带撕裂检测',
         'needs_model': True,
         'description': '工业：高精度表面撕裂',
+        'hidden': True,
     },
 }
 
@@ -245,7 +249,7 @@ POSE_SCENE_PRESETS = [
 ]
 
 
-# 同一帧需要目标检测框 + 姿态关键点的场景。只在驾考混合任务里可选。
+# 同一帧需要目标检测框 + 姿态关键点的场景。只在混合任务里可选。
 FUSION_SCENE_PRESETS = [
     {
         'id': 'smart_glasses',
@@ -335,6 +339,7 @@ PRODUCT_ALGORITHMS = [
         'name': '皮带表面故障检测',
         'description': '检测皮带表面破损划伤',
         'category': 'industrial',
+        'hidden': True,
         'parameter_schema': {'ui': {'editor': 'belt'}},
     },
     {
@@ -343,6 +348,7 @@ PRODUCT_ALGORITHMS = [
         'name': '皮带跑偏检测',
         'description': '基于边缘检测和截面分析的皮带跑偏监测',
         'category': 'industrial',
+        'hidden': True,
         'parameter_schema': {'ui': {'editor': 'belt_deviation'}},
     },
     {
@@ -351,6 +357,7 @@ PRODUCT_ALGORITHMS = [
         'name': '皮带撕裂与磨损检测',
         'description': '皮带连续撕裂检测',
         'category': 'industrial',
+        'hidden': True,
         'parameter_schema': {'ui': {'editor': 'belt'}},
     },
     {
@@ -359,6 +366,7 @@ PRODUCT_ALGORITHMS = [
         'name': '高精度皮带表面撕裂检测',
         'description': '高精度皮带表面撕裂检测',
         'category': 'industrial',
+        'hidden': True,
         'parameter_schema': {'ui': {'editor': 'belt'}},
     },
 ]
@@ -369,6 +377,17 @@ DEPRECATED_SCENE_TYPES = frozenset({
     'phone_detect', 'hat_detect', 'exam_area_linger', 'aisle_crowd',
     'fire_smoke', 'camera_blocked',
 })
+
+
+def is_hidden_algorithm(engine=None, algorithm_type=None, category=None) -> bool:
+    """矿场皮带类算法先从清单和任务选择里隐藏，实现仍保留。"""
+    if category == 'industrial':
+        return True
+    for key in (engine, algorithm_type):
+        meta = ENGINES.get((key or '').strip())
+        if meta and meta.get('hidden'):
+            return True
+    return False
 
 
 def engine_needs_model(engine: str) -> bool:
@@ -431,7 +450,7 @@ def _merge_scene_presets(existing, catalog):
     return ordered
 
 
-# 合并时从姿态 schema 去掉：跌倒改由目标检测；智能眼镜改由驾考混合任务的融合场景
+# 合并时从姿态 schema 去掉：跌倒改由目标检测；智能眼镜改由混合任务的融合场景
 _POSE_DROPPED_PRESET_IDS = frozenset({'person_fall', 'smart_glasses'})
 _POSE_DROPPED_TYPES = frozenset({'fall', 'smart_glasses'})
 
@@ -460,9 +479,15 @@ def merge_catalog_schema(existing_schema, engine: str, *, origin=None) -> dict:
 
 
 def catalog_for_api():
+    visible_products = [p for p in PRODUCT_ALGORITHMS if not p.get('hidden')]
+    visible_categories = {p.get('category') for p in visible_products}
     return {
-        'engines': [{'value': k, **v} for k, v in ENGINES.items()],
-        'categories': CATEGORIES,
+        'engines': [
+            {'value': k, **v}
+            for k, v in ENGINES.items()
+            if not v.get('hidden')
+        ],
+        'categories': [c for c in CATEGORIES if c['value'] in visible_categories or c['value'] == 'generic'],
         'products': [
             {
                 'type': p['type'],
@@ -473,7 +498,7 @@ def catalog_for_api():
                 'parameter_schema': p.get('parameter_schema') or {},
                 'needs_model': engine_needs_model(p.get('engine') or p['type']),
             }
-            for p in PRODUCT_ALGORITHMS
+            for p in visible_products
         ],
         'od_scene_presets': OD_SCENE_PRESETS,
         'pose_scene_presets': POSE_SCENE_PRESETS,

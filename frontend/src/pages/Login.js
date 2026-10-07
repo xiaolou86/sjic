@@ -6,6 +6,7 @@ import {
 import { alpha } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
 import axios, { getBaseUrl } from '../utils/axios';
+import { markUserActivity } from '../utils/idleLogout';
 import { DEFAULT_UI_THEME, getLoginVisual, getTitleGradient } from '../theme';
 
 const pulse = keyframes`
@@ -55,6 +56,7 @@ function Login() {
       localStorage.setItem('token', response.token);
       localStorage.setItem('user_role', response.role);
       localStorage.setItem('username', response.username);
+      markUserActivity(true);
       navigate('/dashboard');
     } catch (err) {
       setError('用户名或密码错误');

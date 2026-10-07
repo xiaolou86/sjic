@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { clearLocalSession } from './idleLogout';
 
 // 导出 getBaseUrl 函数，用于获取基础 URL
 export const getBaseUrl = () => {
@@ -61,7 +62,7 @@ instance.interceptors.response.use(
       const onLoginPage = typeof window !== 'undefined' && window.location.pathname === '/login';
       // 登录接口失败只把错误交给页面提示，不要整页重载（否则提示一闪而过、输入被清空）
       if (!reqUrl.includes('/api/login') && !onLoginPage) {
-        localStorage.removeItem('token');
+        clearLocalSession();
         window.location.href = '/login';
       }
     }

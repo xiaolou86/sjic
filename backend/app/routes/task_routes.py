@@ -82,7 +82,7 @@ def _apply_exam_or_single(data, existing=None):
 
     if od_id or pose_id:
         if algorithm_id:
-            return (jsonify({'error': '驾考混合任务不要再绑定单个算法'}), 400)
+            return (jsonify({'error': '混合任务不要再绑定单个算法'}), 400)
         _, err = _check_published_algorithm(od_id, 'object_detection')
         if err:
             return err
