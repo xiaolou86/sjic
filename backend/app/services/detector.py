@@ -302,41 +302,5 @@ class DetectorService:
             current_app.logger.error(f"Error stopping detection: {str(e)}")
             return {"success": False, "message": str(e)}
 
-    def stop_tasks_for_unbound_cameras(self, edge_node_id, camera_ids):
-        """节点解绑视频源后，停掉该节点上仍在跑的对应任务，并暂停定时拉起。"""
-        ids = []
-        for raw in camera_ids or []:
-            try:
-                ids.append(int(raw))
-            except (TypeError, ValueError):
-                continue
-        if not edge_node_id or not ids:
-            return []
-
-        active = {'running', 'syncing', 'starting'}
-        tasks = Task.query.filter(
-            Task.edge_node_id == edge_node_id,
-            Task.cameraId.in_(ids),
-        ).all()
-        stopped = []
-        for task in tasks:
-            is_active = (task.status or '').lower() in active or (task.run_status or '').lower() in active
-            if is_active:
-                result = self.stop_detection(task.id, pause_schedule=True)
-                if result.get('success'):
-                    stopped.append(task.id)
-                continue
-            # 当前不在跑，但到点会被调度器拉起；解绑后不再自动启动
-            if task.has_schedule() and not task.schedule_paused:
-                task.schedule_paused = True
-                db.session.commit()
-                stopped.append(task.id)
-        if stopped:
-            current_app.logger.info(
-                f"Stopped tasks {stopped} after unbinding cameras {ids} from node {edge_node_id}"
-            )
-        return stopped
-        
-
     # Legacy `_detect_loop`, `_send_alert_to_external_api` functions have been completely migrated to Edge-Agent task_manager 
     # and backend alert_routes callbacks.

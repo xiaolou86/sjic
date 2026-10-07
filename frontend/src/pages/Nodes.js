@@ -76,7 +76,7 @@ function Nodes() {
             setOpenDialog(false);
             fetchNodes();
         } catch (error) {
-            console.error('Error updating node:', error);
+            window.alert(error.response?.data?.error || '保存节点失败');
         }
     };
 

@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request, current_app
 from app.extensions import db, socketio
-from app.models import Alert, Camera, EdgeNode
+from app.models import Alert, Camera, EdgeNode, Task
 from app.middleware.auth import token_required
 import os
 from datetime import datetime
@@ -19,6 +19,65 @@ def _camera_id_set(values):
         except (TypeError, ValueError):
             continue
     return ids
+
+
+def _normalize_bound_camera_ids(ids):
+    """解析节点绑定的视频源。返回 (新列表或 None, 错误信息)。None 表示清空绑定。"""
+    if ids in ("", None):
+        return None, None
+    if not isinstance(ids, list):
+        return None, "bound_camera_ids 必须是数组"
+    normalized = []
+    for raw in ids:
+        if raw in ("", None):
+            continue
+        try:
+            normalized.append(int(raw))
+        except (TypeError, ValueError):
+            return None, f"bound_camera_ids 包含非法值: {raw}"
+    return sorted(set(normalized)), None
+
+
+def _tasks_blocking_camera_unbind(node, removed_camera_ids):
+    """节点上仍有任务占用这些视频源时，不允许取消绑定。"""
+    if not removed_camera_ids:
+        return None
+    tasks = (
+        Task.query.filter(
+            Task.edge_node_id == node.id,
+            Task.cameraId.in_(removed_camera_ids),
+        )
+        .order_by(Task.cameraId.asc(), Task.id.asc())
+        .all()
+    )
+    if not tasks:
+        return None
+    camera_names = {
+        row.id: row.name
+        for row in Camera.query.filter(Camera.id.in_(removed_camera_ids)).all()
+    }
+    grouped = {}
+    order = []
+    for task in tasks:
+        if task.cameraId not in grouped:
+            order.append(task.cameraId)
+            grouped[task.cameraId] = []
+        grouped[task.cameraId].append(task.name)
+    if len(order) == 1:
+        camera_id = order[0]
+        camera_name = camera_names.get(camera_id) or f"#{camera_id}"
+        names = "、".join(grouped[camera_id])
+        return (
+            f"节点「{node.name}」在视频源「{camera_name}」上还有任务：{names}。"
+            "请先到任务模块删除后再取消绑定。"
+        )
+    parts = []
+    for camera_id in order:
+        camera_name = camera_names.get(camera_id) or f"#{camera_id}"
+        names = "、".join(grouped[camera_id])
+        parts.append(f"视频源「{camera_name}」：{names}")
+    detail = "；".join(parts)
+    return f"节点「{node.name}」上还有未删除的任务，请先到任务模块删除后再取消绑定：{detail}。"
 
 @edge_bp.route('/api/edge/alerts', methods=['POST'])
 def receive_alert():
@@ -184,35 +243,22 @@ def update_node(node_id):
             return jsonify({"error": "Node not found"}), 404
             
         data = request.json or {}
+        update_bound = False
+        new_bound = None
+        if 'bound_camera_ids' in data:
+            new_bound, error = _normalize_bound_camera_ids(data.get('bound_camera_ids'))
+            if error:
+                return jsonify({"error": error}), 400
+            removed_camera_ids = _camera_id_set(node.bound_cameras) - _camera_id_set(new_bound)
+            blocked = _tasks_blocking_camera_unbind(node, removed_camera_ids)
+            if blocked:
+                return jsonify({"error": blocked}), 400
+            update_bound = True
+
         if 'name' in data:
             node.name = data['name']
-        # 新版：节点可用视频源列表（多选）
-        removed_camera_ids = set()
-        if 'bound_camera_ids' in data:
-            old_ids = _camera_id_set(node.bound_cameras)
-            ids = data.get('bound_camera_ids')
-            if ids in ("", None):
-                node.bound_cameras = None
-                new_ids = set()
-            elif not isinstance(ids, list):
-                return jsonify({"error": "bound_camera_ids 必须是数组"}), 400
-            else:
-                normalized = []
-                for x in ids:
-                    if x in ("", None):
-                        continue
-                    try:
-                        normalized.append(int(x))
-                    except Exception:
-                        return jsonify({"error": f"bound_camera_ids 包含非法值: {x}"}), 400
-                # 去重并排序，便于一致性展示
-                node.bound_cameras = sorted(list(set(normalized)))
-                new_ids = set(node.bound_cameras)
-            removed_camera_ids = old_ids - new_ids
-
-        if removed_camera_ids:
-            from app.services.detector import DetectorService
-            DetectorService().stop_tasks_for_unbound_cameras(node.id, removed_camera_ids)
+        if update_bound:
+            node.bound_cameras = new_bound
 
         db.session.commit()
         return jsonify(node.to_dict()), 200

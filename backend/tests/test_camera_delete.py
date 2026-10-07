@@ -13,6 +13,7 @@ from sqlalchemy.pool import StaticPool
 from app.extensions import db
 from app.models import Alert, Camera, EdgeNode, Task
 from app.routes.camera_routes import camera_bp
+from app.routes.edge_routes import edge_bp
 from config import Config
 
 
@@ -28,6 +29,7 @@ class TestDeleteCamera(unittest.TestCase):
         }
         db.init_app(self.app)
         self.app.register_blueprint(camera_bp)
+        self.app.register_blueprint(edge_bp)
         with self.app.app_context():
             db.create_all()
             camera = Camera(name='门口', url='rtsp://example/live')
@@ -82,43 +84,59 @@ class TestDeleteCamera(unittest.TestCase):
             node = EdgeNode.query.first()
             self.assertEqual(node.bound_cameras, [])
 
-    def test_unbinding_camera_stops_running_task(self):
-        from app.services.detector import DetectorService
-
+    def test_unbinding_camera_rejected_while_tasks_exist(self):
         with self.app.app_context():
-            camera = Camera(name='侧位', url='rtsp://example/side')
-            db.session.add(camera)
+            door = Camera(name='门口', url='rtsp://example/door')
+            side = Camera(name='侧位', url='rtsp://example/side')
+            db.session.add_all([door, side])
             db.session.flush()
-            node = EdgeNode(name='盒子2', mac_address='11:22:33:44:55:66', bound_cameras=[camera.id])
+            node = EdgeNode(
+                name='盒子2',
+                mac_address='11:22:33:44:55:66',
+                bound_cameras=[door.id, side.id],
+            )
             db.session.add(node)
             db.session.flush()
-            running = Task(
-                name='运行中',
-                cameraId=camera.id,
+            db.session.add(Task(
+                name='入场检测',
+                cameraId=door.id,
                 edge_node_id=node.id,
                 status='running',
                 run_status='running',
-                schedule_start='08:00',
-                schedule_end='18:00',
-                schedule_paused=False,
-            )
-            scheduled = Task(
-                name='定时未跑',
-                cameraId=camera.id,
-                edge_node_id=node.id,
-                status='stopped',
-                run_status='stopped',
-                schedule_start='08:00',
-                schedule_end='18:00',
-                schedule_paused=False,
-            )
-            db.session.add_all([running, scheduled])
+            ))
+            db.session.add(Task(name='离座检测', cameraId=door.id, edge_node_id=node.id))
             db.session.commit()
-            DetectorService().stop_tasks_for_unbound_cameras(node.id, [camera.id])
-            running = Task.query.get(running.id)
-            scheduled = Task.query.get(scheduled.id)
-            self.assertEqual(running.status, 'stopped')
-            self.assertEqual(running.run_status, 'stopped')
-            self.assertTrue(running.schedule_paused)
-            self.assertEqual(scheduled.status, 'stopped')
-            self.assertTrue(scheduled.schedule_paused)
+            node_id = node.id
+            door_id = door.id
+            side_id = side.id
+
+        blocked = self.client.put(
+            f'/api/nodes/{node_id}',
+            json={'name': '改名不应生效', 'bound_camera_ids': [side_id]},
+            headers=self.headers,
+        )
+        self.assertEqual(blocked.status_code, 400, blocked.get_data(as_text=True))
+        message = blocked.get_json()['error']
+        self.assertIn('门口', message)
+        self.assertIn('入场检测', message)
+        self.assertIn('离座检测', message)
+        self.assertIn('请先到任务模块删除后再取消绑定', message)
+        with self.app.app_context():
+            node = EdgeNode.query.get(node_id)
+            self.assertEqual(node.name, '盒子2')
+            self.assertEqual(set(node.bound_cameras), {door_id, side_id})
+            running = Task.query.filter_by(name='入场检测').one()
+            self.assertEqual(running.status, 'running')
+            for task in Task.query.filter_by(edge_node_id=node_id, cameraId=door_id).all():
+                db.session.delete(task)
+            db.session.commit()
+
+        allowed = self.client.put(
+            f'/api/nodes/{node_id}',
+            json={'bound_camera_ids': [side_id]},
+            headers=self.headers,
+        )
+        self.assertEqual(allowed.status_code, 200, allowed.get_data(as_text=True))
+        with self.app.app_context():
+            node = EdgeNode.query.get(node_id)
+            self.assertEqual(node.bound_cameras, [side_id])
