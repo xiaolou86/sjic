@@ -171,7 +171,7 @@ POSE_SCENE_PRESETS = [
         'defaults': {
             'seconds': 2,
             'require_standing': True,
-            'min_reach_ratio': 0.60,
+            'min_reach_ratio': 0.45,
             'elbow_min_degrees': 100,
             'elbow_max_degrees': 180,
             'max_move_ratio': 1.0,

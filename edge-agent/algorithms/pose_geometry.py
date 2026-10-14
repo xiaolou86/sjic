@@ -21,7 +21,7 @@ DEFAULT_MOUNT_POSITION = 'back_top'
 # 髋-膝-踝夹角接近 180° 才算这条腿伸直。坐着多半弯到 120° 以下。
 DESK_KNEE_STRAIGHT_DEGREES = 150.0
 # 腕相对肩中点，沿躯干前下方的投影 / 肩宽。
-FINGER_REACH_RATIO = 0.60
+FINGER_REACH_RATIO = 0.45
 # 伸臂点屏幕时肘要张开。折回肩旁的小角度不算。
 FINGER_ELBOW_MIN_DEGREES = 100.0
 FINGER_ELBOW_MAX_DEGREES = 180.0
