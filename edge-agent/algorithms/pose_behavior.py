@@ -4,6 +4,7 @@
 人员缺席 / 人员滞留 / 通道聚集。
 智能眼镜和智能手表是融合场景，混合任务里才和目标检测一起判定。
 点状违规、考台旁站人和眼镜、手表按人计时：同一次推理里每人一个轨迹 id。
+手指屏幕另记开始时的位置，人走远了重新计时，避免把路过摆臂当成指屏。
 缺席、滞留、聚集、考试员不巡场仍按区域计数，不按人跟踪。
 
 依赖姿态模型（YOLO-Pose 等）经 runtime.infer 返回 keypoints。
@@ -221,6 +222,24 @@ def _positive_float(spec, key, default):
     return value if value > 0 else float(default)
 
 
+def _place_shifted(track, bid, box, kps, move_ratio):
+    """相对这条行为开始时的位置。超过尺度倍数视为人走了，并把起点改到现在。
+
+    尺度优先用肩宽，没有双肩时用框宽。比较的是开始指屏的那一点，
+    所以慢慢走也会累积到阈值，不会只看相邻两帧。
+    """
+    anchor, scale, _use_shoulder = _person_anchor(box, kps)
+    ref = track.place.get(bid)
+    if ref is None or not scale:
+        track.place[bid] = anchor
+        return False
+    dist = math.hypot(anchor[0] - ref[0], anchor[1] - ref[1])
+    if dist <= move_ratio * scale:
+        return False
+    track.place[bid] = anchor
+    return True
+
+
 class _Track:
     def __init__(self, track_id, anchor, scale, use_shoulder, seen):
         self.id = track_id
@@ -233,6 +252,7 @@ class _Track:
         self.last_alert = {}
         self.touch = {}
         self.place = {}
+        self.hold_note = {}
 
 
 class PersonTracker:
@@ -251,6 +271,7 @@ class PersonTracker:
             track.since.pop(behavior_id, None)
             track.touch.pop(behavior_id, None)
             track.place.pop(behavior_id, None)
+            track.hold_note.pop(behavior_id, None)
 
     def update(self, persons, now):
         detections = []
@@ -584,6 +605,11 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
             started = track.since.get(bid)
             if started is not None:
                 held = round((now - started).total_seconds(), 1)
+            if btype == 'finger_point':
+                note = track.hold_note.get(bid)
+                if note:
+                    hit = False
+                    reason = f"{reason}。{note}"
         return {
             'confidence': confidence,
             'hit': bool(hit),
@@ -601,7 +627,8 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
         姿态场景判定，供姿态任务和混合任务共用。
 
         先把本帧每个人接到自己的轨迹上。点状场景和考台旁站人按这条轨迹计时，
-        每人达标各报一次，冷却也只挡住这个人。人数场景仍交给区域计数。
+        每人达标各报一次，冷却也只挡住这个人。手指屏幕还要求停在原地，
+        位置相对开始时走远了就重新计时。人数场景仍交给区域计数。
         pose_only 时才处理单独姿态任务里的眼镜，并忽略跌倒和手表。
         """
         self._person_tracker.update(persons, now)
@@ -708,6 +735,8 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
                 continue
             elif btype in POINTWISE_TYPES:
                 seconds = float(spec.get('seconds', 3))
+                watch_place = btype == 'finger_point'
+                move_ratio = _positive_float(spec, 'max_move_ratio', 1.0) if watch_place else None
                 in_scene = set()
                 ready = []
                 for box, kps in persons_for_spec:
@@ -717,6 +746,9 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
                     in_scene.add(track.id)
                     if kps is None:
                         track.since.pop(bid, None)
+                        if watch_place:
+                            track.place.pop(bid, None)
+                            track.hold_note.pop(bid, None)
                         continue
                     try:
                         matched = _eval_behavior(btype, kps, box, spec, view)
@@ -725,7 +757,18 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
                         matched = False
                     if not matched:
                         track.since.pop(bid, None)
+                        if watch_place:
+                            track.place.pop(bid, None)
+                            track.hold_note.pop(bid, None)
                         continue
+                    if watch_place and _place_shifted(track, bid, box, kps, move_ratio):
+                        track.since[bid] = now
+                        track.hold_note[bid] = (
+                            f"位置变化超过肩宽的 {move_ratio:g} 倍，路过摆臂不算指屏，重新计时"
+                        )
+                        continue
+                    if watch_place:
+                        track.hold_note.pop(bid, None)
                     started = track.since.get(bid)
                     if started is None:
                         track.since[bid] = now
@@ -737,6 +780,9 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
                 for track in self._person_tracker.tracks:
                     if track.seen == now and track.id not in in_scene:
                         track.since.pop(bid, None)
+                        if watch_place:
+                            track.place.pop(bid, None)
+                            track.hold_note.pop(bid, None)
                 for track, box, kps, elapsed in ready:
                     self.emit_pose_alert(
                         spec, btype, bid, (box, kps),

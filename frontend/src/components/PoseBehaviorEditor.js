@@ -296,6 +296,20 @@ function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange, catalogP
                   />
                 </Grid>
               )}
+              {b.type === 'finger_point' && (
+                <Grid item xs={12} md={3}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    type="number"
+                    label="静止范围"
+                    value={b.max_move_ratio ?? 1}
+                    onChange={(e) => patchBehavior(index, { max_move_ratio: parseFloat(e.target.value) })}
+                    inputProps={{ min: 0.1, step: 0.1 }}
+                    helperText="相对肩宽。走远超过这个倍数就重新计时，路过摆臂不算指屏"
+                  />
+                </Grid>
+              )}
               <Grid item xs={12} md={3}>
                 <TextField
                   fullWidth

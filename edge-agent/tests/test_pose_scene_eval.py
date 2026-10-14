@@ -435,6 +435,67 @@ class PerPersonTimingTest(unittest.TestCase):
         self.assertEqual(len(self.alerts), 2)
 
 
+def _pointing(cx, half=40):
+    """站立且左腕高于左肘。双肩中点在 cx，肩宽 2*half。"""
+    kps = _blank_kps()
+    kps[5] = [cx - half, 100.0, 0.9]
+    kps[6] = [cx + half, 100.0, 0.9]
+    kps[7] = [cx - half - 10, 140.0, 0.9]
+    kps[9] = [cx - half - 30, 110.0, 0.9]
+    kps[11] = [cx - 10, 180.0, 0.9]
+    kps[15] = [cx - 10, 260.0, 0.9]
+    box = _Box(x1=cx - half, y1=40, x2=cx + half, y2=280)
+    return (box, kps)
+
+
+class FingerPointMotionTest(unittest.TestCase):
+    def setUp(self):
+        self.algo = PoseBehaviorAlgorithm()
+        self.algo.draw_alert_overlay = lambda *args, **kwargs: 'overlay'
+        self.spec = {
+            'id': 'finger',
+            'type': 'finger_point',
+            'name': '手指屏幕',
+            'seconds': 2,
+            'require_standing': True,
+            'max_move_ratio': 1.0,
+            'alert_type': 'finger_screen',
+        }
+        self.start = datetime(2026, 1, 1, 8, 0, 0)
+        self.state = {
+            'since': {'finger': None},
+            'last': {'finger': None},
+            'extra': {'finger': {}},
+        }
+        self.alerts = []
+
+    def _run(self, persons, second):
+        _eval(
+            self.algo, [self.spec], persons,
+            self.start + timedelta(seconds=second),
+            self.state, self.alerts,
+        )
+
+    def test_still_pointing_alerts(self):
+        self._run([_pointing(200)], 0)
+        self.assertEqual(self.alerts, [])
+        self._run([_pointing(230)], 2)
+        self.assertEqual(len(self.alerts), 1)
+        self.assertEqual(self.alerts[0]['alert_type'], 'finger_screen')
+        self.assertIn('持续 2.0s', self.alerts[0]['message'])
+
+    def test_walking_restarts_until_the_person_stays(self):
+        # 肩宽 80，匹配门限 60。每步 50 仍是同一人，累计超过 1 倍肩宽则重新计时。
+        self._run([_pointing(200)], 0)
+        self._run([_pointing(250)], 1)
+        self._run([_pointing(300)], 2)
+        self.assertEqual(self.alerts, [])
+        self.assertIn('路过摆臂', self.algo._person_tracker.tracks[0].hold_note['finger'])
+        self._run([_pointing(300)], 3)
+        self._run([_pointing(300)], 4)
+        self.assertEqual(len(self.alerts), 1)
+
+
 class DeskStandTest(unittest.TestCase):
     def setUp(self):
         self.algo = PoseBehaviorAlgorithm()
