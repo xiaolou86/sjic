@@ -12,7 +12,12 @@ const TYPE_FIELDS = {
   absence: ['absent_seconds'],
   presence: [],
   crowd_count: ['min_count', 'seconds'],
+  camera_occlusion: ['cover_ratio', 'seconds'],
 };
+
+function isCameraOcclusion(rule) {
+  return rule?.type === 'camera_occlusion' || rule?.scene_preset_id === 'camera_occlusion';
+}
 
 function normalizeLabelmap(raw) {
   if (Array.isArray(raw)) {
@@ -37,14 +42,17 @@ function labelsForScenes(labelmap, allowedIds) {
   return filtered.length ? filtered : selected.map((id) => ({ id, name: String(id) }));
 }
 
-function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChange, catalogPresets, taskConfidence, labelmap, highlightMissing = false }) {
+function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChange, catalogPresets, taskConfidence, labelmap, highlightMissing = false, excludePresetIds = [] }) {
   const [addPreset, setAddPreset] = useState('');
 
   const scenePresets = useMemo(() => {
     const fromSchema = algorithm?.parameter_schema?.scene_presets;
-    if (Array.isArray(fromSchema) && fromSchema.length > 0) return fromSchema;
-    return Array.isArray(catalogPresets) ? catalogPresets : [];
-  }, [algorithm, catalogPresets]);
+    const list = Array.isArray(fromSchema) && fromSchema.length > 0
+      ? fromSchema
+      : (Array.isArray(catalogPresets) ? catalogPresets : []);
+    const excluded = new Set(excludePresetIds || []);
+    return list.filter((item) => !excluded.has(item?.id) && !excluded.has(item?.type));
+  }, [algorithm, catalogPresets, excludePresetIds]);
 
   const rules = Array.isArray(algorithmParameters?.rules) ? algorithmParameters.rules : [];
   const labels = useMemo(
@@ -62,17 +70,18 @@ function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChan
   const handleAddPreset = () => {
     const preset = scenePresets.find((p) => p.id === addPreset);
     if (!preset) return;
+    const presetDefaults = preset.defaults || {};
     const next = {
       id: `rule_${Date.now()}`,
       type: preset.type,
       name: preset.name,
       scene_preset_id: preset.id,
-      ...(preset.defaults || {}),
+      ...presetDefaults,
       class_ids: [],
       enabled: true,
       detection_region: null,
-      schedule_start: '',
-      schedule_end: '',
+      schedule_start: presetDefaults.schedule_start || '',
+      schedule_end: presetDefaults.schedule_end || '',
     };
     updateRules([...rules, next]);
     setAddPreset('');
@@ -91,7 +100,7 @@ function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChan
       <Grid item xs={12}>
         <Typography variant="subtitle2" gutterBottom>检测场景</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-          从预设添加场景。每个场景都要选择检测类别。场景时段、置信度优先于任务。人员缺席、滞留、聚集请在姿态场景里添加。
+          从预设添加场景。检测场景要选择类别；摄像头遮挡不用类别，添加后默认每天 08:00–18:00。场景时段、置信度优先于任务。
         </Typography>
       </Grid>
 
@@ -103,11 +112,12 @@ function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChan
 
       {rules.map((rule, index) => {
         const fields = TYPE_FIELDS[rule.type] || [];
+        const occlusion = isCameraOcclusion(rule);
         const hasRegion = Boolean(rule.detection_region?.points?.length);
         const selectedClass = Array.isArray(rule.class_ids) && rule.class_ids.length
           ? Number(rule.class_ids[0])
           : '';
-        const classMissing = rule.enabled !== false && (selectedClass === '' || !Number.isInteger(selectedClass));
+        const classMissing = !occlusion && rule.enabled !== false && (selectedClass === '' || !Number.isInteger(selectedClass));
         return (
           <Grid item xs={12} key={rule.id || index}>
             <Paper variant="outlined" sx={{ p: 2 }}>
@@ -136,6 +146,7 @@ function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChan
               </Box>
 
               <Grid container spacing={2}>
+                {!occlusion && (
                 <Grid item xs={12} md={4}>
                   {labels.length > 0 ? (
                     <FormControl fullWidth size="small" error={highlightMissing && classMissing}>
@@ -175,6 +186,21 @@ function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChan
                     />
                   )}
                 </Grid>
+                )}
+                {fields.includes('cover_ratio') && (
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      type="number"
+                      label="外圈遮挡比例"
+                      value={rule.cover_ratio ?? 0.25}
+                      onChange={(e) => patchRule(index, { cover_ratio: parseFloat(e.target.value) })}
+                      inputProps={{ min: 0.05, max: 1, step: 0.05 }}
+                      helperText="最外一圈发平的占比"
+                    />
+                  </Grid>
+                )}
                 {fields.includes('linger_seconds') && (
                   <Grid item xs={12} md={4}>
                     <TextField
@@ -227,6 +253,7 @@ function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChan
                     />
                   </Grid>
                 )}
+                {!occlusion && (
                 <Grid item xs={12} md={4}>
                   <TextField
                     fullWidth
@@ -243,6 +270,7 @@ function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChan
                     helperText="留空用任务置信度"
                   />
                 </Grid>
+                )}
                 <Grid item xs={12} md={4}>
                   <TextField
                     fullWidth
@@ -277,6 +305,7 @@ function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChan
                     inputProps={{ step: 60 }}
                   />
                 </Grid>
+                {!occlusion && (
                 <Grid item xs={12}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                     <RegionSelectionTool
@@ -296,6 +325,7 @@ function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChan
                     </Typography>
                   </Box>
                 </Grid>
+                )}
               </Grid>
             </Paper>
           </Grid>

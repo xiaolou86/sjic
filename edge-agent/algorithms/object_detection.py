@@ -1,5 +1,6 @@
 from .base import BaseAlgorithm, effective_confidence
 from .detection_preview import offer_detection_preview
+from .occlusion import is_occlusion_spec, update_occlusion
 from .rules import build_rules
 import cv2
 import time
@@ -27,6 +28,30 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
             return None
         logger.info(f"Transformed ROI Points for inference: {roi_points}")
         return roi_points
+
+    def _check_occlusion(
+        self, specs, states, frame, now, task_start, task_end,
+        alert_threshold, on_alert, task_name, logger,
+    ):
+        """用本帧原图看外圈。不看检测框，也不用补边后的画面。"""
+        for spec in specs:
+            bid = spec.get('id') or spec.get('type') or 'camera_occlusion'
+            state = states.setdefault(bid, {'since': None, 'last_alert': None})
+            if not is_item_active_now(now, spec, task_start, task_end):
+                state['since'] = None
+                continue
+            message = update_occlusion(spec, frame, now, state, alert_threshold)
+            if not message or not on_alert:
+                continue
+            alert_frame = self.draw_alert_overlay(frame, caption=message)
+            logger.info(f"Triggering camera_occlusion for {task_name} rule={bid}")
+            on_alert(
+                alert_type=spec.get('alert_type') or 'camera_blocked',
+                confidence=1.0,
+                image_frame=alert_frame,
+                message=message,
+                raw_frame=frame,
+            )
 
     def _legacy_presence_spec(self, algorithm_parameters):
         """无 rules 但配置了 detection_region 时，按旧行为：区域内出现即告警。"""
@@ -87,20 +112,12 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
             pump = FramePump(camera, stop_event, rtsp_url, logger, max_decode_fps=decode_fps)
             pump.start()
             try:
-                runtime.load(model_path)
-                logger.info(
-                    f"Throughput caps: inferFps={infer_fps:.1f} decodeFps≈{decode_fps:.1f}"
-                )
-
                 first_frame, last_seq = pump.get_latest(last_seq=0, wait_sec=8.0)
                 if first_frame is None:
                     h, w = camera.get(cv2.CAP_PROP_FRAME_HEIGHT), camera.get(cv2.CAP_PROP_FRAME_WIDTH)
                 else:
                     h, w = first_frame.shape[0], first_frame.shape[1]
                 new_h, new_w, top, bottom, left, right = get_letterbox_params(h, w, target_size=640)
-                if new_h is None:
-                    logger.error("error: get_letterbox_params return None")
-                    return
 
                 raw_rules = algorithm_parameters.get('rules')
                 if not raw_rules:
@@ -123,28 +140,47 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                     spec for spec in raw_rules
                     if isinstance(spec, dict) and spec.get('enabled', True) is not False
                 ]
-                for spec in active_specs:
+                occlusion_specs = [spec for spec in active_specs if is_occlusion_spec(spec)]
+                detect_specs = [spec for spec in active_specs if not is_occlusion_spec(spec)]
+                for spec in detect_specs:
                     spec['_min_confidence'] = effective_confidence(spec, task_confidence)
                 confidence = min(
-                    (spec['_min_confidence'] for spec in active_specs),
+                    (spec['_min_confidence'] for spec in detect_specs),
                     default=task_confidence,
                 )
                 rules = build_rules(
-                    raw_rules,
+                    detect_specs,
                     transform_roi,
                     alert_threshold,
                     self.is_point_in_roi,
                     logger,
                 )
+                occlusion_state = {}
 
                 infer_classes = []
                 for rule in rules:
                     infer_classes.extend(rule.class_ids or [])
-                if algorithm_parameters.get('labels'):
+                if rules and algorithm_parameters.get('labels'):
                     infer_classes.extend(int(x) for x in algorithm_parameters.get('labels'))
-                infer_classes = sorted(set(infer_classes)) or [0]
+                infer_classes = sorted(set(infer_classes))
+                if rules and not infer_classes:
+                    infer_classes = [0]
+                need_infer = bool(rules)
+                if need_infer and new_h is None:
+                    logger.error("error: get_letterbox_params return None")
+                    return
 
-                warmup = first_frame if is_valid_frame(first_frame) else None
+                warmup = first_frame if need_infer and is_valid_frame(first_frame) else None
+                if need_infer:
+                    runtime.load(model_path)
+                    logger.info(
+                        f"Throughput caps: inferFps={infer_fps:.1f} decodeFps≈{decode_fps:.1f}"
+                    )
+                elif occlusion_specs:
+                    logger.info(
+                        f"摄像头遮挡挂在本路已解码画面上，本帧不跑检测模型 "
+                        f"decodeFps≈{decode_fps:.1f}"
+                    )
                 if warmup is not None:
                     processed = preprocess(warmup, new_h, new_w, top, bottom, left, right)
                     if processed is not None:
@@ -176,6 +212,14 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                         continue
 
                     next_infer_t = time.time() + infer_interval
+                    now = datetime.now()
+                    self._check_occlusion(
+                        occlusion_specs, occlusion_state, frame, now,
+                        task_sched_start, task_sched_end, alert_threshold,
+                        on_alert, task_name, logger,
+                    )
+                    if not need_infer:
+                        continue
 
                     processed = preprocess(frame, new_h, new_w, top, bottom, left, right)
                     if processed is None:
@@ -189,7 +233,6 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                         continue
                     infer_ms = (time.time() - t0) * 1000
                     boxes = result.boxes or []
-                    now = datetime.now()
                     frame_idx += 1
                     fps_window_n += 1
 

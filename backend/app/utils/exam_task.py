@@ -88,10 +88,17 @@ def _chosen_class_ids(item):
     return ids
 
 
+def _is_camera_occlusion(rule):
+    return (
+        rule.get('type') == 'camera_occlusion'
+        or rule.get('scene_preset_id') == 'camera_occlusion'
+    )
+
+
 def missing_detection_class(rules):
-    """已启用的目标检测场景必须显式选择类别。"""
+    """已启用的目标检测场景必须显式选择类别。摄像头遮挡不看类别。"""
     for rule in _enabled(rules):
-        if _chosen_class_ids(rule):
+        if _is_camera_occlusion(rule) or _chosen_class_ids(rule):
             continue
         name = rule.get('name') or '检测场景'
         return f'检测场景「{name}」需要选择类别'

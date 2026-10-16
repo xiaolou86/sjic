@@ -20,7 +20,7 @@ const menuItems = [
   { text: '运行概览', icon: <DashboardIcon />, path: '/dashboard' },
   { text: '节点', icon: <Computer />, path: '/nodes' },
   { text: '视频源', icon: <Videocam />, path: '/streams' },
-  { text: '图片测试', icon: <PhotoLibrary />, path: '/image-test' },
+  { text: '图片测试', icon: <PhotoLibrary />, path: '/image-test', role: 'vendor' },
   { text: '模型管理', icon: <ModelTraining />, path: '/models', role: 'vendor' },
   { text: '算法清单', icon: <Code />, path: '/algorithms' },
   { text: '任务', icon: <Task />, path: '/tasks' },

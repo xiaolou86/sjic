@@ -69,7 +69,7 @@ function App() {
           <Route path="/image-test" element={
             <PrivateRoute>
               <Layout>
-                <ImageTest />
+                {isSuperAdmin ? <ImageTest /> : <Navigate to="/dashboard" replace />}
               </Layout>
             </PrivateRoute>
           } />

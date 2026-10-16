@@ -2,7 +2,7 @@
 from flask import Blueprint, jsonify, request, send_file, current_app
 
 from app.extensions import db
-from app.middleware.auth import token_required
+from app.middleware.auth import role_required, token_required
 from app.middleware.license_guard import REASON_MESSAGES
 from app.models import Camera
 from app.models.camera import DEFAULT_MOUNT_POSITION
@@ -72,6 +72,7 @@ def _with_camera(set_id, payload, create=False):
 
 @image_set_bp.route('/api/image-sets/<set_id>', methods=['GET'])
 @token_required
+@role_required('vendor')
 def get_image_set(set_id):
     denied = _guard(set_id)
     if denied:
@@ -84,6 +85,7 @@ def get_image_set(set_id):
 
 @image_set_bp.route('/api/image-sets/<set_id>/images', methods=['POST'])
 @token_required
+@role_required('vendor')
 def upload_images(set_id):
     denied = _guard(set_id)
     if denied:
@@ -106,6 +108,7 @@ def upload_images(set_id):
 
 @image_set_bp.route('/api/image-sets/<set_id>/images/<name>', methods=['GET'])
 @token_required
+@role_required('vendor')
 def get_image_file(set_id, name):
     denied = _guard(set_id)
     if denied:
@@ -119,6 +122,7 @@ def get_image_file(set_id, name):
 
 @image_set_bp.route('/api/image-sets/<set_id>/images/<name>', methods=['PUT'])
 @token_required
+@role_required('vendor')
 def patch_image_label(set_id, name):
     denied = _guard(set_id)
     if denied:
@@ -134,6 +138,7 @@ def patch_image_label(set_id, name):
 
 @image_set_bp.route('/api/image-sets/<set_id>/images/<name>', methods=['DELETE'])
 @token_required
+@role_required('vendor')
 def remove_image(set_id, name):
     denied = _guard(set_id)
     if denied:
@@ -147,6 +152,7 @@ def remove_image(set_id, name):
 
 @image_set_bp.route('/api/image-sets/<set_id>/current', methods=['POST'])
 @token_required
+@role_required('vendor')
 def select_current(set_id):
     denied = _guard(set_id)
     if denied:
@@ -162,6 +168,7 @@ def select_current(set_id):
 
 @image_set_bp.route('/api/image-sets/<set_id>/camera', methods=['POST'])
 @token_required
+@role_required('vendor')
 def create_camera(set_id):
     denied = _guard(set_id)
     if denied:

@@ -18,9 +18,9 @@ ENGINES = {
         'description': '张望、低头、捂嘴、巡场、考台旁站人、人员缺席、滞留、聚集等',
     },
     'camera_health': {
-        'label': '画面健康检测',
+        'label': '摄像头遮挡',
         'needs_model': False,
-        'description': '无模型：黑屏、遮挡等画面异常',
+        'description': '无模型：外圈画面被挡住或整幅发平',
     },
     'mouse_idle': {
         'label': '鼠标空闲检测',
@@ -120,6 +120,21 @@ OD_SCENE_PRESETS = [
         'description': '人员倒地',
         'defaults': {
             'alert_type': 'person_fall',
+            'class_ids': [],
+            'enabled': True,
+        },
+    },
+    {
+        'id': 'camera_occlusion',
+        'type': 'camera_occlusion',
+        'name': '摄像头遮挡',
+        'description': '外圈画面被挡住或整幅发平。用目标检测已经解码的画面判断，不另拉视频',
+        'defaults': {
+            'alert_type': 'camera_blocked',
+            'cover_ratio': 0.25,
+            'seconds': 3,
+            'schedule_start': '08:00',
+            'schedule_end': '18:00',
             'class_ids': [],
             'enabled': True,
         },
@@ -325,14 +340,17 @@ PRODUCT_ALGORITHMS = [
     {
         'type': 'camera_health',
         'engine': 'camera_health',
-        'name': '画面健康检测',
-        'description': '摄像头黑屏或被遮挡',
+        'name': '摄像头遮挡',
+        'description': '外圈格子失去纹理即告警，不区分全黑和局部遮挡',
         'category': 'exam',
         'parameter_schema': {
             'ui': {'editor': 'camera_health'},
+            'default_schedule': {
+                'schedule_start': '08:00',
+                'schedule_end': '18:00',
+            },
             'default_task_params': {
-                'black_ratio': 0.85,
-                'variance_threshold': 12.0,
+                'cover_ratio': 0.25,
                 'seconds': 3,
                 'alert_type': 'camera_blocked',
             },

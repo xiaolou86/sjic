@@ -15,6 +15,19 @@ import FusionScenesEditor from '../components/FusionScenesEditor';
 import DetectionPreviewDialog, { taskPreviewEngines } from '../components/DetectionPreviewDialog';
 import ScrollableDataPage, { scrollTableContainerSx } from '../components/ScrollableDataPage';
 
+const CAMERA_OCCLUSION_SCHEDULE = { schedule_start: '08:00', schedule_end: '18:00' };
+
+function cameraOcclusionSchedule(catalog) {
+  const product = (catalog?.products || []).find(
+    (item) => (item.engine || item.type) === 'camera_health',
+  );
+  const sched = product?.parameter_schema?.default_schedule || {};
+  return {
+    schedule_start: sched.schedule_start || CAMERA_OCCLUSION_SCHEDULE.schedule_start,
+    schedule_end: sched.schedule_end || CAMERA_OCCLUSION_SCHEDULE.schedule_end,
+  };
+}
+
 function mergeAlgoDefaults(algorithm, prevParams = {}) {
   const defaults = algorithm?.parameter_schema?.default_task_params || {};
   const next = { ...defaults, ...prevParams };
@@ -32,7 +45,9 @@ function mergeAlgoDefaults(algorithm, prevParams = {}) {
 }
 
 function sceneMissingClass(item) {
-  return item && item.enabled !== false && (!Array.isArray(item.class_ids) || item.class_ids.length === 0);
+  if (!item || item.enabled === false) return false;
+  if (item.type === 'camera_occlusion' || item.scene_preset_id === 'camera_occlusion') return false;
+  return !Array.isArray(item.class_ids) || item.class_ids.length === 0;
 }
 
 function detectionClassError(params) {
@@ -456,13 +471,14 @@ function Tasks() {
                   <Typography>
                     {rule.name || rule.type}
                     {rule.enabled === false ? '（已关闭）' : ''}
+                    {rule.type === 'camera_occlusion' ? ` · 外圈 ${rule.cover_ratio ?? 0.25} · 持续 ${rule.seconds ?? 3} 秒` : ''}
                     {rule.type === 'linger' ? ` · 驻留 ${rule.linger_seconds ?? 5} 秒` : ''}
                     {rule.type === 'absence' ? ` · 缺席 ${rule.absent_seconds ?? 600} 秒` : ''}
                     {rule.type === 'crowd_count' ? ` · ≥${rule.min_count ?? 5}人 / ${rule.seconds ?? 10}秒` : ''}
-                    {rule.confidence != null && rule.confidence !== '' ? ` · 置信度 ${rule.confidence}` : ''}
-                    {Array.isArray(rule.class_ids) && rule.class_ids.length ? ` · 类别 ${rule.class_ids.join(',')}` : ''}
+                    {rule.type !== 'camera_occlusion' && rule.confidence != null && rule.confidence !== '' ? ` · 置信度 ${rule.confidence}` : ''}
+                    {rule.type !== 'camera_occlusion' && Array.isArray(rule.class_ids) && rule.class_ids.length ? ` · 类别 ${rule.class_ids.join(',')}` : ''}
                     {` · 告警 ${rule.alert_type || '-'}`}
-                    {rule.detection_region?.points?.length ? ` · ROI ${rule.detection_region.points.length} 点` : ' · 整帧'}
+                    {rule.type === 'camera_occlusion' ? '' : (rule.detection_region?.points?.length ? ` · ROI ${rule.detection_region.points.length} 点` : ' · 整帧')}
                     {rule.schedule_start && rule.schedule_end ? ` · 时段 ${rule.schedule_start}–${rule.schedule_end}` : ''}
                   </Typography>
                 </Box>
@@ -502,7 +518,7 @@ function Tasks() {
         case 'camera_health':
           return (
             <Typography>
-              黑屏比例 {task.algorithm_parameters?.black_ratio ?? 0.85} ·
+              外圈遮挡比例 {task.algorithm_parameters?.cover_ratio ?? 0.25} ·
               持续 {task.algorithm_parameters?.seconds ?? 3} 秒
             </Typography>
           );
@@ -670,6 +686,7 @@ function Tasks() {
               taskConfidence={formData.confidence}
               labelmap={odAlgorithm.model_labelmap}
               highlightMissing={submitAttempted}
+              excludePresetIds={['camera_occlusion']}
               onChange={patchParams}
             />
           </Grid>
@@ -756,17 +773,17 @@ function Tasks() {
             <TextField
               fullWidth
               type="number"
-              label="黑屏占比阈值"
-              value={formData.algorithm_parameters?.black_ratio ?? 0.85}
+              label="外圈遮挡比例"
+              value={formData.algorithm_parameters?.cover_ratio ?? 0.25}
               onChange={(e) => setFormData({
                 ...formData,
                 algorithm_parameters: {
                   ...formData.algorithm_parameters,
-                  black_ratio: parseFloat(e.target.value),
+                  cover_ratio: parseFloat(e.target.value),
                 },
               })}
-              inputProps={{ min: 0.5, max: 0.99, step: 0.01 }}
-              helperText="画面暗部比例超过此值判为遮挡/黑屏"
+              inputProps={{ min: 0.05, max: 1, step: 0.05 }}
+              helperText="只看最外一圈格子。发平、没有纹理的占比超过此值即告警，默认每天 08:00–18:00"
             />
           </Grid>
           <Grid item xs={12} md={4}>
@@ -872,7 +889,7 @@ function Tasks() {
           </Button>
         </div>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-          驾考可以建一个混合任务，同一路视频里同时配置检测场景和姿态场景。画面健康等仍是单独任务。
+          驾考可以建一个混合任务，同一路视频里同时配置检测场景和姿态场景。摄像头遮挡等仍是单独任务。
         </Typography>
 
         {/* 高级过滤栏 */}
@@ -1196,16 +1213,43 @@ function Tasks() {
                 onChange={(e) => {
                   const algId = e.target.value;
                   const selectedAlg = algorithms.find(a => a.id === algId);
+                  const engine = selectedAlg?.engine || selectedAlg?.type;
                   setFormError('');
-                  setFormData(prev => ({
-                    ...prev,
-                    algorithm_id: algId,
-                    algorithm_parameters: mergeAlgoDefaults(selectedAlg, {
+                  setFormData(prev => {
+                    const prevAlg = algorithms.find(a => a.id === prev.algorithm_id);
+                    const prevEngine = prevAlg?.engine || prevAlg?.type;
+                    const params = mergeAlgoDefaults(selectedAlg, {
                       labels: selectedAlg?.labels || [],
                       rules: undefined,
                       behaviors: undefined,
-                    }),
-                  }));
+                    });
+                    const defaults = cameraOcclusionSchedule(catalog);
+                    let schedule_start = prev.schedule_start || '';
+                    let schedule_end = prev.schedule_end || '';
+                    if (engine === 'camera_health') {
+                      if (!schedule_start && !schedule_end) {
+                        schedule_start = defaults.schedule_start;
+                        schedule_end = defaults.schedule_end;
+                      }
+                      if (params.cover_ratio == null || params.cover_ratio === '') {
+                        params.cover_ratio = 0.25;
+                      }
+                    } else if (
+                      prevEngine === 'camera_health'
+                      && schedule_start === defaults.schedule_start
+                      && schedule_end === defaults.schedule_end
+                    ) {
+                      schedule_start = '';
+                      schedule_end = '';
+                    }
+                    return {
+                      ...prev,
+                      algorithm_id: algId,
+                      schedule_start,
+                      schedule_end,
+                      algorithm_parameters: params,
+                    };
+                  });
                 }}
                 displayEmpty
               >

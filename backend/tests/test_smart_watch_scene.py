@@ -133,6 +133,9 @@ class DetectionSceneClassTest(unittest.TestCase):
         self.assertIsNone(exam_task.missing_detection_class([
             {'name': '人员缺席', 'class_ids': [0], 'enabled': True},
         ]))
+        self.assertIsNone(exam_task.missing_detection_class([
+            {'name': '摄像头遮挡', 'type': 'camera_occlusion', 'enabled': True, 'class_ids': []},
+        ]))
 
     def test_person_scenes_moved_to_pose(self):
         od_ids = [item['id'] for item in catalog.OD_SCENE_PRESETS]

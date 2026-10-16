@@ -1,23 +1,33 @@
-"""画面健康：黑屏 / 大面积遮挡（无需检测模型）。"""
+"""摄像头遮挡：只看画面最外一圈格子是否失去纹理（无需检测模型）。"""
 from .base import BaseAlgorithm
-import cv2
+from .occlusion import (
+    DEFAULT_BLOCK,
+    DEFAULT_COVER_RATIO,
+    DEFAULT_HOLD_SECONDS,
+    DEFAULT_STD_MAX,
+    ring_occlusion_ratio,
+)
 import time
 from datetime import datetime
 from utils.rtsp import FramePump, is_valid_frame
+from utils.schedule import in_daily_window
 
 
 class CameraHealthAlgorithm(BaseAlgorithm):
-    """监控画面突然变黑或被挡住。"""
+    """画面从边缘被挡住，或整幅发平、没有纹理。两种情况同一条规则。"""
 
     def process(self, camera_stream, config_dict, logger, stop_event, on_alert, runtime):
         try:
             parameters = config_dict.get('parameters', {})
             algo_params = parameters.get('algorithm_parameters') or {}
             alert_threshold = int(parameters.get('alertThreshold', 10))
-            black_ratio = float(algo_params.get('black_ratio', 0.85))
-            variance_threshold = float(algo_params.get('variance_threshold', 12.0))
-            hold_seconds = float(algo_params.get('seconds', 3))
+            cover_ratio = float(algo_params.get('cover_ratio', DEFAULT_COVER_RATIO))
+            std_max = float(algo_params.get('std_max', DEFAULT_STD_MAX))
+            block = int(algo_params.get('block', DEFAULT_BLOCK))
+            hold_seconds = float(algo_params.get('seconds', DEFAULT_HOLD_SECONDS))
             alert_type = algo_params.get('alert_type') or 'camera_blocked'
+            sched_start = parameters.get('schedule_start')
+            sched_end = parameters.get('schedule_end')
             task_name = config_dict.get('task_id', 'unknown_task')
 
             if camera_stream is None:
@@ -39,14 +49,13 @@ class CameraHealthAlgorithm(BaseAlgorithm):
                         logger.warning("No valid frame for camera health check")
                         continue
 
-                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                    mean_val = float(gray.mean())
-                    var_val = float(gray.var())
-                    # 近全黑，或整体方差极低（大面积遮挡/贴布）
-                    is_bad = (mean_val < (1.0 - black_ratio) * 255.0) or (var_val < variance_threshold)
-
                     now = datetime.now()
-                    if not is_bad:
+                    if not in_daily_window(now, sched_start, sched_end):
+                        bad_since = None
+                        continue
+
+                    ratio = ring_occlusion_ratio(frame, block=block, std_max=std_max)
+                    if ratio < cover_ratio:
                         bad_since = None
                         continue
                     if bad_since is None:
@@ -58,12 +67,8 @@ class CameraHealthAlgorithm(BaseAlgorithm):
                     if last_alert_time and (now - last_alert_time).total_seconds() < alert_threshold:
                         continue
 
-                    message = (
-                        f"摄像头画面异常：mean={mean_val:.1f} var={var_val:.1f} "
-                        f"持续 {elapsed:.1f}s"
-                    )
-                    caption = message
-                    alert_frame = self.draw_alert_overlay(frame, caption=caption)
+                    message = f"摄像头遮挡：外圈 {ratio:.0%} 持续 {elapsed:.1f}s"
+                    alert_frame = self.draw_alert_overlay(frame, caption=message)
                     logger.info(f"Triggering {alert_type} for {task_name}")
                     if on_alert:
                         on_alert(
