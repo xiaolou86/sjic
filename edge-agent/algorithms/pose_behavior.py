@@ -19,6 +19,7 @@ from .base import BaseAlgorithm, effective_confidence
 from .detection_preview import offer_detection_preview
 from .object_detection import ObjectDetectionAlgorithm
 from .pose_geometry import (
+    DESK_HIP_STRAIGHT_DEGREES,
     DESK_KNEE_STRAIGHT_DEGREES,
     FINGER_ELBOW_MAX_DEGREES,
     FINGER_ELBOW_MIN_DEGREES,
@@ -73,6 +74,7 @@ def _eval_behavior(btype, kps, box, spec, view):
             box,
             spec.get('min_height_width', 1.6),
             spec.get('min_knee_degrees', DESK_KNEE_STRAIGHT_DEGREES),
+            spec.get('min_hip_degrees', DESK_HIP_STRAIGHT_DEGREES),
             spec.get('min_reach_ratio', FINGER_REACH_RATIO),
             spec.get('elbow_min_degrees', FINGER_ELBOW_MIN_DEGREES),
             spec.get('elbow_max_degrees', FINGER_ELBOW_MAX_DEGREES),
@@ -441,10 +443,11 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
         return True, sample_box, standing_n
 
     def _desk_stand_ready(self, persons, spec, bid, now):
-        """没有骨骼点则跳过。人框高宽比达标且至少一条腿伸直才算站立。同一轨迹停在原地达到 seconds 才返回。"""
+        """没有骨骼点则跳过。人框高宽比达标，且至少一条腿的膝角和上下身夹角都伸直，才算站立。同一轨迹停在原地达到 seconds 才返回。"""
         seconds = _positive_float(spec, 'seconds', 10)
         min_ratio = _positive_float(spec, 'min_height_width', 1.6)
         min_knee = spec.get('min_knee_degrees', DESK_KNEE_STRAIGHT_DEGREES)
+        min_hip = spec.get('min_hip_degrees', DESK_HIP_STRAIGHT_DEGREES)
         move_ratio = _positive_float(spec, 'max_move_ratio', 1.0)
         in_scene = set()
         ready = []
@@ -454,7 +457,7 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
                 continue
             in_scene.add(track.id)
             center, width = _box_center_width(box)
-            if center is None or not is_desk_standing(kps, box, min_ratio, min_knee):
+            if center is None or not is_desk_standing(kps, box, min_ratio, min_knee, min_hip):
                 track.since.pop(bid, None)
                 track.place.pop(bid, None)
                 continue

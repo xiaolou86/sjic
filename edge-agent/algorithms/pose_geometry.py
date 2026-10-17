@@ -20,6 +20,9 @@ DEFAULT_MOUNT_POSITION = 'back_top'
 
 # 髋-膝-踝夹角接近 180° 才算这条腿伸直。坐着多半弯到 120° 以下。
 DESK_KNEE_STRAIGHT_DEGREES = 150.0
+# 肩-髋-膝夹角接近 180° 才算上半身与下半身伸直。
+# 坐着把腿伸向前方时膝角仍可能很大，但髋处多半弯到 120° 以下。140° 给站立前倾留一点余量。
+DESK_HIP_STRAIGHT_DEGREES = 140.0
 # 腕相对肩中点，沿躯干前下方的投影 / 肩宽。
 FINGER_REACH_RATIO = 0.45
 # 伸臂点屏幕时肘要张开。折回肩旁的小角度不算。
@@ -464,6 +467,10 @@ def _knee_gate(min_knee_degrees):
     return _bounded_float(min_knee_degrees, DESK_KNEE_STRAIGHT_DEGREES, 1.0, 179.0)
 
 
+def _hip_gate(min_hip_degrees):
+    return _bounded_float(min_hip_degrees, DESK_HIP_STRAIGHT_DEGREES, 1.0, 179.0)
+
+
 def _finger_gates(min_reach_ratio, elbow_min_degrees, elbow_max_degrees):
     reach = _bounded_float(min_reach_ratio, FINGER_REACH_RATIO, 0.05, 5.0)
     elbow_min = _bounded_float(elbow_min_degrees, FINGER_ELBOW_MIN_DEGREES, 0.0, 180.0)
@@ -513,18 +520,38 @@ def _leg_angles(kps):
     )
 
 
-def is_desk_standing(kps, box, min_ratio=1.6, min_knee_degrees=DESK_KNEE_STRAIGHT_DEGREES):
+def _hip_angles(kps):
+    """上半身（肩-髋）与下半身（髋-膝）在髋处的夹角。180° 为挺直。"""
+    return (
+        ('左', _chain_angle(kps, L_SHOULDER, L_HIP, L_KNEE), (L_SHOULDER, L_HIP, L_KNEE)),
+        ('右', _chain_angle(kps, R_SHOULDER, R_HIP, R_KNEE), (R_SHOULDER, R_HIP, R_KNEE)),
+    )
+
+
+def is_desk_standing(
+    kps, box, min_ratio=1.6,
+    min_knee_degrees=DESK_KNEE_STRAIGHT_DEGREES,
+    min_hip_degrees=DESK_HIP_STRAIGHT_DEGREES,
+):
     """
     考台边站立。
-    没有骨骼点则跳过。人框高宽比只是前提；达标后至少一条腿的大腿、小腿夹角伸直才算站着。
+    没有骨骼点则跳过。人框高宽比只是前提。达标后至少一条腿要同时满足：
+    大腿与小腿伸直，且上半身与下半身在髋处的夹角也伸直。
+    坐着把腿伸向前方时膝角可以很大，髋处弯曲则滤掉。
     """
     if not _has_skeleton(kps):
         return False
     if not is_standing_by_box(box, min_ratio):
         return False
-    gate = _knee_gate(min_knee_degrees)
-    for _name, angle, _indexes in _leg_angles(kps):
-        if angle is not None and angle >= gate:
+    knee_gate = _knee_gate(min_knee_degrees)
+    hip_gate = _hip_gate(min_hip_degrees)
+    for (_name, knee_angle, _knee_indexes), (_hip_name, hip_angle, _hip_indexes) in zip(
+        _leg_angles(kps), _hip_angles(kps),
+    ):
+        if (
+            knee_angle is not None and knee_angle >= knee_gate
+            and hip_angle is not None and hip_angle >= hip_gate
+        ):
             return True
     return False
 
@@ -620,19 +647,22 @@ def is_fall(kps, box=None, peer_boxes=None, view=DEFAULT_MOUNT_POSITION):
 def is_finger_point(
     kps, require_standing=True, view=DEFAULT_MOUNT_POSITION, box=None,
     min_height_width=1.6, min_knee_degrees=DESK_KNEE_STRAIGHT_DEGREES,
+    min_hip_degrees=DESK_HIP_STRAIGHT_DEGREES,
     min_reach_ratio=FINGER_REACH_RATIO,
     elbow_min_degrees=FINGER_ELBOW_MIN_DEGREES,
     elbow_max_degrees=FINGER_ELBOW_MAX_DEGREES,
 ):
     """
     伸臂点屏幕。
-    需要站立时，用考台边站立的同一套结果（骨骼、人框高宽比、至少一条腿伸直）。
+    需要站立时，用考台边站立的同一套结果（骨骼、人框高宽比、膝角和上下身夹角）。
     再看腕沿躯干前下方的前伸量，以及肘角是否在张开范围里。任一条手臂满足即可。
     """
     _ = view
     if not _has_skeleton(kps):
         return False
-    if require_standing and not is_desk_standing(kps, box, min_height_width, min_knee_degrees):
+    if require_standing and not is_desk_standing(
+        kps, box, min_height_width, min_knee_degrees, min_hip_degrees,
+    ):
         return False
     axis = _forward_down_axis(kps)
     if axis is None:
@@ -847,14 +877,20 @@ def _explain_cover_mouth(kps, view):
     return hit, f"阈值 {gate:.2f} 个肩宽。" + '，'.join(parts)
 
 
-def _format_leg(kps, label, angle, indexes, gate):
+def _format_joint(kps, label, angle, indexes, gate):
     if angle is None:
         missing = _missing_names(kps, indexes)
         if missing:
-            return f"{label}腿缺{'、'.join(missing)}"
-        return f"{label}腿线段过短"
+            return f"{label}缺{'、'.join(missing)}"
+        return f"{label}线段过短"
     state = '伸直' if angle >= gate else '弯曲'
-    return f"{label}膝 {angle:.0f}°（{state}，要 ≥ {gate:.0f}°）"
+    return f"{label} {angle:.0f}°（{state}，要 ≥ {gate:.0f}°）"
+
+
+def _format_leg(kps, label, knee_angle, knee_indexes, knee_gate, hip_angle, hip_indexes, hip_gate):
+    knee = _format_joint(kps, f"{label}膝", knee_angle, knee_indexes, knee_gate)
+    hip = _format_joint(kps, f"{label}上下身", hip_angle, hip_indexes, hip_gate)
+    return f"{knee}，{hip}"
 
 
 def _explain_finger_point(kps, box, spec, view):
@@ -862,13 +898,14 @@ def _explain_finger_point(kps, box, spec, view):
     require_standing = bool(spec.get('require_standing', True))
     min_height_width = spec.get('min_height_width', 1.6)
     min_knee = spec.get('min_knee_degrees', DESK_KNEE_STRAIGHT_DEGREES)
+    min_hip = spec.get('min_hip_degrees', DESK_HIP_STRAIGHT_DEGREES)
     reach_gate, elbow_min, elbow_max = _finger_gates(
         spec.get('min_reach_ratio', FINGER_REACH_RATIO),
         spec.get('elbow_min_degrees', FINGER_ELBOW_MIN_DEGREES),
         spec.get('elbow_max_degrees', FINGER_ELBOW_MAX_DEGREES),
     )
     hit = is_finger_point(
-        kps, require_standing, view, box, min_height_width, min_knee,
+        kps, require_standing, view, box, min_height_width, min_knee, min_hip,
         reach_gate, elbow_min, elbow_max,
     )
     if not _has_skeleton(kps):
@@ -878,6 +915,7 @@ def _explain_finger_point(kps, box, spec, view):
         _stand_hit, stand_reason = _explain_desk_stand(kps, box, {
             'min_height_width': min_height_width,
             'min_knee_degrees': min_knee,
+            'min_hip_degrees': min_hip,
         })
         parts.append('站立（与考台边同一套）：' + stand_reason)
     axis = _forward_down_axis(kps)
@@ -915,7 +953,8 @@ def _explain_desk_stand(kps, box, spec):
     spec = spec or {}
     ratio_gate = _ratio_gate(spec.get('min_height_width', 1.6))
     knee_gate = _knee_gate(spec.get('min_knee_degrees', DESK_KNEE_STRAIGHT_DEGREES))
-    hit = is_desk_standing(kps, box, ratio_gate, knee_gate)
+    hip_gate = _hip_gate(spec.get('min_hip_degrees', DESK_HIP_STRAIGHT_DEGREES))
+    hit = is_desk_standing(kps, box, ratio_gate, knee_gate, hip_gate)
     if not _has_skeleton(kps):
         return hit, '没有骨骼点，跳过站立判断'
     ratio = box_height_width_ratio(box)
@@ -925,8 +964,12 @@ def _explain_desk_stand(kps, box, spec):
     if ratio < ratio_gate:
         return hit, ratio_text + '，未达到，不再看腿'
     legs = '；'.join(
-        _format_leg(kps, label, angle, indexes, knee_gate)
-        for label, angle, indexes in _leg_angles(kps)
+        _format_leg(
+            kps, label, knee_angle, knee_indexes, knee_gate, hip_angle, hip_indexes, hip_gate,
+        )
+        for (label, knee_angle, knee_indexes), (_hip_label, hip_angle, hip_indexes) in zip(
+            _leg_angles(kps), _hip_angles(kps),
+        )
     )
     return hit, ratio_text + '。' + legs
 

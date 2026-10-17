@@ -209,11 +209,12 @@ POSE_SCENE_PRESETS = [
         'id': 'desk_stand',
         'type': 'desk_stand',
         'name': '考台旁站人',
-        'description': '没有骨骼点则跳过。人框高宽比达标后，至少一条腿的大腿与小腿夹角伸直，且几乎不动达到设定时长，记为辅助作弊',
+        'description': '没有骨骼点则跳过。人框高宽比达标后，至少一条腿的膝角伸直，且肩-髋与髋-膝的上下身夹角也伸直，并几乎不动达到设定时长，记为辅助作弊',
         'defaults': {
             'seconds': 10,
             'min_height_width': 1.6,
             'min_knee_degrees': 150,
+            'min_hip_degrees': 140,
             'max_move_ratio': 1.0,
             'alert_type': 'desk_stand',
             'enabled': True,

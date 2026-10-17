@@ -383,6 +383,20 @@ class DeskStandingTest(unittest.TestCase):
         _hit, reason = explain_scene('desk_stand', _straight_legs(), SHORT_BOX, {'min_height_width': 1.6}, 'back_top')
         self.assertIn('不再看腿', reason)
 
+    def test_straight_knees_with_folded_hips_are_sitting(self):
+        """坐着把腿伸向前方：膝角接近伸直，肩-髋-膝弯着，不能当成站立。"""
+        points = _straight_legs(
+            l_knee=(70, 240, 0.9),
+            r_knee=(210, 240, 0.9),
+            l_ankle=(20, 288, 0.9),
+            r_ankle=(260, 288, 0.9),
+        )
+        self.assertTrue(is_desk_standing(points, TALL_BOX, 1.6, 150, 90))
+        self.assertFalse(is_desk_standing(points, TALL_BOX, 1.6))
+        _hit, reason = explain_scene('desk_stand', points, TALL_BOX, {'min_height_width': 1.6}, 'back_top')
+        self.assertIn('上下身', reason)
+        self.assertIn('弯曲', reason)
+
 
 class FingerPointTest(unittest.TestCase):
     def _reaching(self, **extra):

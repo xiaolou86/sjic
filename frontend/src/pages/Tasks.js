@@ -505,8 +505,7 @@ function Tasks() {
                   {b.type === 'smart_glasses' ? ` · ≥${b.min_touches ?? 3}次触碰 · 耳距 ${b.ear_dist_ratio ?? 0.28}` : ''}
                   {b.confidence != null && b.confidence !== '' ? ` · 置信度 ${b.confidence}` : ''}
                   {b.type === 'invigilator_absent' ? ` · 站立≥${b.min_standing ?? 2}` : ''}
-                  {b.type === 'desk_stand' ? ` · 长高比≥${b.min_height_width ?? 1.6} · 膝角≥${b.min_knee_degrees ?? 150}° · 静止≤${b.max_move_ratio ?? 1}倍框宽` : ''}
-                  {b.type === 'finger_point' ? ` · 静止≤${b.max_move_ratio ?? 1}倍肩宽` : ''}
+                  {b.type === 'desk_stand' ? ` · 长高比≥${b.min_height_width ?? 1.6} · 膝角≥${b.min_knee_degrees ?? 150}° · 上下身≥${b.min_hip_degrees ?? 140}° · 静止≤${b.max_move_ratio ?? 1}倍框宽` : ''}
                   {b.detection_region?.points?.length ? ` · ROI ${b.detection_region.points.length} 点` : ''}
                   {b.schedule_start && b.schedule_end ? ` · 时段 ${b.schedule_start}–${b.schedule_end}` : ''}
                   {b.enabled === false ? '（已关闭）' : ''}
