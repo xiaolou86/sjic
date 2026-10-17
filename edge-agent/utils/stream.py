@@ -51,6 +51,26 @@ def _configure_ffmpeg_tcp():
     os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
 
 
+def is_local_media_file(url):
+    """本地视频文件没有直播时钟，grab 会立刻返回下一帧。"""
+    if not isinstance(url, str):
+        return False
+    text = url.strip()
+    if not text:
+        return False
+    low = text.lower()
+    if low.startswith("file://"):
+        return True
+    if low.startswith((
+        "rtsp://", "rtsps://", "rtmp://", "http://", "https://",
+        "udp://", "tcp://", "image-set:",
+    )):
+        return False
+    if text.isdigit() or text.startswith("/dev/") or text.startswith("\\\\.\\"):
+        return False
+    return True
+
+
 def _hwdec_wanted():
     v = os.environ.get("SJIC_RTSP_HWDEC", "1").strip().lower()
     return v not in ("0", "false", "off", "cpu", "no")
@@ -247,6 +267,7 @@ class RtspCapture:
 
     GStreamer：解码器前 leaky queue，不 read 时只收包、丢旧压缩帧，CPU 接近空闲。
     FFmpeg：TCP 把包堆在内核；下次 grab 按间隔跳过积压帧，再 retrieve 当前这一帧。
+    本地文件没有直播时钟，按开播后的墙钟对齐片内时间戳；推理变慢就跳过这段时间里的帧。
     """
 
     def __init__(self, rtsp_url):
@@ -255,6 +276,11 @@ class RtspCapture:
         self._backend = "ffmpeg"
         self._fps = 25.0
         self._last_grab = 0.0
+        self._local_file = is_local_media_file(rtsp_url)
+        self._clock_start = None
+        self._origin_pts = 0.0
+        self._last_pts = 0.0
+        self._gap_ms = 0.0
         self._lock = threading.Lock()
 
     def start(self):
@@ -270,9 +296,67 @@ class RtspCapture:
         logger.info("RTSP ready backend=%s fps=%.1f", backend, self._fps)
         return self
 
+    def _frame_gap_ms(self):
+        gap = self._gap_ms
+        if 1.0 <= gap <= 1000.0:
+            return gap
+        fps = self._fps
+        if fps and 1.0 < fps <= 240.0:
+            return 1000.0 / float(fps)
+        return 40.0
+
+    def _note_pts(self, pts):
+        """用容器时间戳推进播放头。时间戳不走或跳变时，按上一帧间隔补。"""
+        gap = pts - self._last_pts
+        if 1.0 <= gap <= 1000.0:
+            self._gap_ms = gap
+            self._last_pts = pts
+            return
+        self._last_pts += self._frame_gap_ms()
+
+    def _grab_aligned(self):
+        """返回墙钟对应的那一帧。还没到点就等，已经落后就连续 grab 跳过去。"""
+        while True:
+            sleep_for = 0.0
+            with self._lock:
+                cap = self._cap
+                if cap is None:
+                    return False
+                now = time.perf_counter()
+                if self._clock_start is None:
+                    if not cap.grab():
+                        return False
+                    pts = float(cap.get(cv2.CAP_PROP_POS_MSEC) or 0)
+                    self._clock_start = now
+                    self._origin_pts = pts
+                    self._last_pts = pts
+                    self._last_grab = time.time()
+                    return True
+                media_now = self._origin_pts + (now - self._clock_start) * 1000.0
+                gap = self._frame_gap_ms()
+                if media_now < self._last_pts + gap:
+                    sleep_for = (self._last_pts + gap - media_now) / 1000.0
+                else:
+                    started = time.perf_counter()
+                    while True:
+                        if not cap.grab():
+                            return False
+                        pts = float(cap.get(cv2.CAP_PROP_POS_MSEC) or 0)
+                        self._note_pts(pts)
+                        now = time.perf_counter()
+                        media_now = self._origin_pts + (now - self._clock_start) * 1000.0
+                        gap = self._frame_gap_ms()
+                        self._last_grab = time.time()
+                        if media_now < self._last_pts + gap:
+                            return True
+                        if now - started > 0.2:
+                            return True
+            if sleep_for > 0:
+                time.sleep(min(sleep_for, 1.0))
+
     def _discard_stale(self):
         """丢掉推理期间积压的旧帧，只解/保留最新一帧。GStreamer 管道已在压缩域丢弃。"""
-        if self._cap is None or str(self._backend).startswith("gstreamer"):
+        if self._local_file or self._cap is None or str(self._backend).startswith("gstreamer"):
             return
         if self._last_grab <= 0:
             return
@@ -284,6 +368,8 @@ class RtspCapture:
                 break
 
     def grab(self):
+        if self._local_file:
+            return self._grab_aligned()
         with self._lock:
             if self._cap is None:
                 return False
@@ -300,6 +386,10 @@ class RtspCapture:
             return self._cap.retrieve()
 
     def read(self):
+        if self._local_file:
+            if not self._grab_aligned():
+                return False, None
+            return self.retrieve()
         with self._lock:
             if self._cap is None:
                 return False, None
