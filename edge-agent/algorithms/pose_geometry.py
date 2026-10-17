@@ -725,8 +725,6 @@ def explain_scene(btype, kps, box, spec, view):
     """本帧几何结论。hit 与正式判断同一函数，reason 说明缺点和数值。"""
     spec = spec or {}
     view = normalize_mount_position(view)
-    if btype == 'look_aside':
-        return _explain_look_aside(kps, spec.get('yaw_degrees', 45), view)
     if btype == 'head_down':
         return _explain_head_down(kps, spec.get('pitch_degrees', 30), view)
     if btype == 'gaze_away':

@@ -10,12 +10,12 @@ ENGINES = {
     'object_detection': {
         'label': '目标检测',
         'needs_model': True,
-        'description': '识别手机、帽子、火情、人员倒地等',
+        'description': '识别手机、帽子、火情、烟雾、人员倒地等',
     },
     'pose_behavior': {
         'label': '姿态行为检测',
         'needs_model': True,
-        'description': '张望、低头、捂嘴、巡场、考台旁站人、人员缺席、滞留、聚集等',
+        'description': '张望、低头、捂嘴、巡场、考台旁站人、滞留、聚集等',
     },
     'camera_health': {
         'label': '摄像头遮挡',
@@ -67,7 +67,7 @@ CAMERA_MOUNT_POSITIONS = [
 ]
 
 # 目标检测任务内可添加的场景/规则预设。类别在创建任务时按模型 labelmap 选择。
-# 人员缺席/滞留/聚集不在这里：目标检测已没有人这个类别，改由姿态按检出人数统计。
+# 人员滞留/聚集不在这里：目标检测已没有人这个类别，改由姿态按检出人数统计。
 OD_SCENE_PRESETS = [
     {
         'id': 'phone_detect',
@@ -92,23 +92,23 @@ OD_SCENE_PRESETS = [
         },
     },
     {
-        'id': 'fire_smoke',
+        'id': 'fire_detect',
         'type': 'presence',
-        'name': '火情/烟雾',
-        'description': '出现火情或烟雾（需模型含 fire/smoke 类）',
+        'name': '火情',
+        'description': '出现火焰即告警',
         'defaults': {
-            'alert_type': 'fire_smoke',
+            'alert_type': 'fire_detect',
             'class_ids': [],
             'enabled': True,
         },
     },
     {
-        'id': 'generic_presence',
+        'id': 'smoke_detect',
         'type': 'presence',
-        'name': '区域内出现',
-        'description': '自定义类别在区域内出现',
+        'name': '烟雾',
+        'description': '出现烟雾即告警',
         'defaults': {
-            'alert_type': 'object_detection',
+            'alert_type': 'smoke_detect',
             'class_ids': [],
             'enabled': True,
         },
@@ -146,23 +146,11 @@ POSE_SCENE_PRESETS = [
         'id': 'not_looking_screen',
         'type': 'gaze_away',
         'name': '长时间不看屏幕',
-        'description': '明显抬头或左右观望，低头看屏幕不算',
+        'description': '明显抬头或左右张望都算不看屏幕，低头看屏幕不算',
         'defaults': {
             'seconds': 15,
             'yaw_degrees': 25,
             'alert_type': 'gaze_away',
-            'enabled': True,
-        },
-    },
-    {
-        'id': 'look_aside',
-        'type': 'look_aside',
-        'name': '左右张望',
-        'description': '左右张望',
-        'defaults': {
-            'seconds': 3,
-            'yaw_degrees': 45,
-            'alert_type': 'look_aside',
             'enabled': True,
         },
     },
@@ -229,17 +217,6 @@ POSE_SCENE_PRESETS = [
             'seconds': 120,
             'min_standing': 2,
             'alert_type': 'invigilator_absent',
-            'enabled': True,
-        },
-    },
-    {
-        'id': 'person_absence',
-        'type': 'absence',
-        'name': '人员缺席',
-        'description': '区域内持续无人',
-        'defaults': {
-            'absent_seconds': 600,
-            'alert_type': 'person_absence',
             'enabled': True,
         },
     },
@@ -326,7 +303,7 @@ PRODUCT_ALGORITHMS = [
         'type': 'object_detection',
         'engine': 'object_detection',
         'name': '目标检测',
-        'description': '手机、帽子、火情、人员倒地等',
+        'description': '手机、帽子、火情、烟雾、人员倒地等',
         'category': 'exam',
         'parameter_schema': _od_schema(),
     },
@@ -334,7 +311,7 @@ PRODUCT_ALGORITHMS = [
         'type': 'pose_behavior',
         'engine': 'pose_behavior',
         'name': '姿态行为检测',
-        'description': '不看屏幕、张望、捂嘴报题、巡场、考台旁站人、人员缺席、滞留、聚集等',
+        'description': '不看屏幕、张望、捂嘴报题、巡场、考台旁站人、滞留、聚集等',
         'category': 'exam',
         'parameter_schema': _pose_schema(),
     },
@@ -408,14 +385,6 @@ PRODUCT_ALGORITHMS = [
         'parameter_schema': {'ui': {'editor': 'belt'}},
     },
 ]
-
-# 旧版细粒度「一场景一算法」type，启动同步时不再维护（可保留 DB 行以免断任务）
-DEPRECATED_SCENE_TYPES = frozenset({
-    'gaze_away', 'chin_rest', 'finger_screen', 'person_fall',
-    'phone_detect', 'hat_detect', 'exam_area_linger', 'aisle_crowd',
-    'fire_smoke', 'camera_blocked',
-})
-
 
 def is_hidden_algorithm(engine=None, algorithm_type=None, category=None) -> bool:
     """矿场皮带类算法先从清单和任务选择里隐藏，实现仍保留。"""
@@ -491,18 +460,6 @@ def _merge_scene_presets(existing, catalog):
     return ordered
 
 
-# 合并时从姿态 schema 去掉：跌倒改由目标检测；眼镜/手表改由混合任务的融合场景；手托下巴已下线
-_POSE_DROPPED_PRESET_IDS = frozenset({'person_fall', 'smart_glasses', 'smart_watch', 'chin_rest'})
-_POSE_DROPPED_TYPES = frozenset({'fall', 'smart_glasses', 'smart_watch', 'chin_rest'})
-# 人员缺席/滞留/聚集改由姿态按检出人数统计，旧的目标检测 schema 里不再保留
-_OD_MOVED_TO_POSE_IDS = frozenset({'person_absence', 'person_linger', 'aisle_crowd'})
-
-# 已下线场景的历史告警仍显示中文名
-_LEGACY_ALERT_LABELS = {
-    'chin_rest': '手托下巴',
-}
-
-
 def merge_catalog_schema(existing_schema, engine: str, *, origin=None) -> dict:
     """用目录补齐/合并 scene_presets / ui / default_task_params，保留 publish_meta 等。"""
     base = schema_for_engine(engine)
@@ -511,16 +468,6 @@ def merge_catalog_schema(existing_schema, engine: str, *, origin=None) -> dict:
         merged_presets = _merge_scene_presets(
             schema.get('scene_presets'), base['scene_presets']
         )
-        if engine == 'pose_behavior':
-            merged_presets = [
-                p for p in merged_presets
-                if p.get('id') not in _POSE_DROPPED_PRESET_IDS and p.get('type') not in _POSE_DROPPED_TYPES
-            ]
-        if engine == 'object_detection':
-            merged_presets = [
-                p for p in merged_presets
-                if p.get('id') not in _OD_MOVED_TO_POSE_IDS
-            ]
         schema['scene_presets'] = merged_presets
     if not schema.get('ui') and base.get('ui'):
         schema['ui'] = base['ui']
@@ -578,8 +525,6 @@ def alert_type_labels():
             labels.setdefault(engine, product['name'])
     for engine, meta in ENGINES.items():
         labels.setdefault(engine, meta.get('label') or engine)
-    for alert_type, name in _LEGACY_ALERT_LABELS.items():
-        labels.setdefault(alert_type, name)
     return labels
 
 

@@ -25,22 +25,13 @@ class SmartWatchSceneTest(unittest.TestCase):
         self.assertEqual(preset['defaults']['alert_type'], 'smart_watch')
         self.assertEqual(catalog.alert_type_labels()['smart_watch'], '智能手表作弊检测')
 
-    def test_pose_schema_does_not_keep_fusion_scenes(self):
-        merged = catalog.merge_catalog_schema(
-            {'scene_presets': [
-                {'id': 'smart_watch', 'type': 'smart_watch', 'name': '智能手表作弊检测'},
-                {'id': 'chin_rest', 'type': 'chin_rest', 'name': '手托下巴'},
-                {'id': 'look_aside', 'type': 'look_aside', 'name': '左右张望'},
-            ]},
-            'pose_behavior',
-        )
-        ids = [item['id'] for item in merged['scene_presets']]
+    def test_pose_catalog_does_not_include_fusion_scenes(self):
+        ids = [item['id'] for item in catalog.POSE_SCENE_PRESETS]
         self.assertNotIn('smart_watch', ids)
         self.assertNotIn('smart_glasses', ids)
         self.assertNotIn('chin_rest', ids)
-        self.assertIn('look_aside', ids)
-        self.assertFalse(any(item['id'] == 'chin_rest' for item in catalog.POSE_SCENE_PRESETS))
-        self.assertEqual(catalog.alert_type_labels()['chin_rest'], '手托下巴')
+        self.assertNotIn('look_aside', ids)
+        self.assertEqual(catalog.alert_type_labels()['smart_watch'], '智能手表作弊检测')
 
     def test_watch_fusion_needs_both_models_and_class(self):
         params = {'fusions': [{'type': 'smart_watch', 'class_ids': [4], 'enabled': True}]}
@@ -68,12 +59,11 @@ class SmartWatchSceneTest(unittest.TestCase):
         params = exam_task.sanitize_exam_params({
             'behaviors': [
                 {'type': 'smart_watch', 'name': '手表'},
-                {'type': 'chin_rest', 'name': '手托下巴'},
-                {'type': 'look_aside', 'name': '张望'},
+                {'type': 'gaze_away', 'name': '长时间不看屏幕'},
             ],
             'fusions': [{'type': 'smart_watch', 'class_ids': [4], 'enabled': True}],
         })
-        self.assertEqual([item['type'] for item in params['behaviors']], ['look_aside'])
+        self.assertEqual([item['type'] for item in params['behaviors']], ['gaze_away'])
         needs = exam_task.scene_needs(params)
         self.assertTrue(needs['need_od'])
         self.assertTrue(needs['need_pose'])
@@ -140,39 +130,27 @@ class DetectionSceneClassTest(unittest.TestCase):
     def test_person_scenes_moved_to_pose(self):
         od_ids = [item['id'] for item in catalog.OD_SCENE_PRESETS]
         pose_ids = [item['id'] for item in catalog.POSE_SCENE_PRESETS]
-        for preset_id in ('person_absence', 'person_linger', 'aisle_crowd'):
+        for preset_id in ('person_linger', 'aisle_crowd'):
             self.assertNotIn(preset_id, od_ids)
             self.assertIn(preset_id, pose_ids)
+        self.assertNotIn('person_absence', od_ids)
+        self.assertNotIn('person_absence', pose_ids)
+        self.assertNotIn('generic_presence', od_ids)
         labels = catalog.alert_type_labels()
-        self.assertEqual(labels['person_absence'], '人员缺席')
+        self.assertNotIn('person_absence', labels)
         self.assertEqual(labels['exam_area_linger'], '人员滞留')
         self.assertEqual(labels['aisle_crowd'], '通道人员聚集')
-        merged_od = catalog.merge_catalog_schema(
-            {'scene_presets': [
-                {'id': 'person_absence', 'type': 'absence', 'name': '人员缺席'},
-                {'id': 'phone_detect', 'type': 'presence', 'name': '识别手机'},
-            ]},
-            'object_detection',
-        )
-        merged_od_ids = [item['id'] for item in merged_od['scene_presets']]
-        self.assertNotIn('person_absence', merged_od_ids)
-        self.assertNotIn('person_linger', merged_od_ids)
-        self.assertNotIn('aisle_crowd', merged_od_ids)
-        self.assertIn('phone_detect', merged_od_ids)
-        merged_pose = catalog.merge_catalog_schema(
-            {'scene_presets': [
-                {'id': 'look_aside', 'type': 'look_aside', 'name': '左右张望'},
-            ]},
-            'pose_behavior',
-        )
-        merged_pose_ids = [item['id'] for item in merged_pose['scene_presets']]
-        self.assertIn('person_absence', merged_pose_ids)
-        self.assertIn('person_linger', merged_pose_ids)
-        self.assertIn('aisle_crowd', merged_pose_ids)
-        self.assertIn('look_aside', merged_pose_ids)
-        self.assertIn('desk_stand', merged_pose_ids)
         self.assertEqual(labels['desk_stand'], '考台旁站人')
         self.assertNotIn('desk_stand', od_ids)
+
+    def test_fire_and_smoke_are_separate_scenes(self):
+        od_ids = [item['id'] for item in catalog.OD_SCENE_PRESETS]
+        self.assertIn('fire_detect', od_ids)
+        self.assertIn('smoke_detect', od_ids)
+        self.assertNotIn('fire_smoke', od_ids)
+        labels = catalog.alert_type_labels()
+        self.assertEqual(labels['fire_detect'], '火情')
+        self.assertEqual(labels['smoke_detect'], '烟雾')
 
     def test_scene_class_must_stay_inside_algorithm_labels(self):
         params = {'rules': [{'name': '识别手机', 'enabled': True, 'class_ids': [1]}]}

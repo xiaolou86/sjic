@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Box, Button, FormControlLabel, Grid, MenuItem, Paper, Select,
   Switch, TextField, Typography, IconButton, Chip
@@ -8,16 +8,8 @@ import RegionSelectionTool from './RegionSelectionTool';
 
 /**
  * 姿态行为：从场景预设添加多条行为，同一 pose task 一次推理。
- * 缺席 / 滞留 / 聚集只统计姿态检出的人数，不判断具体姿态。
+ * 滞留 / 聚集只统计姿态检出的人数，不判断具体姿态。
  */
-const DROPPED_POSE_TYPES = new Set(['chin_rest']);
-const PERSON_COUNT_TYPES = new Set(['absence', 'linger', 'crowd_count']);
-
-function isDroppedPoseBehavior(item) {
-  return DROPPED_POSE_TYPES.has(item?.type)
-    || DROPPED_POSE_TYPES.has(item?.scene_preset_id)
-    || DROPPED_POSE_TYPES.has(item?.alert_type);
-}
 
 function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange, catalogPresets, taskConfidence, excludePresetIds, cameraId }) {
   const [addPreset, setAddPreset] = useState('');
@@ -26,14 +18,6 @@ function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange, catalogP
     ? algorithmParameters.behaviors
     : [];
 
-  useEffect(() => {
-    if (!behaviors.some(isDroppedPoseBehavior)) return;
-    onChange({
-      ...algorithmParameters,
-      behaviors: behaviors.filter((item) => !isDroppedPoseBehavior(item)),
-    });
-  }, [algorithmParameters, behaviors, onChange]);
-
   const scenePresets = useMemo(() => {
     const fromSchema = algorithm?.parameter_schema?.scene_presets;
     const source = Array.isArray(fromSchema) && fromSchema.length > 0
@@ -41,15 +25,13 @@ function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange, catalogP
       : (Array.isArray(catalogPresets) ? catalogPresets : []);
     const excluded = new Set(excludePresetIds || []);
     return source.filter((preset) => (
-      !isDroppedPoseBehavior(preset)
-      && !excluded.has(preset.id)
+      !excluded.has(preset.id)
       && !excluded.has(preset.type)
     ));
   }, [algorithm, catalogPresets, excludePresetIds]);
 
   const visibleBehaviors = behaviors
-    .map((b, index) => ({ b, index }))
-    .filter(({ b }) => !isDroppedPoseBehavior(b));
+    .map((b, index) => ({ b, index }));
 
   const patchBehavior = (index, patch) => {
     const next = behaviors.map((b, i) => (i === index ? { ...b, ...patch } : b));
@@ -136,7 +118,7 @@ function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange, catalogP
               </IconButton>
             </Box>
             <Grid container spacing={2}>
-              {b.type !== 'absence' && b.type !== 'linger' && (
+              {b.type !== 'linger' && (
                 <Grid item xs={12} md={3}>
                   <TextField
                     fullWidth
@@ -146,19 +128,6 @@ function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange, catalogP
                     value={b.seconds ?? (b.type === 'invigilator_absent' ? 120 : (b.type === 'crowd_count' || b.type === 'desk_stand') ? 10 : 3)}
                     onChange={(e) => patchBehavior(index, { seconds: parseFloat(e.target.value) })}
                     inputProps={{ min: 0.5, step: (b.type === 'invigilator_absent' || b.type === 'crowd_count' || b.type === 'desk_stand') ? 1 : 0.5 }}
-                  />
-                </Grid>
-              )}
-              {b.type === 'absence' && (
-                <Grid item xs={12} md={3}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    type="number"
-                    label="缺席时长(秒)"
-                    value={b.absent_seconds ?? 600}
-                    onChange={(e) => patchBehavior(index, { absent_seconds: parseFloat(e.target.value) })}
-                    inputProps={{ min: 1, step: 1 }}
                   />
                 </Grid>
               )}
@@ -188,14 +157,14 @@ function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange, catalogP
                   />
                 </Grid>
               )}
-              {(b.type === 'look_aside' || b.type === 'gaze_away') && (
+              {b.type === 'gaze_away' && (
                 <Grid item xs={12} md={3}>
                   <TextField
                     fullWidth
                     size="small"
                     type="number"
                     label="偏航阈值(°)"
-                    value={b.yaw_degrees ?? 45}
+                    value={b.yaw_degrees ?? 25}
                     onChange={(e) => patchBehavior(index, { yaw_degrees: parseFloat(e.target.value) })}
                     inputProps={{ min: 1, step: 1 }}
                   />

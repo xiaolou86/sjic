@@ -40,7 +40,6 @@ def _class_ids(spec):
 
 
 _FUSION_TYPES = frozenset({'smart_glasses', 'smart_watch'})
-_DROPPED_BEHAVIOR_TYPES = frozenset({'chin_rest'})
 
 
 def _boxes_of_classes(boxes, class_ids, min_confidence):
@@ -81,7 +80,6 @@ class ExamPipelineAlgorithm(BaseAlgorithm):
                 item for item in (algo_params.get('behaviors') or [])
                 if isinstance(item, dict)
                 and item.get('type') not in _FUSION_TYPES
-                and item.get('type') not in _DROPPED_BEHAVIOR_TYPES
             ])
             fusions = _enabled(algo_params.get('fusions'))
             need_od = bool(rules_raw or fusions)

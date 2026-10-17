@@ -103,19 +103,13 @@ function taskAlgorithmLabel(task, algorithms) {
   return algorithms.find((item) => item.id === task?.algorithm_id)?.name || '';
 }
 
-function isDroppedPoseBehavior(item) {
-  return item?.type === 'chin_rest'
-    || item?.scene_preset_id === 'chin_rest'
-    || item?.alert_type === 'chin_rest';
-}
-
 function getTaskSceneNames(task) {
   const params = task?.algorithm_parameters || {};
   const items = [
     ...(Array.isArray(params.rules) ? params.rules : []),
     ...(Array.isArray(params.behaviors) ? params.behaviors : []),
     ...(Array.isArray(params.fusions) ? params.fusions : []),
-  ].filter((item) => !isDroppedPoseBehavior(item));
+  ];
   return items
     .filter((item) => item && item.enabled !== false)
     .map((item) => item.name || item.type)
@@ -473,7 +467,6 @@ function Tasks() {
                     {rule.enabled === false ? '（已关闭）' : ''}
                     {rule.type === 'camera_occlusion' ? ` · 外圈 ${rule.cover_ratio ?? 0.25} · 持续 ${rule.seconds ?? 3} 秒` : ''}
                     {rule.type === 'linger' ? ` · 驻留 ${rule.linger_seconds ?? 5} 秒` : ''}
-                    {rule.type === 'absence' ? ` · 缺席 ${rule.absent_seconds ?? 600} 秒` : ''}
                     {rule.type === 'crowd_count' ? ` · ≥${rule.min_count ?? 5}人 / ${rule.seconds ?? 10}秒` : ''}
                     {rule.type !== 'camera_occlusion' && rule.confidence != null && rule.confidence !== '' ? ` · 置信度 ${rule.confidence}` : ''}
                     {rule.type !== 'camera_occlusion' && Array.isArray(rule.class_ids) && rule.class_ids.length ? ` · 类别 ${rule.class_ids.join(',')}` : ''}
@@ -490,18 +483,16 @@ function Tasks() {
           );
         }
         case 'pose_behavior': {
-          const behaviors = (Array.isArray(task.algorithm_parameters?.behaviors) ? task.algorithm_parameters.behaviors : [])
-            .filter((item) => !isDroppedPoseBehavior(item));
+          const behaviors = Array.isArray(task.algorithm_parameters?.behaviors) ? task.algorithm_parameters.behaviors : [];
           return (
             <>
               <Typography variant="subtitle2" gutterBottom>姿态行为：</Typography>
               {behaviors.map((b, idx) => (
                 <Typography key={b.id || idx}>
                   {b.name || b.type}
-                  {b.type === 'absence' ? ` · 缺席 ${b.absent_seconds ?? 600} 秒` : ''}
                   {b.type === 'linger' ? ` · 滞留 ${b.linger_seconds ?? 300} 秒` : ''}
                   {b.type === 'crowd_count' ? ` · ≥${b.min_count ?? 5}人 / ${b.seconds ?? 10}秒` : ''}
-                  {b.type !== 'absence' && b.type !== 'linger' && b.type !== 'crowd_count' ? ` · ${b.seconds ?? '-'} 秒` : ''}
+                  {b.type !== 'linger' && b.type !== 'crowd_count' ? ` · ${b.seconds ?? '-'} 秒` : ''}
                   {b.type === 'smart_glasses' ? ` · ≥${b.min_touches ?? 3}次触碰 · 耳距 ${b.ear_dist_ratio ?? 0.28}` : ''}
                   {b.confidence != null && b.confidence !== '' ? ` · 置信度 ${b.confidence}` : ''}
                   {b.type === 'invigilator_absent' ? ` · 站立≥${b.min_standing ?? 2}` : ''}
@@ -698,7 +689,7 @@ function Tasks() {
               catalogPresets={catalog?.pose_scene_presets}
               taskConfidence={formData.confidence}
               cameraId={formData.cameraId}
-              excludePresetIds={['smart_glasses', 'smart_watch', 'chin_rest']}
+              excludePresetIds={['smart_glasses', 'smart_watch']}
               onChange={patchParams}
             />
           </Grid>
@@ -1293,7 +1284,7 @@ function Tasks() {
                 }
                 const engine = selectedAlg.engine || selectedAlg.type;
                 const tip = engine === 'object_detection'
-                  ? '可在下方添加多条检测场景。倒地用目标检测。人员缺席、滞留、聚集请在姿态场景里添加。'
+                  ? '可在下方添加多条检测场景。倒地用目标检测。人员滞留、聚集请在姿态场景里添加。'
                   : engine === 'pose_behavior'
                     ? '可在下方添加多个姿态场景。智能眼镜、智能手表请用混合任务。'
                     : null;

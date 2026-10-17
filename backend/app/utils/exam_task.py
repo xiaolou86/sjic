@@ -2,8 +2,6 @@
 
 # 这些类型只出现在 fusions，不能再当作纯姿态行为。
 _FUSION_ONLY_TYPES = frozenset({'smart_glasses', 'smart_watch'})
-# 已下线的姿态行为，保存任务时从 behaviors 里去掉。
-_DROPPED_POSE_TYPES = frozenset({'chin_rest'})
 
 _FUSION_BIND_ERRORS = {
     'smart_glasses': '智能眼镜需要同时绑定目标检测算法和姿态算法',
@@ -23,20 +21,11 @@ def _enabled(items):
     ]
 
 
-def _is_dropped_pose(item):
-    return (
-        item.get('type') in _DROPPED_POSE_TYPES
-        or item.get('scene_preset_id') in _DROPPED_POSE_TYPES
-        or item.get('alert_type') in _DROPPED_POSE_TYPES
-    )
-
-
 def _pose_behaviors(items):
     return [
         item for item in (items or [])
         if isinstance(item, dict)
         and item.get('type') not in _FUSION_ONLY_TYPES
-        and not _is_dropped_pose(item)
     ]
 
 
@@ -56,7 +45,7 @@ def scene_needs(params):
 
 
 def strip_dropped_pose_behaviors(params):
-    """去掉已下线的姿态行为，保留其余参数。"""
+    """融合场景不留在姿态 behaviors 里。"""
     params = dict(params or {})
     if isinstance(params.get('behaviors'), list):
         params['behaviors'] = _pose_behaviors(params.get('behaviors'))

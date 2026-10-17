@@ -1,11 +1,11 @@
 """
 姿态行为引擎：张望 / 低头 / 不看屏幕 / 手指屏幕 /
 捂嘴报题 / 考台旁站人 / AI 智能眼镜 / 手指点击手表 / 考试员不巡场 /
-人员缺席 / 人员滞留 / 通道聚集。
+人员滞留 / 通道聚集。
 智能眼镜和智能手表是融合场景，混合任务里才和目标检测一起判定。
 点状违规、考台旁站人和眼镜、手表按人计时：同一次推理里每人一个轨迹 id。
 手指屏幕另记开始时的位置，人走远了重新计时，避免把路过摆臂当成指屏。
-缺席、滞留、聚集、考试员不巡场仍按区域计数，不按人跟踪。
+缺席不再作为场景。滞留、聚集、考试员不巡场仍按区域计数，不按人跟踪。
 
 依赖姿态模型（YOLO-Pose 等）经 runtime.infer 返回 keypoints。
 几何判断按摄像头 mount_position（前/后/侧/正上方）切换，避免把俯视看屏判成违规。
@@ -38,7 +38,6 @@ from .pose_geometry import (
     is_finger_point,
     is_gaze_away,
     is_head_down,
-    is_looking_aside,
     is_standing,
     is_wrist_near_ear,
     normalize_mount_position,
@@ -60,8 +59,6 @@ from utils.schedule import is_item_active_now
 def _eval_behavior(btype, kps, box, spec, view):
     if btype == 'gaze_away':
         return is_gaze_away(kps, spec.get('yaw_degrees', 25), view=view)
-    if btype == 'look_aside':
-        return is_looking_aside(kps, spec.get('yaw_degrees', 45), view)
     if btype == 'head_down':
         return is_head_down(kps, spec.get('pitch_degrees', 30), view)
     if btype == 'cover_mouth':
@@ -83,10 +80,9 @@ def _eval_behavior(btype, kps, box, spec, view):
 
 
 POINTWISE_TYPES = frozenset({
-    'gaze_away', 'look_aside', 'head_down',
+    'gaze_away', 'head_down',
     'cover_mouth', 'finger_point',
 })
-_DROPPED_BEHAVIOR_TYPES = frozenset({'chin_rest'})
 STATEFUL_BEHAVIORS = frozenset({'smart_glasses', 'smart_watch', 'invigilator_absent'})
 
 # 连续这么多次推理都没再检出这个人，轨迹仍保留。大约 1 次/秒时就是两秒。
@@ -504,8 +500,6 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
             if not isinstance(spec, dict) or spec.get('enabled') is False:
                 continue
             btype = spec.get('type')
-            if btype in _DROPPED_BEHAVIOR_TYPES:
-                continue
             bid = spec.get('id') or btype
             name = spec.get('name') or btype or '场景'
             if not is_item_active_now(now, spec, task_sched_start, task_sched_end):
@@ -859,7 +853,7 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
             alert_threshold = int(parameters.get('alertThreshold', 10))
             behaviors = [
                 b for b in (algo_params.get('behaviors') or [])
-                if b.get('enabled', True) and b.get('type') not in _DROPPED_BEHAVIOR_TYPES
+                if b.get('enabled', True)
             ]
             confidence = min(
                 (effective_confidence(b, task_confidence) for b in behaviors),
