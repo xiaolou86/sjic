@@ -101,6 +101,54 @@ class DetectionSceneClassTest(unittest.TestCase):
         phone = next(item for item in merged['scene_presets'] if item['id'] == 'phone_detect')
         self.assertEqual(phone['defaults']['class_ids'], [3])
 
+    def test_merge_drops_scenes_removed_from_catalog(self):
+        merged_od = catalog.merge_catalog_schema(
+            {'scene_presets': [
+                {'id': 'phone_detect', 'name': '识别手机', 'defaults': {'class_ids': []}},
+                {'id': 'camera_occlusion', 'name': '摄像头遮挡'},
+                {'id': 'generic_presence', 'name': '区域内出现'},
+                {'id': 'fire_smoke', 'name': '火情/烟雾'},
+                {'id': 'person_absence', 'name': '人员缺席'},
+            ]},
+            'object_detection',
+        )
+        od_ids = [item['id'] for item in merged_od['scene_presets']]
+        self.assertEqual(od_ids, [item['id'] for item in catalog.OD_SCENE_PRESETS])
+        self.assertIn('camera_occlusion', od_ids)
+        self.assertIn('glasses_detect', od_ids)
+        self.assertIn('watch_detect', od_ids)
+
+        merged_pose = catalog.merge_catalog_schema(
+            {'scene_presets': [
+                {'id': 'not_looking_screen', 'name': '长时间不看屏幕'},
+                {'id': 'look_aside', 'name': '左右张望'},
+                {'id': 'chin_rest', 'name': '手托下巴'},
+                {'id': 'person_absence', 'name': '人员缺席'},
+                {'id': 'smart_watch', 'name': '智能手表'},
+            ]},
+            'pose_behavior',
+        )
+        pose_ids = [item['id'] for item in merged_pose['scene_presets']]
+        self.assertEqual(pose_ids, [item['id'] for item in catalog.POSE_SCENE_PRESETS])
+        self.assertNotIn('look_aside', pose_ids)
+        self.assertNotIn('chin_rest', pose_ids)
+
+    def test_camera_health_is_hidden_from_catalog(self):
+        self.assertTrue(catalog.is_hidden_algorithm('camera_health', 'camera_health', 'exam'))
+        api = catalog.catalog_for_api()
+        self.assertNotIn('camera_health', [item['value'] for item in api['engines']])
+        self.assertNotIn('camera_health', [item['type'] for item in api['products']])
+        self.assertIn('camera_occlusion', [item['id'] for item in api['od_scene_presets']])
+        od_ids = [item['id'] for item in api['od_scene_presets']]
+        fusion_ids = [item['id'] for item in api['fusion_scene_presets']]
+        self.assertIn('glasses_detect', od_ids)
+        self.assertIn('watch_detect', od_ids)
+        self.assertEqual(fusion_ids, ['smart_glasses', 'smart_watch'])
+        self.assertEqual(catalog.alert_type_labels()['glasses_detect'], '识别眼镜')
+        self.assertEqual(catalog.alert_type_labels()['watch_detect'], '识别手表')
+        self.assertEqual(catalog.alert_type_labels()['smart_glasses'], 'AI智能眼镜拍摄题目')
+        self.assertEqual(catalog.alert_type_labels()['smart_watch'], '智能手表作弊检测')
+
     def test_enabled_detection_scene_requires_class(self):
         self.assertEqual(
             exam_task.validate_scene_bindings(
@@ -136,6 +184,14 @@ class DetectionSceneClassTest(unittest.TestCase):
         self.assertNotIn('person_absence', od_ids)
         self.assertNotIn('person_absence', pose_ids)
         self.assertNotIn('generic_presence', od_ids)
+        self.assertIn('camera_occlusion', od_ids)
+        self.assertIn('glasses_detect', od_ids)
+        self.assertIn('watch_detect', od_ids)
+        self.assertNotIn('smart_glasses', od_ids)
+        self.assertNotIn('smart_watch', od_ids)
+        self.assertNotIn('fire_smoke', od_ids)
+        self.assertNotIn('look_aside', pose_ids)
+        self.assertNotIn('chin_rest', pose_ids)
         labels = catalog.alert_type_labels()
         self.assertNotIn('person_absence', labels)
         self.assertEqual(labels['exam_area_linger'], '人员滞留')

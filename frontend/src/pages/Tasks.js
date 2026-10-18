@@ -676,7 +676,6 @@ function Tasks() {
               taskConfidence={formData.confidence}
               labelmap={odAlgorithm.model_labelmap}
               highlightMissing={submitAttempted}
-              excludePresetIds={['camera_occlusion']}
               onChange={patchParams}
             />
           </Grid>
@@ -879,7 +878,7 @@ function Tasks() {
           </Button>
         </div>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-          驾考可以建一个混合任务，同一路视频里同时配置检测场景和姿态场景。摄像头遮挡等仍是单独任务。
+          驾考可以建一个混合任务，同一路视频里同时配置检测场景和姿态场景。摄像头遮挡、识别眼镜、识别手表在目标检测场景里。拍摄题目和点击手表在混合任务的融合场景里。
         </Typography>
 
         {/* 高级过滤栏 */}
@@ -1185,7 +1184,7 @@ function Tasks() {
                 </Grid>
                 <Grid item xs={12}>
                   <Alert severity="info">
-                    智能眼镜、智能手表需要同时选择目标检测和姿态算法，并指定类别。智能手表默认点击 1 次即有作弊嫌疑。
+                    识别眼镜、识别手表可以只加在检测场景里。AI智能眼镜拍摄题目、智能手表作弊检测是融合场景，需要同时选择目标检测和姿态，并指定类别。智能手表默认点击 1 次即有作弊嫌疑。
                   </Alert>
                   {cameraShareWarning(tasks, formData, editingTask) && (
                     <Alert severity="warning" sx={{ mt: 1 }}>
@@ -1284,9 +1283,9 @@ function Tasks() {
                 }
                 const engine = selectedAlg.engine || selectedAlg.type;
                 const tip = engine === 'object_detection'
-                  ? '可在下方添加多条检测场景。倒地用目标检测。人员滞留、聚集请在姿态场景里添加。'
+                  ? '可在下方添加多条检测场景，包括眼镜、手表和摄像头遮挡。拍摄题目、点击手表请用混合任务。人员滞留、聚集请在姿态场景里添加。'
                   : engine === 'pose_behavior'
-                    ? '可在下方添加多个姿态场景。智能眼镜、智能手表请用混合任务。'
+                    ? '可在下方添加多个姿态场景。拍摄题目、点击手表请用混合任务；只检出眼镜或手表请用目标检测。'
                     : null;
                 if (!tip) return null;
                 return <Alert severity="info" sx={{ mt: 1 }}>{tip}</Alert>;

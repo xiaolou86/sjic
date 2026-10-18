@@ -69,14 +69,21 @@ def _midpoint(kps, i, j, min_conf=0.25):
     return ((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0)
 
 
-def head_center(kps):
+def head_center(kps, min_conf=0.25):
     pts = []
     for i in (NOSE, L_EYE, R_EYE, L_EAR, R_EAR):
-        if _kp_ok(kps, i):
+        if _kp_ok(kps, i, min_conf):
             pts.append(_kp(kps, i))
     if not pts:
         return None
     return (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
+
+
+HEAD_POINTS = (NOSE, L_EYE, R_EYE, L_EAR, R_EAR)
+# 后上方、侧上方把五个头部点都看成整张脸。0.25 会把模型猜出来的点算进去。
+FULL_FACE_MIN_CONF = 0.5
+# 捂嘴只靠一只手腕到头的距离。低于 0.5 的点经常是猜的，不拿来计时。
+COVER_MOUTH_MIN_CONF = 0.5
 
 
 def face_visible(kps):
@@ -84,6 +91,11 @@ def face_visible(kps):
     if not _kp_ok(kps, NOSE, 0.4):
         return False
     return _kp_ok(kps, L_EYE, 0.35) or _kp_ok(kps, R_EYE, 0.35)
+
+
+def full_face_visible(kps):
+    """五个头部点置信度都至少 0.5：鼻、左眼、右眼、左耳、右耳。"""
+    return all(_kp_ok(kps, index, FULL_FACE_MIN_CONF) for index in HEAD_POINTS)
 
 
 def ear_asymmetry(kps):
@@ -248,27 +260,43 @@ def is_head_up(kps, view=DEFAULT_MOUNT_POSITION):
 
 
 def is_gaze_away(kps, yaw_degrees=25, pitch_degrees=25, view=DEFAULT_MOUNT_POSITION):
-    """不看屏幕：明显抬头，或左右观望。俯视看屏幕的低头不算。pitch_degrees 只保留兼容。"""
+    """
+    不看屏幕。
+    后上方、侧上方：五个头部点置信度都至少 0.5，视为转头。低头看屏幕通常只见后脑或侧脸，不算。
+    前上方、正上方：明显抬头，或左右观望。俯视看屏幕的低头不算。
+    pitch_degrees 只保留兼容。
+    """
     _ = pitch_degrees
     view = normalize_mount_position(view)
     if kps is None:
         return False
+    if view in ('back_top', 'side_top'):
+        return full_face_visible(kps)
     if is_looking_aside(kps, yaw_degrees, view):
         return True
     return is_head_up(kps, view)
 
 
+def _cover_mouth_anchor(kps, view):
+    """后上方、正上方用头部中心，其余用鼻子。参与的点置信度至少 0.5。"""
+    if view in ('back_top', 'top'):
+        center = head_center(kps, COVER_MOUTH_MIN_CONF)
+        if center is not None:
+            return center, '头部'
+    if _kp_ok(kps, NOSE, COVER_MOUTH_MIN_CONF):
+        return _kp(kps, NOSE), '鼻'
+    return None, '头部' if view in ('back_top', 'top') else '鼻'
+
+
 def is_cover_mouth(kps, view=DEFAULT_MOUNT_POSITION):
-    """捂嘴：手腕贴近口鼻；后上方改为手腕压在头附近。"""
+    """捂嘴：手腕置信度至少 0.5，并贴近口鼻。后上方、正上方改为贴近头部。"""
     view = normalize_mount_position(view)
-    anchor = head_center(kps) if view in ('back_top', 'top') else None
-    if anchor is None and _kp_ok(kps, NOSE):
-        anchor = _kp(kps, NOSE)
+    anchor, _name = _cover_mouth_anchor(kps, view)
     if anchor is None:
         return False
     sw = _scale(kps)
     for wi in (L_WRIST, R_WRIST):
-        if not _kp_ok(kps, wi):
+        if not _kp_ok(kps, wi, COVER_MOUTH_MIN_CONF):
             continue
         wx, wy = _kp(kps, wi)
         dist = math.hypot(wx - anchor[0], wy - anchor[1]) / sw
@@ -845,6 +873,13 @@ def _explain_head_up(kps, view):
 
 def _explain_gaze_away(kps, yaw_degrees, view):
     hit = is_gaze_away(kps, yaw_degrees, view=view)
+    if view in ('back_top', 'side_top'):
+        if kps is None:
+            return hit, '没有关键点'
+        missing = _missing_names(kps, HEAD_POINTS, FULL_FACE_MIN_CONF)
+        if missing:
+            return hit, f"五个头部点未齐（要 ≥ {FULL_FACE_MIN_CONF:.1f}），缺 " + '、'.join(missing)
+        return hit, f"鼻、双眼、双耳置信度都 ≥ {FULL_FACE_MIN_CONF:.1f}，视为转头"
     _aside_hit, aside = _explain_look_aside(kps, yaw_degrees, view)
     _up_hit, up = _explain_head_up(kps, view)
     return hit, f"张望或抬头才算。张望：{aside}。抬头：{up}"
@@ -854,20 +889,20 @@ def _explain_cover_mouth(kps, view):
     hit = is_cover_mouth(kps, view)
     if kps is None:
         return hit, '没有关键点'
-    anchor = head_center(kps) if view in ('back_top', 'top') else None
-    anchor_name = '头部'
-    if anchor is None and _kp_ok(kps, NOSE):
-        anchor = _kp(kps, NOSE)
-        anchor_name = '鼻'
+    anchor, anchor_name = _cover_mouth_anchor(kps, view)
     if anchor is None:
-        missing = _missing_names(kps, (NOSE, L_EYE, R_EYE, L_EAR, R_EAR))
-        return hit, '没有可用的头或鼻子，缺 ' + '、'.join(missing or ['头部点'])
+        missing = _missing_names(kps, HEAD_POINTS, COVER_MOUTH_MIN_CONF)
+        return hit, (
+            f"没有置信度 ≥ {COVER_MOUTH_MIN_CONF:.1f} 的头或鼻子，缺 "
+            + '、'.join(missing or ['头部点'])
+        )
     sw = _scale(kps)
     gate = 0.40 if view in ('back_top', 'top') else 0.42
     parts = []
     for index, name in ((L_WRIST, '左腕'), (R_WRIST, '右腕')):
-        if not _kp_ok(kps, index):
-            parts.append(f"{name}不可用")
+        conf = _conf(kps, index)
+        if not _kp_ok(kps, index, COVER_MOUTH_MIN_CONF):
+            parts.append(f"{name}置信度 {conf:.2f}，要 ≥ {COVER_MOUTH_MIN_CONF:.1f}")
             continue
         wx, wy = _kp(kps, index)
         dist = math.hypot(wx - anchor[0], wy - anchor[1]) / sw

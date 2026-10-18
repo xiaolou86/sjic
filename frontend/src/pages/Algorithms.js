@@ -36,7 +36,6 @@ import ScrollableDataPage, { scrollTableContainerSx } from '../components/Scroll
 const FALLBACK_ENGINES = [
   { value: 'object_detection', label: '目标检测' },
   { value: 'pose_behavior', label: '姿态行为检测' },
-  { value: 'camera_health', label: '摄像头遮挡' },
   { value: 'mouse_idle', label: '鼠标空闲检测' },
 ];
 

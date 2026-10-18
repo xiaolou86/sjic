@@ -15,6 +15,7 @@ from pose_geometry import (
     keypoint_debug_rows,
     is_fall,
     is_finger_click_watch,
+    full_face_visible,
     is_gaze_away,
     is_head_down,
     is_head_up,
@@ -88,7 +89,8 @@ class BackTopExamSittingTest(unittest.TestCase):
             r_ear=(140, 162, 0.25),
         )
         self.assertTrue(is_looking_aside(peek, view='back_top'))
-        self.assertTrue(is_gaze_away(peek, view='back_top'))
+        self.assertFalse(full_face_visible(peek))
+        self.assertFalse(is_gaze_away(peek, view='back_top'))
 
     def test_turned_around_is_gaze_away_not_look_aside(self):
         face = sitting_torso(
@@ -103,18 +105,43 @@ class BackTopExamSittingTest(unittest.TestCase):
         self.assertTrue(is_gaze_away(face, view='back_top'))
 
     def test_hunched_at_screen_is_head_down_not_gaze_away(self):
-        """伏案看屏会把头顶压近肩膀。这是低头，不是不看屏幕。"""
+        """伏案看屏只见后脑。这是低头，五个头部点不齐，不算不看屏幕。"""
         hunched = sitting_torso(
             l_ear=(115, 195, 0.85),
             r_ear=(165, 195, 0.85),
-            nose=(140, 192, 0.7),
-            l_eye=(128, 190, 0.6),
-            r_eye=(152, 190, 0.6),
         )
         self.assertTrue(is_head_down(hunched, view='back_top'))
         self.assertFalse(is_head_up(hunched, view='back_top'))
         self.assertFalse(is_looking_aside(hunched, view='back_top'))
         self.assertFalse(is_gaze_away(hunched, view='back_top'))
+
+    def test_full_face_is_turned_away(self):
+        """后上方五个头部点都在，视为转头，不再看肩线偏移或抬头幅度。"""
+        turned = sitting_torso(
+            nose=(140, 192, 0.7),
+            l_eye=(128, 190, 0.6),
+            r_eye=(152, 190, 0.6),
+            l_ear=(115, 195, 0.85),
+            r_ear=(165, 195, 0.85),
+        )
+        missing_ear = sitting_torso(
+            nose=(140, 192, 0.7),
+            l_eye=(128, 190, 0.6),
+            r_eye=(152, 190, 0.6),
+            l_ear=(115, 195, 0.85),
+        )
+        low_conf = sitting_torso(
+            nose=(140, 192, 0.7),
+            l_eye=(128, 190, 0.49),
+            r_eye=(152, 190, 0.6),
+            l_ear=(115, 195, 0.85),
+            r_ear=(165, 195, 0.85),
+        )
+        self.assertTrue(full_face_visible(turned))
+        self.assertTrue(is_gaze_away(turned, view='back_top'))
+        self.assertFalse(is_gaze_away(missing_ear, view='back_top'))
+        self.assertFalse(is_gaze_away(low_conf, view='back_top'))
+        self.assertFalse(is_gaze_away(low_conf, view='side_top'))
 
 
 class FrontTopTest(unittest.TestCase):
@@ -187,8 +214,10 @@ class SideTopTest(unittest.TestCase):
             r_ear=(170, 165, 0.7),
         )
         self.assertTrue(is_looking_aside(frontal, view='side_top'))
+        self.assertTrue(is_gaze_away(frontal, view='side_top'))
 
     def test_nose_above_ear_is_head_up(self):
+        """侧上方只见侧脸时，抬头不再单独算不看屏幕。"""
         raised = sitting_torso(
             l_shoulder=(120, 200, 0.9),
             r_shoulder=(150, 205, 0.45),
@@ -198,7 +227,7 @@ class SideTopTest(unittest.TestCase):
         )
         self.assertTrue(is_head_up(raised, view='side_top'))
         self.assertFalse(is_looking_aside(raised, view='side_top'))
-        self.assertTrue(is_gaze_away(raised, view='side_top'))
+        self.assertFalse(is_gaze_away(raised, view='side_top'))
 
 
 class TopViewTest(unittest.TestCase):
@@ -230,6 +259,17 @@ class HandsAndFallTest(unittest.TestCase):
         )
         self.assertTrue(is_cover_mouth(cover, view='front_top'))
         self.assertTrue(is_cover_mouth(cover, view='back_top'))
+
+    def test_low_conf_wrist_is_not_cover_mouth(self):
+        ghost = sitting_torso(
+            nose=(140, 170, 0.9),
+            l_ear=(115, 165, 0.8),
+            r_ear=(165, 165, 0.8),
+            r_wrist=(142, 172, 0.26),
+        )
+        self.assertFalse(is_cover_mouth(ghost, view='front_top'))
+        self.assertFalse(is_cover_mouth(ghost, view='back_top'))
+        self.assertFalse(is_cover_mouth(ghost, view='side_top'))
 
     def test_sitting_is_not_fall(self):
         sit = sitting_torso(

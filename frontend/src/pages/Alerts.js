@@ -446,7 +446,7 @@ function Alerts() {
                   查询
                 </Button>
                 <Button variant="outlined" startIcon={<Clear />} onClick={handleClearFilters}>
-                  清空
+                  清除筛选
                 </Button>
                 <Button
                   variant="outlined"

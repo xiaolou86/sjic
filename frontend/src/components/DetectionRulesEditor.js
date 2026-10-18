@@ -47,11 +47,12 @@ function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChan
 
   const scenePresets = useMemo(() => {
     const fromSchema = algorithm?.parameter_schema?.scene_presets;
-    const list = Array.isArray(fromSchema) && fromSchema.length > 0
-      ? fromSchema
-      : (Array.isArray(catalogPresets) ? catalogPresets : []);
+    const catalog = Array.isArray(catalogPresets) ? catalogPresets : [];
+    const schema = Array.isArray(fromSchema) ? fromSchema : [];
+    // 目录是当前场景。算法上留下的旧预设（已下线场景）不再出现在添加列表里。
+    const list = catalog.length > 0 ? catalog : schema;
     const excluded = new Set(excludePresetIds || []);
-    return list.filter((item) => !excluded.has(item?.id) && !excluded.has(item?.type));
+    return list.filter((item) => item && !excluded.has(item.id) && !excluded.has(item.type));
   }, [algorithm, catalogPresets, excludePresetIds]);
 
   const rules = Array.isArray(algorithmParameters?.rules) ? algorithmParameters.rules : [];

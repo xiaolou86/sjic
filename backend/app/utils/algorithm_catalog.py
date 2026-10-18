@@ -10,7 +10,7 @@ ENGINES = {
     'object_detection': {
         'label': '目标检测',
         'needs_model': True,
-        'description': '识别手机、帽子、火情、烟雾、人员倒地等',
+        'description': '识别手机、帽子、眼镜、手表、火情、烟雾、人员倒地、摄像头遮挡等',
     },
     'pose_behavior': {
         'label': '姿态行为检测',
@@ -21,6 +21,7 @@ ENGINES = {
         'label': '摄像头遮挡',
         'needs_model': False,
         'description': '无模型：外圈画面被挡住或整幅发平',
+        'hidden': True,
     },
     'mouse_idle': {
         'label': '鼠标空闲检测',
@@ -92,6 +93,28 @@ OD_SCENE_PRESETS = [
         },
     },
     {
+        'id': 'glasses_detect',
+        'type': 'presence',
+        'name': '识别眼镜',
+        'description': '出现眼镜即告警。拍摄题目请用混合任务里的融合场景',
+        'defaults': {
+            'alert_type': 'glasses_detect',
+            'class_ids': [],
+            'enabled': True,
+        },
+    },
+    {
+        'id': 'watch_detect',
+        'type': 'presence',
+        'name': '识别手表',
+        'description': '出现手表即告警。点击手表请用混合任务里的融合场景',
+        'defaults': {
+            'alert_type': 'watch_detect',
+            'class_ids': [],
+            'enabled': True,
+        },
+    },
+    {
         'id': 'fire_detect',
         'type': 'presence',
         'name': '火情',
@@ -146,7 +169,7 @@ POSE_SCENE_PRESETS = [
         'id': 'not_looking_screen',
         'type': 'gaze_away',
         'name': '长时间不看屏幕',
-        'description': '明显抬头或左右张望都算不看屏幕，低头看屏幕不算',
+        'description': '后上方和侧上方鼻、双眼、双耳五个点置信度都至少 0.5 算转头；前上方和正上方是明显抬头或左右张望，低头看屏幕不算',
         'defaults': {
             'seconds': 15,
             'yaw_degrees': 25,
@@ -186,7 +209,7 @@ POSE_SCENE_PRESETS = [
         'id': 'cover_mouth',
         'type': 'cover_mouth',
         'name': '捂嘴报题',
-        'description': '捂嘴报题',
+        'description': '手腕置信度至少 0.5，并贴近口鼻；后上方和正上方改为贴近头部',
         'defaults': {
             'seconds': 3,
             'alert_type': 'cover_mouth',
@@ -303,7 +326,7 @@ PRODUCT_ALGORITHMS = [
         'type': 'object_detection',
         'engine': 'object_detection',
         'name': '目标检测',
-        'description': '手机、帽子、火情、烟雾、人员倒地等',
+        'description': '手机、帽子、眼镜、手表、火情、烟雾、人员倒地、摄像头遮挡等',
         'category': 'exam',
         'parameter_schema': _od_schema(),
     },
@@ -321,6 +344,7 @@ PRODUCT_ALGORITHMS = [
         'name': '摄像头遮挡',
         'description': '外圈格子失去纹理即告警，不区分全黑和局部遮挡',
         'category': 'exam',
+        'hidden': True,
         'parameter_schema': {
             'ui': {'editor': 'camera_health'},
             'default_schedule': {
@@ -426,14 +450,13 @@ def schema_for_engine(engine: str) -> dict:
 
 
 def _merge_scene_presets(existing, catalog):
-    """按 id 合并：保留已有项，追加目录中新增预设。"""
+    """按当前目录输出场景。目录里已经去掉的预设不再留在模板和上架算法上。"""
     existing = list(existing or [])
     catalog = list(catalog or [])
     if not catalog:
         return existing
     by_id = {p.get('id'): dict(p) for p in existing if p.get('id')}
     ordered = []
-    seen = set()
     for p in catalog:
         pid = p.get('id')
         if not pid:
@@ -451,12 +474,6 @@ def _merge_scene_presets(existing, catalog):
             ordered.append(merged)
         else:
             ordered.append(dict(p))
-        seen.add(pid)
-    for p in existing:
-        pid = p.get('id')
-        if pid and pid not in seen:
-            ordered.append(dict(p))
-            seen.add(pid)
     return ordered
 
 

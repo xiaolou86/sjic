@@ -20,12 +20,14 @@ function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange, catalogP
 
   const scenePresets = useMemo(() => {
     const fromSchema = algorithm?.parameter_schema?.scene_presets;
-    const source = Array.isArray(fromSchema) && fromSchema.length > 0
-      ? fromSchema
-      : (Array.isArray(catalogPresets) ? catalogPresets : []);
+    const catalog = Array.isArray(catalogPresets) ? catalogPresets : [];
+    const schema = Array.isArray(fromSchema) ? fromSchema : [];
+    // 目录是当前场景。算法上留下的旧预设不再出现在添加列表里。
+    const source = catalog.length > 0 ? catalog : schema;
     const excluded = new Set(excludePresetIds || []);
     return source.filter((preset) => (
-      !excluded.has(preset.id)
+      preset
+      && !excluded.has(preset.id)
       && !excluded.has(preset.type)
     ));
   }, [algorithm, catalogPresets, excludePresetIds]);

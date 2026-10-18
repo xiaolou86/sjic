@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request, current_app
 from app.extensions import db, socketio
 from app.models import Alert, Camera, EdgeNode, Task
-from app.middleware.auth import token_required
+from app.middleware.auth import role_required, token_required
 import os
 from datetime import datetime
 from config import Config
@@ -308,7 +308,7 @@ def update_node(node_id):
         return jsonify({"error": str(e)}), 500
 
 @edge_bp.route('/api/nodes/<int:node_id>', methods=['DELETE'])
-@token_required
+@role_required('vendor')
 def delete_node(node_id):
     """删除或强制下线边缘节点"""
     try:

@@ -12,7 +12,9 @@ import axios from '../utils/axios';
 import ScrollableDataPage, { scrollTableContainerSx } from '../components/ScrollableDataPage';
 
 function Nodes() {
-    const canPower = ['customer', 'vendor'].includes(localStorage.getItem('user_role'));
+    const userRole = localStorage.getItem('user_role');
+    const canPower = ['customer', 'vendor'].includes(userRole);
+    const canDelete = userRole === 'vendor';
     const [nodes, setNodes] = useState([]);
     const [cameras, setCameras] = useState([]);
     const [openDialog, setOpenDialog] = useState(false);
@@ -333,9 +335,11 @@ function Nodes() {
                                                     <PowerSettingsNew />
                                                 </IconButton>
                                             )}
-                                            <IconButton onClick={() => handleDelete(node.id)} color="error" title="移除">
-                                                <Delete />
-                                            </IconButton>
+                                            {canDelete && (
+                                                <IconButton onClick={() => handleDelete(node.id)} color="error" title="移除">
+                                                    <Delete />
+                                                </IconButton>
+                                            )}
                                         </TableCell>
                                     </TableRow>
                                 );
