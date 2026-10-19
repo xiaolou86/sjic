@@ -1,9 +1,39 @@
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from sqlalchemy import inspect, text
+from sqlalchemy import event, inspect, text
 
 from app.extensions import db
+
+_sqlite_pragma_engines = set()
+
+
+def apply_sqlite_pragmas(dbapi_connection, connection_record):
+    """WAL 允许读和写同时进行。默认 DELETE 日志下，写锁会堵住告警列表这类查询。"""
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute('PRAGMA journal_mode=WAL')
+        cursor.fetchone()
+        cursor.execute('PRAGMA synchronous=NORMAL')
+        cursor.execute('PRAGMA busy_timeout=30000')
+    finally:
+        cursor.close()
+
+
+def configure_sqlite_engine():
+    engine = db.engine
+    if engine.dialect.name != 'sqlite':
+        return
+    key = id(engine)
+    if key not in _sqlite_pragma_engines:
+        _sqlite_pragma_engines.add(key)
+        event.listen(engine, 'connect', apply_sqlite_pragmas)
+    try:
+        with engine.connect() as conn:
+            conn.execute(text('SELECT 1'))
+    except Exception as exc:
+        from flask import current_app
+        current_app.logger.warning(f'SQLite pragma setup deferred: {exc}')
 
 
 # 历史列已由 Alembic revision 003 收编；此处保留空列表，仅供极老库应急。

@@ -96,6 +96,11 @@ def _loop(app, interval_sec=30):
 
 
 def start_task_scheduler(app, interval_sec=30):
+    from app.utils.serve_process import should_start_background_services
+    if not should_start_background_services():
+        logger.info("Skipping task scheduler in Werkzeug reloader parent process.")
+        return
+
     global _scheduler_started
     with _lock:
         if _scheduler_started:

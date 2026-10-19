@@ -23,8 +23,10 @@ class MqttService:
 
     def init_app(self, app):
         self.app = app
-        # 防止 Flask 在 Debug 模式下 Werkzeug Reloader 父进程重复连接 MQTT 产生双重订阅
-        if app.debug and os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
+        # debug 在 socketio.run() 里才打开，这里不能看 app.debug。
+        # 父进程此时 app.debug 仍是 False，旧判断会放行，结果父子进程一起写 SQLite。
+        from app.utils.serve_process import should_start_background_services
+        if not should_start_background_services():
             logger.info("Skipping MQTT client initialization in Werkzeug reloader parent process.")
             return
 

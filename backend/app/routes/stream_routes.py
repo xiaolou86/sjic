@@ -15,6 +15,11 @@ import numpy as np
 stream_bp = Blueprint('stream', __name__)
 
 
+def _release_db_session():
+    """视频长连接会把请求事务一直挂着。SQLite 上这会挡住告警列表查询。"""
+    db.session.remove()
+
+
 @socketio.on('connect')
 def handle_connect():
     """处理连接"""
@@ -37,7 +42,9 @@ def handle_start_stream(data):
     try:
         camera_id = data.get('camera_id')
         camera = Camera.query.get_or_404(camera_id)
-        cap = cv2.VideoCapture(camera.get_rtsp_url())
+        rtsp_url = camera.get_rtsp_url()
+        _release_db_session()
+        cap = cv2.VideoCapture(rtsp_url)
 
         while True:
             ret, frame = cap.read()
@@ -85,6 +92,7 @@ def stream_camera(camera_id):
     try:
         camera = Camera.query.get_or_404(camera_id)
         rtsp_url = camera.url
+        _release_db_session()
 
         # 添加 CORS 头
         headers = {
@@ -172,6 +180,8 @@ def hls_playlist(camera_id):
         description: 返回 m3u8 文本
     """
     camera = Camera.query.get_or_404(camera_id)
+    source_url = camera.url
+    _release_db_session()
 
     # 创建 HLS 目录
     hls_dir = os.path.join(current_app.config['TEMP_FOLDER'], f'hls_{camera_id}')
@@ -184,7 +194,7 @@ def hls_playlist(camera_id):
     # 使用 FFmpeg 生成 HLS 流
     cmd = [
         'ffmpeg',
-        '-i', camera.url,
+        '-i', source_url,
         '-c:v', 'h264',
         '-crf', '21',
         '-preset', 'veryfast',
@@ -264,6 +274,7 @@ def ws_stream_camera(ws, camera_id):
         # 获取摄像头
         camera = Camera.query.get_or_404(camera_id)
         rtsp_url = camera.url
+        _release_db_session()
 
         # 记录 RTSP URL
         current_app.logger.info(f"Streaming RTSP URL: {rtsp_url}")
@@ -339,6 +350,7 @@ def mjpeg_stream(camera_id):
         # 获取摄像头
         camera = Camera.query.get_or_404(camera_id)
         rtsp_url = camera.get_rtsp_url()
+        _release_db_session()
         current_app.logger.info(f"Starting MJPEG stream for camera {camera_id}: {rtsp_url}")
 
         # 设置响应头

@@ -219,6 +219,7 @@ def receive_alert():
         return jsonify({"success": True, "message": "Alert received successfully"}), 200
 
     except Exception as e:
+        db.session.rollback()
         current_app.logger.error(f"Error receiving edge alert: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 

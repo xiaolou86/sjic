@@ -66,6 +66,11 @@ class Config:
 
     SQLALCHEMY_DATABASE_URI = chosen_uri
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # sqlite3 默认只等 5 秒。心跳写入和页面查询叠在一起时会直接报 database is locked。
+    if str(chosen_uri).startswith('sqlite'):
+        SQLALCHEMY_ENGINE_OPTIONS = {
+            'connect_args': {'timeout': 30},
+        }
 
 
     # 仅开发应急：为 true 时启动时 db.create_all()（生产务必 false，改用 flask db upgrade）

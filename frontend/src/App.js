@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { createAppTheme, DEFAULT_UI_THEME } from './theme';
@@ -21,8 +21,21 @@ import OperationLogs from './pages/OperationLogs';
 import ClickHotspots from './pages/ClickHotspots';
 import ImageTest from './pages/ImageTest';
 
+function RouteProbe({ name, allow }) {
+  const location = useLocation();
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7453/ingest/081782cc-6465-4a44-ac05-89d5ee6ce675',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'aa14cd'},body:JSON.stringify({sessionId:'aa14cd',runId:'pre-fix',hypothesisId:'H1',location:'App.js:RouteProbe',message:'vendor route mounted',data:{name,allow,path:location.pathname,userRole:localStorage.getItem('user_role')},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+  }, [name, allow, location.pathname]);
+  return null;
+}
+
 function App() {
   const isSuperAdmin = localStorage.getItem('user_role') === 'vendor';
+  // #region agent log
+  fetch('http://127.0.0.1:7453/ingest/081782cc-6465-4a44-ac05-89d5ee6ce675',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'aa14cd'},body:JSON.stringify({sessionId:'aa14cd',runId:'pre-fix',hypothesisId:'H1',location:'App.js:render',message:'App render role snapshot',data:{isSuperAdmin,userRole:localStorage.getItem('user_role'),path:window.location.pathname},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   const [uiTheme, setUiTheme] = useState(DEFAULT_UI_THEME);
   const theme = useMemo(() => createAppTheme(uiTheme), [uiTheme]);
 
@@ -69,6 +82,7 @@ function App() {
           <Route path="/image-test" element={
             <PrivateRoute>
               <Layout>
+                <RouteProbe name="image-test" allow={isSuperAdmin} />
                 {isSuperAdmin ? <ImageTest /> : <Navigate to="/dashboard" replace />}
               </Layout>
             </PrivateRoute>
@@ -132,6 +146,7 @@ function App() {
           <Route path="/click-hotspots" element={
             <PrivateRoute>
               <Layout>
+                <RouteProbe name="click-hotspots" allow={isSuperAdmin} />
                 {isSuperAdmin ? <ClickHotspots /> : <Navigate to="/dashboard" replace />}
               </Layout>
             </PrivateRoute>

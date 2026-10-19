@@ -118,6 +118,9 @@ def create_app(config_class=Config):
 
     # ---- 注册蓝图 & 初始化 ----
     with app.app_context():
+        from app.utils.db_compat import configure_sqlite_engine
+        configure_sqlite_engine()
+
         app.logger.info('Initializing application...')
 
         # 注册所有蓝图

@@ -161,6 +161,7 @@ def get_alerts():
         })
 
     except Exception as e:
+        db.session.rollback()
         current_app.logger.error(f"Error getting alerts: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
