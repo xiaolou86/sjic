@@ -117,7 +117,7 @@ OD_SCENE_PRESETS = [
     {
         'id': 'fire_detect',
         'type': 'presence',
-        'name': '火情',
+        'name': '识别火情',
         'description': '出现火焰即告警',
         'defaults': {
             'alert_type': 'fire_detect',
@@ -128,7 +128,7 @@ OD_SCENE_PRESETS = [
     {
         'id': 'smoke_detect',
         'type': 'presence',
-        'name': '烟雾',
+        'name': '识别烟雾',
         'description': '出现烟雾即告警',
         'defaults': {
             'alert_type': 'smoke_detect',

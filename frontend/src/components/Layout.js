@@ -84,9 +84,6 @@ function Layout({ children }) {
       const valid = Boolean(status?.valid);
       setLicenseValid(valid);
       setLicenseMessage(status?.message || (valid ? '' : '请先导入授权'));
-      // #region agent log
-      fetch('http://127.0.0.1:7453/ingest/081782cc-6465-4a44-ac05-89d5ee6ce675',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'aa14cd'},body:JSON.stringify({sessionId:'aa14cd',runId:'pre-fix',hypothesisId:'H3',location:'Layout.js:loadLicense',message:'license status',data:{valid,pathname:location.pathname,willRedirect:!valid && location.pathname !== '/license'},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       if (!valid && location.pathname !== '/license') {
         navigate('/license', { replace: true });
       }
@@ -112,12 +109,6 @@ function Layout({ children }) {
     window.addEventListener('license-updated', onLicense);
     return () => window.removeEventListener('license-updated', onLicense);
   }, [loadLicense]);
-
-  useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7453/ingest/081782cc-6465-4a44-ac05-89d5ee6ce675',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'aa14cd'},body:JSON.stringify({sessionId:'aa14cd',runId:'pre-fix',hypothesisId:'H5',location:'Layout.js:pathname',message:'pathname changed',data:{pathname:location.pathname,userRole:localStorage.getItem('user_role')},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-  }, [location.pathname]);
 
   const loggedOut = useRef(false);
 
@@ -368,9 +359,6 @@ function Layout({ children }) {
                   selected={location.pathname === item.path}
                   disabled={disabled}
                   onClick={() => {
-                    // #region agent log
-                    fetch('http://127.0.0.1:7453/ingest/081782cc-6465-4a44-ac05-89d5ee6ce675',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'aa14cd'},body:JSON.stringify({sessionId:'aa14cd',runId:'pre-fix',hypothesisId:'H4',location:'Layout.js:menuClick',message:'menu click',data:{text:item.text,path:item.path,disabled,from:location.pathname,userRole:localStorage.getItem('user_role')},timestamp:Date.now()})}).catch(()=>{});
-                    // #endregion
                     if (!disabled) navigate(item.path);
                   }}
                 >
