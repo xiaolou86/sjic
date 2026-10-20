@@ -146,7 +146,7 @@ function PoseDebug({ pose, scenes }) {
           {sceneRows.map((scene, index) => (
             <Box key={`${scene.type || 'scene'}-${index}`} sx={{ mb: 1 }}>
               <Typography variant="body2">
-                {scene.name || scene.type || '场景'}
+                {scene.name || '场景'}
                 {scene.view ? ` · ${MOUNT_LABEL[scene.view] || scene.view}` : ''}
                 {scene.seconds ? ` · 需持续 ${scene.seconds}s` : ''}
               </Typography>

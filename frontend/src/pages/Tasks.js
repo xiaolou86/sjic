@@ -112,7 +112,7 @@ function getTaskSceneNames(task) {
   ];
   return items
     .filter((item) => item && item.enabled !== false)
-    .map((item) => item.name || item.type)
+    .map((item) => item.name || '')
     .filter(Boolean);
 }
 
@@ -463,14 +463,13 @@ function Tasks() {
               {rules.map((rule, idx) => (
                 <Box key={rule.id || idx} sx={{ mb: 2 }}>
                   <Typography>
-                    {rule.name || rule.type}
+                    {rule.name || ''}
                     {rule.enabled === false ? '（已关闭）' : ''}
                     {rule.type === 'camera_occlusion' ? ` · 外圈 ${rule.cover_ratio ?? 0.25} · 持续 ${rule.seconds ?? 3} 秒` : ''}
                     {rule.type === 'linger' ? ` · 驻留 ${rule.linger_seconds ?? 5} 秒` : ''}
                     {rule.type === 'crowd_count' ? ` · ≥${rule.min_count ?? 5}人 / ${rule.seconds ?? 10}秒` : ''}
                     {rule.type !== 'camera_occlusion' && rule.confidence != null && rule.confidence !== '' ? ` · 置信度 ${rule.confidence}` : ''}
                     {rule.type !== 'camera_occlusion' && Array.isArray(rule.class_ids) && rule.class_ids.length ? ` · 类别 ${rule.class_ids.join(',')}` : ''}
-                    {` · 告警 ${rule.alert_type || '-'}`}
                     {rule.type === 'camera_occlusion' ? '' : (rule.detection_region?.points?.length ? ` · ROI ${rule.detection_region.points.length} 点` : ' · 整帧')}
                     {rule.schedule_start && rule.schedule_end ? ` · 时段 ${rule.schedule_start}–${rule.schedule_end}` : ''}
                   </Typography>
@@ -489,7 +488,7 @@ function Tasks() {
               <Typography variant="subtitle2" gutterBottom>姿态行为：</Typography>
               {behaviors.map((b, idx) => (
                 <Typography key={b.id || idx}>
-                  {b.name || b.type}
+                  {b.name || ''}
                   {b.type === 'linger' ? ` · 滞留 ${b.linger_seconds ?? 300} 秒` : ''}
                   {b.type === 'crowd_count' ? ` · ≥${b.min_count ?? 5}人 / ${b.seconds ?? 10}秒` : ''}
                   {b.type !== 'linger' && b.type !== 'crowd_count' ? ` · ${b.seconds ?? '-'} 秒` : ''}

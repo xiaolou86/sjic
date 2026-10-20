@@ -102,9 +102,9 @@ function FusionScenesEditor({ algorithmParameters, onChange, catalogPresets, tas
               <Chip size="small" label="检测+姿态" />
               <TextField
                 size="small"
-                label="名称"
+                label="场景名称"
                 value={item.name || ''}
-                onChange={(e) => patch(index, { name: e.target.value })}
+                InputProps={{ readOnly: true }}
                 sx={{ minWidth: 180 }}
               />
               <FormControlLabel

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Box, Button, Chip, FormControl, FormControlLabel, Grid, InputLabel, MenuItem, Paper, Select,
+  Box, Button, FormControl, FormControlLabel, Grid, InputLabel, MenuItem, Paper, Select,
   Switch, TextField, Typography, IconButton
 } from '@mui/material';
 import { Add, Delete } from '@mui/icons-material';
@@ -123,12 +123,11 @@ function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChan
           <Grid item xs={12} key={rule.id || index}>
             <Paper variant="outlined" sx={{ p: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
-                <Chip size="small" label={rule.type} />
                 <TextField
                   size="small"
                   label="场景名称"
                   value={rule.name || ''}
-                  onChange={(e) => patchRule(index, { name: e.target.value })}
+                  InputProps={{ readOnly: true }}
                   sx={{ minWidth: 160 }}
                 />
                 <FormControlLabel
@@ -272,15 +271,6 @@ function DetectionRulesEditor({ cameraId, algorithm, algorithmParameters, onChan
                   />
                 </Grid>
                 )}
-                <Grid item xs={12} md={4}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="告警类型"
-                    value={rule.alert_type || ''}
-                    onChange={(e) => patchRule(index, { alert_type: e.target.value })}
-                  />
-                </Grid>
                 <Grid item xs={12} md={4}>
                   <TextField
                     fullWidth

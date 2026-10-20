@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   Box, Button, FormControlLabel, Grid, MenuItem, Paper, Select,
-  Switch, TextField, Typography, IconButton, Chip
+  Switch, TextField, Typography, IconButton
 } from '@mui/material';
 import { Add, Delete } from '@mui/icons-material';
 import RegionSelectionTool from './RegionSelectionTool';
@@ -97,12 +97,11 @@ function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange, catalogP
         <Grid item xs={12} key={b.id || index}>
           <Paper variant="outlined" sx={{ p: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
-              <Chip size="small" label={b.type} />
               <TextField
                 size="small"
-                label="名称"
+                label="场景名称"
                 value={b.name || ''}
-                onChange={(e) => patchBehavior(index, { name: e.target.value })}
+                InputProps={{ readOnly: true }}
                 sx={{ minWidth: 140 }}
               />
               <FormControlLabel
@@ -309,15 +308,6 @@ function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange, catalogP
                   }}
                   inputProps={{ step: 0.05, min: 0, max: 1 }}
                   helperText="留空用任务置信度"
-                />
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="告警类型"
-                  value={b.alert_type || ''}
-                  onChange={(e) => patchBehavior(index, { alert_type: e.target.value })}
                 />
               </Grid>
               <Grid item xs={12} md={3}>
