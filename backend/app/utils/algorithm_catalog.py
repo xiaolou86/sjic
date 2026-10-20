@@ -169,7 +169,7 @@ POSE_SCENE_PRESETS = [
         'id': 'not_looking_screen',
         'type': 'gaze_away',
         'name': '长时间不看屏幕',
-        'description': '后上方和侧上方鼻、双眼、双耳五个点置信度都至少 0.5 算转头；前上方和正上方是明显抬头或左右张望，低头看屏幕不算',
+        'description': '只报非站立。站立与考台旁站人同一套，站着的人不报。后上方和侧上方鼻、双眼、双耳五个点置信度都至少 0.5 算转头；前上方和正上方是明显抬头或左右张望，低头看屏幕不算',
         'defaults': {
             'seconds': 15,
             'yaw_degrees': 25,
@@ -193,7 +193,7 @@ POSE_SCENE_PRESETS = [
         'id': 'finger_screen',
         'type': 'finger_point',
         'name': '手指屏幕',
-        'description': '站立人员沿躯干前下方伸臂指向屏幕。是否站立与考台旁站人同一套判断。相对开始时的位置走远了就重新计时，路过摆臂不算',
+        'description': '只报站立。非站立不报，是否站立与考台旁站人同一套判断。沿躯干前下方伸臂指向屏幕。相对开始时的位置走远了就重新计时，路过摆臂不算',
         'defaults': {
             'seconds': 2,
             'require_standing': True,

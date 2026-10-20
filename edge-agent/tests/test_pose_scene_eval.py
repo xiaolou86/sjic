@@ -436,15 +436,19 @@ class PerPersonTimingTest(unittest.TestCase):
 
 
 def _pointing(cx, half=40):
-    """站立且左腕高于左肘。双肩中点在 cx，肩宽 2*half。"""
+    """站立并向前下方伸右臂。双肩中点在 cx，肩宽 2*half。"""
     kps = _blank_kps()
-    kps[5] = [cx - half, 100.0, 0.9]
-    kps[6] = [cx + half, 100.0, 0.9]
-    kps[7] = [cx - half - 10, 140.0, 0.9]
-    kps[9] = [cx - half - 30, 110.0, 0.9]
-    kps[11] = [cx - 10, 180.0, 0.9]
-    kps[15] = [cx - 10, 260.0, 0.9]
-    box = _Box(x1=cx - half, y1=40, x2=cx + half, y2=280)
+    kps[5] = [cx - half, 80.0, 0.9]
+    kps[6] = [cx + half, 80.0, 0.9]
+    kps[8] = [cx + 60, 160.0, 0.9]
+    kps[10] = [cx + 50, 250.0, 0.9]
+    kps[11] = [cx - 28, 200.0, 0.9]
+    kps[12] = [cx + 28, 200.0, 0.9]
+    kps[13] = [cx - 26, 300.0, 0.9]
+    kps[14] = [cx + 26, 300.0, 0.9]
+    kps[15] = [cx - 24, 400.0, 0.9]
+    kps[16] = [cx + 24, 400.0, 0.9]
+    box = _Box(x1=cx - half, y1=20, x2=cx + half, y2=420)
     return (box, kps)
 
 
@@ -647,3 +651,72 @@ class FingerPointSceneTest(unittest.TestCase):
         self._run(pose, 0)
         self._run(pose, 3)
         self.assertEqual(self.alerts, [])
+
+    def test_sitting_reach_does_not_alert(self):
+        pose = _pointing_pose()
+        sitting = _Box(x1=60, y1=80, x2=260, y2=200)
+        self.assertFalse(is_finger_point(pose, True, 'back_top', sitting))
+        _eval(
+            self.algo, [self.spec], [(sitting, pose)],
+            self.start, self.state, self.alerts,
+        )
+        _eval(
+            self.algo, [self.spec], [(sitting, pose)],
+            self.start + timedelta(seconds=3), self.state, self.alerts,
+        )
+        self.assertEqual(self.alerts, [])
+
+
+def _turned_standing_pose():
+    kps = _blank_kps()
+    points = {
+        0: (140, 40), 1: (125, 38), 2: (155, 38), 3: (110, 42), 4: (170, 42),
+        5: (100, 80), 6: (180, 80),
+        11: (112, 200), 12: (168, 200),
+        13: (114, 300), 14: (166, 300),
+        15: (116, 400), 16: (164, 400),
+    }
+    for index, (x, y) in points.items():
+        kps[index] = [float(x), float(y), 0.9]
+    return kps
+
+
+class GazeAwayStandingGateTest(unittest.TestCase):
+    def setUp(self):
+        self.algo = PoseBehaviorAlgorithm()
+        self.algo.draw_alert_overlay = lambda *args, **kwargs: 'overlay'
+        self.spec = {
+            'id': 'gaze',
+            'type': 'gaze_away',
+            'name': '长时间不看屏幕',
+            'seconds': 1,
+            'alert_type': 'gaze_away',
+        }
+        self.start = datetime(2026, 1, 1, 8, 0, 0)
+        self.state = {
+            'since': {'gaze': None},
+            'last': {'gaze': None},
+            'extra': {'gaze': {}},
+        }
+        self.alerts = []
+
+    def _run(self, box, second):
+        _eval(
+            self.algo, [self.spec], [(box, _turned_standing_pose())],
+            self.start + timedelta(seconds=second),
+            self.state, self.alerts,
+        )
+
+    def test_standing_does_not_alert(self):
+        standing = _Box(x1=60, y1=40, x2=230, y2=430)
+        self._run(standing, 0)
+        self._run(standing, 2)
+        self.assertEqual(self.alerts, [])
+
+    def test_sitting_alerts(self):
+        sitting = _Box(x1=60, y1=80, x2=260, y2=200)
+        self._run(sitting, 0)
+        self.assertEqual(self.alerts, [])
+        self._run(sitting, 1)
+        self.assertEqual(len(self.alerts), 1)
+        self.assertEqual(self.alerts[0]['alert_type'], 'gaze_away')

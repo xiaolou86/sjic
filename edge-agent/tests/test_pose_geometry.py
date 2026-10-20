@@ -476,6 +476,44 @@ class FingerPointTest(unittest.TestCase):
         )
         self.assertTrue(is_finger_point(points, False, 'back_top', SHORT_BOX))
 
+    def test_preview_rejects_a_reach_that_is_not_standing(self):
+        hit, reason = explain_scene(
+            'finger_point', self._reaching(), SHORT_BOX, {'require_standing': False}, 'back_top',
+        )
+        self.assertFalse(hit)
+        self.assertIn('站立', reason)
+
+
+def _turned_face(**extra):
+    base = dict(
+        nose=(140, 40, 0.9),
+        l_eye=(125, 38, 0.85),
+        r_eye=(155, 38, 0.85),
+        l_ear=(110, 42, 0.7),
+        r_ear=(170, 42, 0.7),
+    )
+    base.update(extra)
+    return _straight_legs(**base)
+
+
+class GazeAwayStandingGateTest(unittest.TestCase):
+    def test_standing_full_face_is_not_gaze_away(self):
+        points = _turned_face()
+        self.assertTrue(is_desk_standing(points, TALL_BOX, 1.6))
+        self.assertTrue(is_gaze_away(points, view='back_top'))
+        self.assertFalse(is_gaze_away(points, view='back_top', box=TALL_BOX))
+        hit, reason = explain_scene('gaze_away', points, TALL_BOX, {}, 'back_top')
+        self.assertFalse(hit)
+        self.assertIn('不报长时间不看屏幕', reason)
+
+    def test_sitting_full_face_is_still_gaze_away(self):
+        points = _turned_face()
+        self.assertFalse(is_desk_standing(points, SHORT_BOX, 1.6))
+        self.assertTrue(is_gaze_away(points, view='back_top', box=SHORT_BOX))
+        hit, reason = explain_scene('gaze_away', points, SHORT_BOX, {}, 'back_top')
+        self.assertTrue(hit)
+        self.assertNotIn('不报长时间不看屏幕', reason)
+
 
 class ExplainSceneTest(unittest.TestCase):
     def test_missing_shoulders_says_points_are_incomplete(self):

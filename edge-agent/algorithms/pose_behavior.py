@@ -4,6 +4,7 @@
 人员滞留 / 通道聚集。
 智能眼镜和智能手表是融合场景，混合任务里才和目标检测一起判定。
 点状违规、考台旁站人和眼镜、手表按人计时：同一次推理里每人一个轨迹 id。
+手指屏幕只报站立，长时间不看屏幕只报非站立，站立与考台旁站人同一套。
 手指屏幕另记开始时的位置，人走远了重新计时，避免把路过摆臂当成指屏。
 缺席不再作为场景。滞留、聚集、考试员不巡场仍按区域计数，不按人跟踪。
 
@@ -58,7 +59,15 @@ from utils.schedule import is_item_active_now
 
 def _eval_behavior(btype, kps, box, spec, view):
     if btype == 'gaze_away':
-        return is_gaze_away(kps, spec.get('yaw_degrees', 25), view=view)
+        return is_gaze_away(
+            kps,
+            spec.get('yaw_degrees', 25),
+            view=view,
+            box=box,
+            min_height_width=spec.get('min_height_width', 1.6),
+            min_knee_degrees=spec.get('min_knee_degrees', DESK_KNEE_STRAIGHT_DEGREES),
+            min_hip_degrees=spec.get('min_hip_degrees', DESK_HIP_STRAIGHT_DEGREES),
+        )
     if btype == 'head_down':
         return is_head_down(kps, spec.get('pitch_degrees', 30), view)
     if btype == 'cover_mouth':
@@ -66,7 +75,7 @@ def _eval_behavior(btype, kps, box, spec, view):
     if btype == 'finger_point':
         return is_finger_point(
             kps,
-            bool(spec.get('require_standing', True)),
+            True,
             view,
             box,
             spec.get('min_height_width', 1.6),

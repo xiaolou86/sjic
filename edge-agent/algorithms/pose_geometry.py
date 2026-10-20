@@ -259,9 +259,15 @@ def is_head_up(kps, view=DEFAULT_MOUNT_POSITION):
     return (shoulder_y - nose_y) >= 0.22 * _scale(kps)
 
 
-def is_gaze_away(kps, yaw_degrees=25, pitch_degrees=25, view=DEFAULT_MOUNT_POSITION):
+def is_gaze_away(
+    kps, yaw_degrees=25, pitch_degrees=25, view=DEFAULT_MOUNT_POSITION,
+    box=None, min_height_width=1.6,
+    min_knee_degrees=DESK_KNEE_STRAIGHT_DEGREES,
+    min_hip_degrees=DESK_HIP_STRAIGHT_DEGREES,
+):
     """
-    不看屏幕。
+    不看屏幕。前提是非站立，站立与考台旁站人、手指屏幕同一套。
+    站着的人不报。没有人框时站立前提不成立，只看头部。
     后上方、侧上方：五个头部点置信度都至少 0.5，视为转头。低头看屏幕通常只见后脑或侧脸，不算。
     前上方、正上方：明显抬头，或左右观望。俯视看屏幕的低头不算。
     pitch_degrees 只保留兼容。
@@ -269,6 +275,8 @@ def is_gaze_away(kps, yaw_degrees=25, pitch_degrees=25, view=DEFAULT_MOUNT_POSIT
     _ = pitch_degrees
     view = normalize_mount_position(view)
     if kps is None:
+        return False
+    if is_desk_standing(kps, box, min_height_width, min_knee_degrees, min_hip_degrees):
         return False
     if view in ('back_top', 'side_top'):
         return full_face_visible(kps)
@@ -682,8 +690,8 @@ def is_finger_point(
 ):
     """
     伸臂点屏幕。
-    需要站立时，用考台边站立的同一套结果（骨骼、人框高宽比、膝角和上下身夹角）。
-    再看腕沿躯干前下方的前伸量，以及肘角是否在张开范围里。任一条手臂满足即可。
+    告警和预览始终要求站立。站立与考台旁站人同一套（骨骼、人框高宽比、膝角和上下身夹角）。
+    非站立不报。再看腕沿躯干前下方的前伸量，以及肘角是否在张开范围里。任一条手臂满足即可。
     """
     _ = view
     if not _has_skeleton(kps):
@@ -756,7 +764,7 @@ def explain_scene(btype, kps, box, spec, view):
     if btype == 'head_down':
         return _explain_head_down(kps, spec.get('pitch_degrees', 30), view)
     if btype == 'gaze_away':
-        return _explain_gaze_away(kps, spec.get('yaw_degrees', 25), view)
+        return _explain_gaze_away(kps, spec.get('yaw_degrees', 25), view, box, spec)
     if btype == 'cover_mouth':
         return _explain_cover_mouth(kps, view)
     if btype == 'finger_point':
@@ -871,8 +879,24 @@ def _explain_head_up(kps, view):
     return hit, f"鼻高于肩 {gap:.2f} 个肩宽，阈值 0.22"
 
 
-def _explain_gaze_away(kps, yaw_degrees, view):
-    hit = is_gaze_away(kps, yaw_degrees, view=view)
+def _explain_gaze_away(kps, yaw_degrees, view, box=None, spec=None):
+    spec = spec or {}
+    min_height_width = spec.get('min_height_width', 1.6)
+    min_knee = spec.get('min_knee_degrees', DESK_KNEE_STRAIGHT_DEGREES)
+    min_hip = spec.get('min_hip_degrees', DESK_HIP_STRAIGHT_DEGREES)
+    if is_desk_standing(kps, box, min_height_width, min_knee, min_hip):
+        _stand_hit, stand_reason = _explain_desk_stand(kps, box, {
+            'min_height_width': min_height_width,
+            'min_knee_degrees': min_knee,
+            'min_hip_degrees': min_hip,
+        })
+        return False, '站立，不报长时间不看屏幕。' + stand_reason
+    hit = is_gaze_away(
+        kps, yaw_degrees, view=view, box=box,
+        min_height_width=min_height_width,
+        min_knee_degrees=min_knee,
+        min_hip_degrees=min_hip,
+    )
     if view in ('back_top', 'side_top'):
         if kps is None:
             return hit, '没有关键点'
@@ -928,7 +952,7 @@ def _format_leg(kps, label, knee_angle, knee_indexes, knee_gate, hip_angle, hip_
 
 def _explain_finger_point(kps, box, spec, view):
     spec = spec or {}
-    require_standing = bool(spec.get('require_standing', True))
+    require_standing = True
     min_height_width = spec.get('min_height_width', 1.6)
     min_knee = spec.get('min_knee_degrees', DESK_KNEE_STRAIGHT_DEGREES)
     min_hip = spec.get('min_hip_degrees', DESK_HIP_STRAIGHT_DEGREES)
