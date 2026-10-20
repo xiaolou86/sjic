@@ -119,15 +119,7 @@ python export.py
 
 基础镜像：`ultralytics/ultralytics:latest-jetson-jetpack6`（`--runtime=nvidia` + `--ipc=host`）。
 
-```bash
-# 1. 编辑 config.yaml：architecture: jetson，并填写平台 MQTT / API 地址
-# 2. 构建镜像
-docker compose build
-# 3. 挂载应用目录并启动
-sudo bash deploy/install-host.sh
-```
-
-步骤说明见 [JETSON_DEPLOY.md](JETSON_DEPLOY.md)。
+在开发用的 Jetson 上构建镜像并导出，客户盒子只安装交付包。步骤见 [docs/初次打包与部署.md](../docs/初次打包与部署.md)。
 
 ### x86 / CPU 调试
 

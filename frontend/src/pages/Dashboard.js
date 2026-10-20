@@ -183,7 +183,6 @@ function Dashboard() {
             key: 'uptime',
             label: '平台运行时长',
             value: formatUptime(uptime.seconds),
-            hint: uptime.started_at ? `自首次启动 ${formatTime(uptime.started_at)}` : '自首次启动',
             icon: Timer,
             color: '#5c6bc0',
             path: null,
@@ -192,7 +191,6 @@ function Dashboard() {
             key: 'today',
             label: '今日报警',
             value: counts.alerts_today ?? 0,
-            hint: '自然日累计',
             icon: Today,
             color: '#ef5350',
             path: '/alerts',
@@ -201,9 +199,6 @@ function Dashboard() {
             key: 'week',
             label: '近7日报警',
             value: counts.alerts_7d ?? 0,
-            hint: counts.alerts_false_7d
-              ? `其中误报 ${counts.alerts_false_7d}`
-              : '含今日',
             icon: DateRange,
             color: '#ec407a',
             path: '/alerts',
@@ -212,9 +207,6 @@ function Dashboard() {
             key: 'pending',
             label: '待确认',
             value: pendingCount,
-            hint: counts.alerts_confirmed_7d
-              ? `近7日已确认 ${counts.alerts_confirmed_7d}`
-              : '需管理员处置',
             icon: AssignmentLate,
             color: '#ff9800',
             path: '/alerts',
@@ -251,7 +243,6 @@ function Dashboard() {
                 <Typography variant="h5" sx={{ lineHeight: 1.15, fontWeight: 600 }}>
                   {card.value}
                 </Typography>
-                <Typography variant="caption" color="text.secondary">{card.hint}</Typography>
               </Box>
             </Stack>
           );

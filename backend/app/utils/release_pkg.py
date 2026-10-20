@@ -23,4 +23,4 @@ def load_verifier():
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             return module
-    raise FileNotFoundError('找不到 verify_release.py，请先执行 install-host.sh')
+    raise FileNotFoundError('找不到 verify_release.py。请确认 /opt/sjic/updater/verify_release.py 存在')

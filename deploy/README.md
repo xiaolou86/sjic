@@ -2,28 +2,14 @@
 
 日常升级不重新构建镜像。管理平台和 Jetson 都先执行一次 `install-host.sh`，之后在系统设置页上传安装包。初始版本是 `1.0.0`。
 
-在仓库根目录用打包容器生成安装包，本机不用安装 Python 或 Node。
-
-Linux / macOS：
+在 Linux 打包机的仓库根目录用打包容器生成安装包，本机不用安装 Python 或 Node。
 
 ```bash
-SJIC_VERSION=1.0.1 docker compose -f deploy/docker-compose.pack.yml run --rm pack
+make package
 ```
 
-Windows PowerShell：
-
-```powershell
-$env:SJIC_VERSION = "1.0.1"
-docker compose -f deploy/docker-compose.pack.yml run --rm pack
-```
+正式打包要求当前提交有一个精确的 `vX.Y.Z` Git tag，且工作区干净；产物版本会自动取自该 tag。首次部署的完整流程（含 Jetson 镜像构建和 setup 交付包）见 [初次打包与部署](../docs/初次打包与部署.md)。
 
 安装包里的 Python 文件只有 `.pyc`。上传时按清单核对每个文件的校验和。
 
-管理平台首次：
-
-```bash
-docker compose build
-sudo bash deploy/platform/install-host.sh
-```
-
-Jetson 首次见 [edge-agent/JETSON_DEPLOY.md](../edge-agent/JETSON_DEPLOY.md)。
+初次安装不把仓库拷到客户环境。开发机导出交付包、运维在现场安装，见 [docs/初次打包与部署.md](../docs/初次打包与部署.md)。

@@ -1,0 +1,16 @@
+edge_name: ""
+architecture: "jetson"
+
+mqtt:
+  broker_url: "管理平台IP"
+  broker_port: 38883
+  keepalive: 60
+
+platform:
+  api_base_url: "http://管理平台IP:38881/api/edge"
+  models_base_url: ""
+
+paths:
+  models_dir: "./models"
+  alerts_dir: "./alerts"
+  logs_dir: "./logs"

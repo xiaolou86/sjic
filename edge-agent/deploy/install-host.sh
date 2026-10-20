@@ -1,5 +1,6 @@
 #!/bin/bash
-# 在 Jetson 上执行一次。先在本目录构建镜像，再挂载 /opt/sjic/current/edge-agent。
+# 开发用 Jetson 联调用，会从当前目录拷贝代码。客户盒子不要执行。
+# 交给运维的安装方式见 docs/初次打包与部署.md。
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then

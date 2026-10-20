@@ -1,5 +1,6 @@
 #!/bin/bash
-# 在管理平台服务器上执行一次：准备 /opt/sjic，挂载应用目录并启动升级器。
+# 开发机自己的 Linux 环境联调用。脚本会从当前仓库拷贝代码，客户环境不要执行。
+# 交给运维的安装方式见 docs/初次打包与部署.md，使用交付包里的 install.sh。
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
