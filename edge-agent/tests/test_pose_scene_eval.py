@@ -594,8 +594,8 @@ class DeskStandTest(unittest.TestCase):
 
 def _pointing_pose(raised=False):
     kps = _blank_kps()
-    elbow = (200, 70) if raised else (200, 160)
-    wrist = (210, 40) if raised else (190, 250)
+    elbow = (200, 70) if raised else (230, 150)
+    wrist = (210, 40) if raised else (190, 240)
     points = {
         5: (100, 80), 6: (180, 80),
         8: elbow, 10: wrist,

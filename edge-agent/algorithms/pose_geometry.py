@@ -25,9 +25,11 @@ DESK_KNEE_STRAIGHT_DEGREES = 150.0
 DESK_HIP_STRAIGHT_DEGREES = 140.0
 # 腕相对肩中点，沿躯干前下方的投影 / 肩宽。
 FINGER_REACH_RATIO = 0.45
-# 伸臂点屏幕时肘要张开。折回肩旁的小角度不算。
+# 伸臂点屏幕时肘要弯着。折回肩旁（小于 100°）不算，手臂几乎伸直（大于 130°）也不算。
 FINGER_ELBOW_MIN_DEGREES = 100.0
-FINGER_ELBOW_MAX_DEGREES = 180.0
+FINGER_ELBOW_MAX_DEGREES = 130.0
+# 以前上限是 180，角度函数到不了更大，等于不设上限。已保存的场景仍可能写着这个值。
+_FINGER_ELBOW_MAX_LEGACY = 180.0
 
 
 def normalize_mount_position(value):
@@ -522,6 +524,8 @@ def _finger_gates(min_reach_ratio, elbow_min_degrees, elbow_max_degrees):
     reach = _bounded_float(min_reach_ratio, FINGER_REACH_RATIO, 0.05, 5.0)
     elbow_min = _bounded_float(elbow_min_degrees, FINGER_ELBOW_MIN_DEGREES, 0.0, 180.0)
     elbow_max = _bounded_float(elbow_max_degrees, FINGER_ELBOW_MAX_DEGREES, 0.0, 180.0)
+    if elbow_max >= _FINGER_ELBOW_MAX_LEGACY:
+        elbow_max = FINGER_ELBOW_MAX_DEGREES
     if elbow_max < elbow_min:
         return FINGER_REACH_RATIO, FINGER_ELBOW_MIN_DEGREES, FINGER_ELBOW_MAX_DEGREES
     return reach, elbow_min, elbow_max
@@ -702,7 +706,7 @@ def is_finger_point(
     """
     伸臂点屏幕。
     告警和预览始终要求站立。站立与考台旁站人同一套（骨骼、人框高宽比、膝角和上下身夹角）。
-    非站立不报。再看腕沿躯干前下方的前伸量，以及肘角是否在张开范围里。任一条手臂满足即可。
+    非站立不报。再看腕沿躯干前下方的前伸量，以及肘角是否弯在范围内。任一条手臂满足即可。
     """
     _ = view
     if not _has_skeleton(kps):

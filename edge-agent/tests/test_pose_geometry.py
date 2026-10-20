@@ -486,13 +486,13 @@ class DeskStandingTest(unittest.TestCase):
 class FingerPointTest(unittest.TestCase):
     def _reaching(self, **extra):
         pose = dict(
-            r_elbow=(200, 160, 0.9),
-            r_wrist=(190, 250, 0.9),
+            r_elbow=(230, 150, 0.9),
+            r_wrist=(190, 240, 0.9),
         )
         pose.update(extra)
         return _straight_legs(**pose)
 
-    def test_forward_reach_with_open_elbow_counts(self):
+    def test_forward_reach_with_bent_elbow_counts(self):
         points = self._reaching()
         self.assertTrue(is_finger_point(points, True, 'back_top', TALL_BOX))
         hit, reason = explain_scene('finger_point', points, TALL_BOX, {'require_standing': True}, 'back_top')
@@ -507,6 +507,16 @@ class FingerPointTest(unittest.TestCase):
         points = self._reaching(r_elbow=(230, 200, 0.9), r_wrist=(150, 190, 0.9))
         self.assertFalse(is_finger_point(points, True, 'back_top', TALL_BOX))
 
+    def test_straight_elbow_is_not_a_point(self):
+        """手臂几乎伸直（约 160°）是挂在身侧，不是弯臂指屏。旧上限 180 也要收成 130。"""
+        points = self._reaching(r_elbow=(200, 160, 0.9), r_wrist=(190, 250, 0.9))
+        self.assertFalse(is_finger_point(points, True, 'back_top', TALL_BOX))
+        hit, reason = explain_scene(
+            'finger_point', points, TALL_BOX, {'elbow_max_degrees': 180}, 'back_top',
+        )
+        self.assertFalse(hit)
+        self.assertIn('100–130', reason)
+
     def test_reach_without_standing_is_rejected(self):
         self.assertFalse(is_finger_point(self._reaching(), True, 'back_top', SHORT_BOX))
 
@@ -516,8 +526,8 @@ class FingerPointTest(unittest.TestCase):
             r_shoulder=(180, 80, 0.9),
             l_hip=(112, 200, 0.9),
             r_hip=(168, 200, 0.9),
-            r_elbow=(200, 160, 0.9),
-            r_wrist=(190, 250, 0.9),
+            r_elbow=(230, 150, 0.9),
+            r_wrist=(190, 240, 0.9),
         )
         self.assertTrue(is_finger_point(points, False, 'back_top', SHORT_BOX))
 

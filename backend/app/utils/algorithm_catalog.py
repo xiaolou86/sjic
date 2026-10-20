@@ -199,7 +199,7 @@ POSE_SCENE_PRESETS = [
             'require_standing': True,
             'min_reach_ratio': 0.45,
             'elbow_min_degrees': 100,
-            'elbow_max_degrees': 180,
+            'elbow_max_degrees': 130,
             'max_move_ratio': 1.0,
             'alert_type': 'finger_screen',
             'enabled': True,
