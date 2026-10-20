@@ -251,20 +251,65 @@ class TopViewTest(unittest.TestCase):
 
 class HandsAndFallTest(unittest.TestCase):
     def test_cover_mouth(self):
+        # 鼻 (140,170)，眼 (140,155)，鼻眼距 15，3 倍是 45。腕距鼻约 2.8。
         cover = sitting_torso(
+            nose=(140, 170, 0.9),
+            l_eye=(130, 158, 0.8),
+            r_eye=(150, 158, 0.8),
+            r_wrist=(142, 172, 0.9),
+        )
+        self.assertTrue(is_cover_mouth(cover, view='front_top'))
+        self.assertTrue(is_cover_mouth(cover, view='back_top'))
+        self.assertTrue(is_cover_mouth(cover, view='side_top'))
+        self.assertTrue(is_cover_mouth(cover, view='top'))
+
+    def test_cover_mouth_uses_either_wrist(self):
+        cover = sitting_torso(
+            nose=(140, 170, 0.9),
+            l_eye=(140, 155, 0.85),
+            l_wrist=(138, 174, 0.8),
+        )
+        self.assertTrue(is_cover_mouth(cover, view='front_top'))
+
+    def test_one_eye_is_enough_for_cover_mouth(self):
+        cover = sitting_torso(
+            nose=(140, 170, 0.9),
+            r_eye=(148, 158, 0.7),
+            l_wrist=(141, 171, 0.9),
+        )
+        self.assertTrue(is_cover_mouth(cover, view='top'))
+
+    def test_missing_nose_is_not_cover_mouth(self):
+        no_nose = sitting_torso(
+            l_eye=(130, 155, 0.9),
+            r_eye=(150, 155, 0.9),
+            r_wrist=(140, 170, 0.9),
+        )
+        self.assertFalse(is_cover_mouth(no_nose, view='front_top'))
+
+    def test_missing_both_eyes_is_not_cover_mouth(self):
+        no_eyes = sitting_torso(
             nose=(140, 170, 0.9),
             l_ear=(115, 165, 0.8),
             r_ear=(165, 165, 0.8),
             r_wrist=(142, 172, 0.9),
         )
-        self.assertTrue(is_cover_mouth(cover, view='front_top'))
-        self.assertTrue(is_cover_mouth(cover, view='back_top'))
+        self.assertFalse(is_cover_mouth(no_eyes, view='back_top'))
+
+    def test_wrist_farther_than_three_nose_eye_is_not_cover_mouth(self):
+        # 鼻眼距 15，3 倍是 45。手腕在鼻子正下方 46 像素。
+        far = sitting_torso(
+            nose=(140, 170, 0.9),
+            l_eye=(140, 155, 0.9),
+            r_eye=(155, 155, 0.4),
+            r_wrist=(140, 216, 0.9),
+        )
+        self.assertFalse(is_cover_mouth(far, view='front_top'))
 
     def test_low_conf_wrist_is_not_cover_mouth(self):
         ghost = sitting_torso(
             nose=(140, 170, 0.9),
-            l_ear=(115, 165, 0.8),
-            r_ear=(165, 165, 0.8),
+            l_eye=(140, 155, 0.85),
             r_wrist=(142, 172, 0.26),
         )
         self.assertFalse(is_cover_mouth(ghost, view='front_top'))

@@ -82,8 +82,10 @@ def head_center(kps, min_conf=0.25):
 HEAD_POINTS = (NOSE, L_EYE, R_EYE, L_EAR, R_EAR)
 # 后上方、侧上方把五个头部点都看成整张脸。0.25 会把模型猜出来的点算进去。
 FULL_FACE_MIN_CONF = 0.5
-# 捂嘴只靠一只手腕到头的距离。低于 0.5 的点经常是猜的，不拿来计时。
+# 捂嘴只认鼻子、眼睛和手腕。低于 0.5 的点经常是猜的，不拿来计时。
 COVER_MOUTH_MIN_CONF = 0.5
+# 第一波：手腕到鼻子要小于这么多个鼻眼距，先丢掉明显离脸太远的手。
+COVER_MOUTH_NOSE_EYE_RATIO = 3.0
 
 
 def face_visible(kps):
@@ -285,33 +287,42 @@ def is_gaze_away(
     return is_head_up(kps, view)
 
 
-def _cover_mouth_anchor(kps, view):
-    """后上方、正上方用头部中心，其余用鼻子。参与的点置信度至少 0.5。"""
-    if view in ('back_top', 'top'):
-        center = head_center(kps, COVER_MOUTH_MIN_CONF)
-        if center is not None:
-            return center, '头部'
-    if _kp_ok(kps, NOSE, COVER_MOUTH_MIN_CONF):
-        return _kp(kps, NOSE), '鼻'
-    return None, '头部' if view in ('back_top', 'top') else '鼻'
+def _cover_mouth_eyes(kps):
+    return [idx for idx in (L_EYE, R_EYE) if _kp_ok(kps, idx, COVER_MOUTH_MIN_CONF)]
+
+
+def _cover_mouth_scale(kps):
+    """鼻子坐标和鼻眼距。缺鼻子、两眼都没有、或鼻眼距为 0 时不能筛。"""
+    if kps is None or not _kp_ok(kps, NOSE, COVER_MOUTH_MIN_CONF):
+        return None, None
+    eyes = _cover_mouth_eyes(kps)
+    if not eyes:
+        return None, None
+    nose = _kp(kps, NOSE)
+    dists = []
+    for idx in eyes:
+        ex, ey = _kp(kps, idx)
+        dist = math.hypot(nose[0] - ex, nose[1] - ey)
+        if dist > 0:
+            dists.append(dist)
+    if not dists:
+        return None, None
+    # 两只眼睛都在时用较近的那只，门槛更紧，少把离脸远的手算进去。
+    return nose, min(dists)
 
 
 def is_cover_mouth(kps, view=DEFAULT_MOUNT_POSITION):
-    """捂嘴：手腕置信度至少 0.5，并贴近口鼻。后上方、正上方改为贴近头部。"""
-    view = normalize_mount_position(view)
-    anchor, _name = _cover_mouth_anchor(kps, view)
-    if anchor is None:
+    """捂嘴第一波：有鼻子且至少一只眼；任一手腕到鼻子小于 3 倍鼻眼距。"""
+    _ = normalize_mount_position(view)
+    nose, eye_dist = _cover_mouth_scale(kps)
+    if nose is None:
         return False
-    sw = _scale(kps)
+    limit = COVER_MOUTH_NOSE_EYE_RATIO * eye_dist
     for wi in (L_WRIST, R_WRIST):
         if not _kp_ok(kps, wi, COVER_MOUTH_MIN_CONF):
             continue
         wx, wy = _kp(kps, wi)
-        dist = math.hypot(wx - anchor[0], wy - anchor[1]) / sw
-        if view in ('back_top', 'top'):
-            if dist < 0.40:
-                return True
-        elif dist < 0.42 and abs(wy - anchor[1]) < 0.35 * sw and wy >= anchor[1] - 0.15 * sw:
+        if math.hypot(wx - nose[0], wy - nose[1]) < limit:
             return True
     return False
 
@@ -913,15 +924,16 @@ def _explain_cover_mouth(kps, view):
     hit = is_cover_mouth(kps, view)
     if kps is None:
         return hit, '没有关键点'
-    anchor, anchor_name = _cover_mouth_anchor(kps, view)
-    if anchor is None:
-        missing = _missing_names(kps, HEAD_POINTS, COVER_MOUTH_MIN_CONF)
+    if not _kp_ok(kps, NOSE, COVER_MOUTH_MIN_CONF):
         return hit, (
-            f"没有置信度 ≥ {COVER_MOUTH_MIN_CONF:.1f} 的头或鼻子，缺 "
-            + '、'.join(missing or ['头部点'])
+            f"没有鼻子（置信度 {_conf(kps, NOSE):.2f}，要 ≥ {COVER_MOUTH_MIN_CONF:.1f}），丢弃"
         )
-    sw = _scale(kps)
-    gate = 0.40 if view in ('back_top', 'top') else 0.42
+    if not _cover_mouth_eyes(kps):
+        return hit, f"两只眼睛都没有（要 ≥ {COVER_MOUTH_MIN_CONF:.1f}），丢弃"
+    nose, eye_dist = _cover_mouth_scale(kps)
+    if nose is None or not eye_dist:
+        return hit, '鼻子和眼睛叠在一起，鼻眼距为 0，丢弃'
+    limit = COVER_MOUTH_NOSE_EYE_RATIO * eye_dist
     parts = []
     for index, name in ((L_WRIST, '左腕'), (R_WRIST, '右腕')):
         conf = _conf(kps, index)
@@ -929,9 +941,12 @@ def _explain_cover_mouth(kps, view):
             parts.append(f"{name}置信度 {conf:.2f}，要 ≥ {COVER_MOUTH_MIN_CONF:.1f}")
             continue
         wx, wy = _kp(kps, index)
-        dist = math.hypot(wx - anchor[0], wy - anchor[1]) / sw
-        parts.append(f"{name}距{anchor_name} {dist:.2f}")
-    return hit, f"阈值 {gate:.2f} 个肩宽。" + '，'.join(parts)
+        dist = math.hypot(wx - nose[0], wy - nose[1])
+        parts.append(f"{name}距鼻 {dist:.1f}")
+    return hit, (
+        f"鼻眼距 {eye_dist:.1f}，第一波要 < {limit:.1f}（{COVER_MOUTH_NOSE_EYE_RATIO:.0f} 倍）。"
+        + '，'.join(parts)
+    )
 
 
 def _format_joint(kps, label, angle, indexes, gate):

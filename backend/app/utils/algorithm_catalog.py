@@ -209,7 +209,7 @@ POSE_SCENE_PRESETS = [
         'id': 'cover_mouth',
         'type': 'cover_mouth',
         'name': '捂嘴报题',
-        'description': '手腕置信度至少 0.5，并贴近口鼻；后上方和正上方改为贴近头部',
+        'description': '参照鼻子和眼睛。没有鼻子，或两只眼睛都没有，直接丢弃。任一手腕到鼻子小于 3 倍鼻眼距，作为第一波筛选',
         'defaults': {
             'seconds': 3,
             'alert_type': 'cover_mouth',
