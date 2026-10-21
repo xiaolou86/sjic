@@ -34,6 +34,7 @@ install_file() {
 }
 
 install_file "$REPO/deploy/verify_release.py" "$ROOT/updater/verify_release.py"
+install_file "$REPO/deploy/apply-package.sh" "$ROOT/updater/apply-package.sh"
 install_file "$SCRIPT_DIR/sjic-updater.sh" "$ROOT/updater/sjic-updater.sh"
 install_file "$SCRIPT_DIR/docker-compose.yml" "$ROOT/updater/docker-compose.yml"
 chmod 644 "$ROOT/updater/verify_release.py" "$ROOT/updater/docker-compose.yml"

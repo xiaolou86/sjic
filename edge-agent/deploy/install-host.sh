@@ -10,7 +10,7 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-REPO_VERIFY="$(cd "$SCRIPT_DIR/../.." && pwd)/deploy/verify_release.py"
+REPO_DEPLOY="$(cd "$SCRIPT_DIR/../.." && pwd)/deploy"
 ROOT=/opt/sjic
 DEST="$ROOT/releases/initial"
 
@@ -19,12 +19,8 @@ if ! docker image inspect sjic-edge:jetson >/dev/null 2>&1; then
   exit 1
 fi
 
-VERIFY_SRC="$SCRIPT_DIR/verify_release.py"
-if [ -f "$REPO_VERIFY" ]; then
-  VERIFY_SRC="$REPO_VERIFY"
-fi
-if [ ! -f "$VERIFY_SRC" ]; then
-  echo "缺少 verify_release.py。请从仓库 deploy/verify_release.py 拷到 edge-agent/deploy/。" >&2
+if [ ! -f "$REPO_DEPLOY/verify_release.py" ] || [ ! -f "$REPO_DEPLOY/apply-package.sh" ]; then
+  echo "缺少 deploy/verify_release.py 或 deploy/apply-package.sh。" >&2
   exit 1
 fi
 
@@ -39,7 +35,8 @@ install_file() {
   chmod "$mode" "$dest"
 }
 
-install_file "$VERIFY_SRC" "$ROOT/updater/verify_release.py" 644
+install_file "$REPO_DEPLOY/verify_release.py" "$ROOT/updater/verify_release.py" 644
+install_file "$REPO_DEPLOY/apply-package.sh" "$ROOT/updater/apply-package.sh" 755
 install_file "$SCRIPT_DIR/apply-edge.sh" "$ROOT/updater/apply-edge.sh" 755
 install_file "$SCRIPT_DIR/docker-compose.yml" "$ROOT/updater/docker-compose.yml" 644
 

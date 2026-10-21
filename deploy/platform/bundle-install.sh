@@ -45,6 +45,7 @@ install_file() {
 }
 
 install_file "$HERE/updater/verify_release.py" "$ROOT/updater/verify_release.py" 644
+install_file "$HERE/updater/apply-package.sh" "$ROOT/updater/apply-package.sh" 755
 install_file "$HERE/updater/sjic-updater.sh" "$ROOT/updater/sjic-updater.sh" 755
 install_file "$HERE/updater/docker-compose.yml" "$ROOT/updater/docker-compose.yml" 644
 
