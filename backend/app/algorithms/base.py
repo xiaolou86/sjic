@@ -5,6 +5,8 @@ from app.models.algorithm import Algorithm
 import requests
 import os
 from datetime import datetime
+
+from app.utils.alert_images import alert_file_path, allocate_alert_relpath
 import cv2
 from shapely.geometry import Point, Polygon
 import torch
@@ -77,17 +79,15 @@ class BaseAlgorithm(Algorithm):
             use_frame: 是否直接使用传入的frame而不是results.plot()
         
         Returns:
-            保存的图像文件名
+            告警目录下的相对路径，例如 2026/10/21/18/detect_20261021_181430_123456.jpg
         """
         try:
-            # 创建保存目录
-            save_dir = save_dir = current_app.config['ALERT_FOLDER']
-            os.makedirs(save_dir, exist_ok=True)
-            
-            # 生成文件名
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
-            filename = f'{task_name}_{timestamp}.jpg'
-            filepath = os.path.join(save_dir, filename)
+            save_dir = current_app.config['ALERT_FOLDER']
+            rel = allocate_alert_relpath(prefix=task_name or 'detect')
+            filepath = alert_file_path(save_dir, rel)
+            if not filepath:
+                return None
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
             
             # 保存图像
             if use_frame:
@@ -103,7 +103,7 @@ class BaseAlgorithm(Algorithm):
                 else:
                     cv2.imwrite(filepath, frame)
             
-            return filename
+            return rel
         except Exception as e:
             current_app.logger.error(f"Error saving detection image: {str(e)}")
             return None

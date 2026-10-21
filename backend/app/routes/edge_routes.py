@@ -2,9 +2,8 @@ from flask import Blueprint, jsonify, request, current_app
 from app.extensions import db, socketio
 from app.models import Alert, Camera, EdgeNode, Task
 from app.middleware.auth import role_required, token_required
-import os
+from app.utils.alert_images import save_alert_upload
 from datetime import datetime
-from config import Config
 
 edge_bp = Blueprint('edge', __name__)
 
@@ -177,17 +176,9 @@ def receive_alert():
         image_url = ""
         
         if image_file:
-            # 保存到警报文件夹。带框图进页面；同名 _raw 原图只落盘，供回溯标注。
-            save_dir = Config.ALERT_FOLDER
-            os.makedirs(save_dir, exist_ok=True)
-            filename = f"edge_alert_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
-            filepath = os.path.join(save_dir, filename)
-            image_file.save(filepath)
-            image_url = filename
-            raw_file = request.files.get('raw_image')
-            if raw_file:
-                stem, ext = os.path.splitext(filename)
-                raw_file.save(os.path.join(save_dir, f"{stem}_raw{ext or '.jpg'}"))
+            # 按小时分子目录，避免告警根目录堆几十万个文件。带框图进页面；同名 _raw 只落盘。
+            save_dir = current_app.config['ALERT_FOLDER']
+            image_url = save_alert_upload(save_dir, image_file, request.files.get('raw_image'))
 
         # 写入数据库。名称一并记下，视频源日后删除时告警仍能显示来源。
         camera = None

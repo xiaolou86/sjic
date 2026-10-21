@@ -1,7 +1,6 @@
 """把平台上的一张静图重复送给算法，接口与 RtspCapture 对齐。
 
-FramePump 在限流间隙会连续 grab。真实摄像头的 grab 会堵住等下一帧；
-这里若立刻返回，泵线程会空转占满一个核，所以 grab 按约 15fps 节流。
+grab 按约 15fps 节流。调用方如果空转 grab，这里不能立刻返回，否则会占满一个核。
 """
 import logging
 import os

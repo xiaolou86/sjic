@@ -12,6 +12,14 @@ logger = logging.getLogger('utils.stream')
 # 只保留 TCP。多余 option 在部分 OpenCV/FFmpeg 上会让整串参数失效，回退成 UDP。
 _FFMPEG_TCP_OPTIONS = "rtsp_transport;tcp"
 _MAX_SKIP_FRAMES = 15
+_MAX_DRAIN_FRAMES = 60
+# 整段排空的时间上限。到点就停，把已经拿到的最新一帧交给推理。
+_DRAIN_BUDGET_SEC = 0.25
+# 短于摄像头帧间隔。缓冲里没有完整帧时尽快返回，不去等还没到的下一帧。
+_DRAIN_TIMEOUT_MS = 10
+# 一次 grab 超过这个时间，就是在等网络上还没到的帧，不能继续排。
+_SLOW_GRAB_SEC = 0.35
+_LIVE_READ_TIMEOUT_MS = 2000
 _GST_ELEM_CACHE = {}
 _GST_SUCCESS = {}  # rtsp_url -> (pipeline, label)
 _DECODE_PROBE_LOGGED = False
@@ -110,10 +118,10 @@ def _gst_src_and_tail(rtsp_url):
         f'rtspsrc location="{location}" protocols=tcp latency=200 retry=5 '
         f'timeout=5000000 tcp-timeout=5000000 drop-on-latency=true'
     )
-    # leaky queue 放在解码器前面：推理期间 Python 不 read 时解码器堵住，
-    # 旧压缩包在这里丢掉，只保留最新一包。appsink 不 drop，避免空转解码。
+    # 队列放在解码器后面：P 帧参考要连续，不能在压缩域把中间帧丢掉。
+    # 不取流时旧画面在这里和 appsink 丢掉，只留最新一帧，延时不会越积越长。
     q = "queue leaky=downstream max-size-buffers=1 max-size-time=0 max-size-bytes=0"
-    sink = "appsink max-buffers=1 drop=false sync=false"
+    sink = "appsink max-buffers=1 drop=true sync=false"
     bgr = f"videoconvert ! video/x-raw,format=BGR ! {sink}"
     return src, q, bgr
 
@@ -193,11 +201,11 @@ def _gst_candidates(rtsp_url):
         ))
 
     out.append((
-        f"{src} ! rtph264depay ! h264parse ! {q} ! avdec_h264 ! {bgr}",
+        f"{src} ! rtph264depay ! h264parse ! avdec_h264 ! {q} ! {bgr}",
         "gstreamer-cpu-h264",
     ))
     out.append((
-        f"{src} ! rtph265depay ! h265parse ! {q} ! avdec_h265 ! {bgr}",
+        f"{src} ! rtph265depay ! h265parse ! avdec_h265 ! {q} ! {bgr}",
         "gstreamer-cpu-h265",
     ))
     return out
@@ -208,7 +216,7 @@ def _try_gst(pipeline, label):
         return None
     cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
     if cap.isOpened():
-        logger.info("Opened RTSP via %s (drop-old-before-decode)", label)
+        logger.info("Opened RTSP via %s (latest-frame)", label)
         return _tune_cap(cap)
     cap.release()
     logger.info("%s unavailable, trying next backend", label)
@@ -263,10 +271,11 @@ def _open_raw(rtsp_url):
 
 class RtspCapture:
     """
-    推理线程按需取最新帧，没有后台解码线程。
+    按需取最新一帧，没有后台解码线程。
 
-    GStreamer：解码器前 leaky queue，不 read 时只收包、丢旧压缩帧，CPU 接近空闲。
-    FFmpeg：TCP 把包堆在内核；下次 grab 按间隔跳过积压帧，再 retrieve 当前这一帧。
+    GStreamer：解码器连续解（P 帧参考不能断）。appsink 只留最新画面，
+    两次 read 之间不要 grab，推理没要的帧不会堆进算法。
+    FFmpeg：读的时候把已经进缓冲的旧帧丢掉，缓冲空了立刻停，只 retrieve 最新一帧。
     本地文件没有直播时钟，按开播后的墙钟对齐片内时间戳；推理变慢就跳过这段时间里的帧。
     """
 
@@ -354,18 +363,15 @@ class RtspCapture:
             if sleep_for > 0:
                 time.sleep(min(sleep_for, 1.0))
 
-    def _discard_stale(self):
-        """丢掉推理期间积压的旧帧，只解/保留最新一帧。GStreamer 管道已在压缩域丢弃。"""
-        if self._local_file or self._cap is None or str(self._backend).startswith("gstreamer"):
-            return
-        if self._last_grab <= 0:
-            return
-        elapsed = time.time() - self._last_grab
-        skip = int(elapsed * self._fps) - 1
-        skip = min(max(skip, 0), _MAX_SKIP_FRAMES)
-        for _ in range(skip):
-            if not self._cap.grab():
-                break
+    def _live_grab(self):
+        """把当前位置放到已经到达的最新一帧。调用方持有 _lock。"""
+        if str(self._backend).startswith("gstreamer"):
+            # 管道里只留最新画面，拉一次就是这一拍要推理的帧。
+            return bool(self._cap.grab())
+        taken = discard_arrived_frames(self._cap)
+        if taken > 0:
+            return True
+        return bool(self._cap.grab())
 
     def grab(self):
         if self._local_file:
@@ -373,8 +379,7 @@ class RtspCapture:
         with self._lock:
             if self._cap is None:
                 return False
-            self._discard_stale()
-            ok = self._cap.grab()
+            ok = self._live_grab()
             if ok:
                 self._last_grab = time.time()
             return ok
@@ -386,6 +391,7 @@ class RtspCapture:
             return self._cap.retrieve()
 
     def read(self):
+        """直播只交当前这一帧。两次读取之间到达、但不会拿去推理的帧在这里丢掉。"""
         if self._local_file:
             if not self._grab_aligned():
                 return False, None
@@ -393,7 +399,12 @@ class RtspCapture:
         with self._lock:
             if self._cap is None:
                 return False, None
-            self._discard_stale()
+            if not self._live_grab():
+                return False, None
+            self._last_grab = time.time()
+            ret, frame = self._cap.retrieve()
+            if ret:
+                return ret, frame
             if not self._cap.grab():
                 return False, None
             self._last_grab = time.time()
@@ -427,8 +438,49 @@ class RtspCapture:
                 pass
 
 
+def discard_arrived_frames(cap):
+    """把 FFmpeg 缓冲里已经到达的旧帧 grab 掉，留下最新的一帧。
+
+    缓冲空了就停。再等下去会堵住还没到的下一帧，推理帧率会被拉低。
+    返回成功 grab 的次数。最后一次成功的 grab 才是当前画面。
+    """
+    if cap is None:
+        return 0
+    prop = getattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC", None)
+    timed = False
+    if prop is not None:
+        try:
+            timed = bool(cap.set(prop, _DRAIN_TIMEOUT_MS))
+        except Exception:
+            timed = False
+    limit = _MAX_DRAIN_FRAMES if timed else _MAX_SKIP_FRAMES
+    taken = 0
+    started = time.perf_counter()
+    try:
+        for _ in range(limit):
+            t0 = time.perf_counter()
+            try:
+                ok = bool(cap.grab())
+            except Exception:
+                ok = False
+            waited = time.perf_counter() - t0
+            if ok:
+                taken += 1
+            if not ok or waited >= _SLOW_GRAB_SEC:
+                break
+            if time.perf_counter() - started >= _DRAIN_BUDGET_SEC:
+                break
+        return taken
+    finally:
+        if timed and prop is not None:
+            try:
+                cap.set(prop, _LIVE_READ_TIMEOUT_MS)
+            except Exception:
+                pass
+
+
 def open_rtsp_capture(rtsp_url, buffer_size=1, warmup_grabs=5):
-    """打开 RTSP。grab/read 时跳到最新帧，无后台读流线程。
+    """打开 RTSP。read 取最新一帧，无后台读流线程。
 
     image-set: 是平台图片测试流：边缘拉一张静图后反复送出，不走解码。
     """

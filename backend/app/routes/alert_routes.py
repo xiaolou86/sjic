@@ -14,6 +14,7 @@ from app.models import Alert, Camera
 from app.models.alert import ALERT_REVIEW_STATUSES
 from app.middleware.auth import token_required, get_token_payload
 from app.utils.algorithm_catalog import label_for_alert_type
+from app.utils.alert_images import alert_file_path, companion_raw_rel, delete_stored_images, safe_relative
 
 alert_bp = Blueprint('alert', __name__)
 
@@ -83,24 +84,8 @@ def _alert_query_from_args(source=None):
 
 
 def _image_filename(alert):
-    """从告警记录解析本地图片文件名。"""
-    raw = alert.image_url
-    if not raw:
-        return None
-    if raw.startswith('http'):
-        return raw.rsplit('/', 1)[-1] or None
-    if raw.startswith('/api/alerts/images/'):
-        return raw[len('/api/alerts/images/'):]
-    return raw.lstrip('/')
-
-
-def _raw_image_filename(filename):
-    """带框图 edge_alert_xxx.jpg 对应的原图 edge_alert_xxx_raw.jpg。"""
-    base = os.path.basename(filename or '')
-    stem, ext = os.path.splitext(base)
-    if not stem or stem.endswith('_raw'):
-        return None
-    return f"{stem}_raw{ext or '.jpg'}"
+    """告警图片在 ALERT_FOLDER 下的相对路径。旧数据是文件名，新数据带小时目录。"""
+    return safe_relative(alert.image_url)
 
 
 @alert_bp.route('/api/alerts', methods=['GET'])
@@ -287,14 +272,14 @@ def export_alerts():
                 archived_name = ''
                 raw_archived_name = ''
                 if filename:
-                    src = os.path.join(alert_folder, os.path.basename(filename))
-                    if os.path.isfile(src):
-                        archived_name = f'{alert.id}_{os.path.basename(filename)}'
+                    src = alert_file_path(alert_folder, filename)
+                    if src and os.path.isfile(src):
+                        archived_name = f'{alert.id}_{os.path.basename(src)}'
                         zf.write(src, arcname=f'images/{archived_name}')
-                    raw_name = _raw_image_filename(filename)
-                    raw_src = os.path.join(alert_folder, raw_name) if raw_name else ''
+                    raw_rel = companion_raw_rel(filename)
+                    raw_src = alert_file_path(alert_folder, raw_rel) if raw_rel else None
                     if raw_src and os.path.isfile(raw_src):
-                        raw_archived_name = f'{alert.id}_{raw_name}'
+                        raw_archived_name = f'{alert.id}_{os.path.basename(raw_src)}'
                         zf.write(raw_src, arcname=f'images/{raw_archived_name}')
 
                 camera_name = alert.camera.name if alert.camera else (alert.camera_name or '')
@@ -411,8 +396,17 @@ def delete_alert(alert_id):
         description: 删除成功
     """
     alert = Alert.query.get_or_404(alert_id)
+    image_url = alert.image_url
     db.session.delete(alert)
     db.session.commit()
+    try:
+        delete_stored_images(
+            current_app.config['ALERT_FOLDER'],
+            image_url,
+            log=lambda message: current_app.logger.warning('%s', message),
+        )
+    except Exception as exc:
+        current_app.logger.error(f"Error deleting alert image: {exc}")
     return '', 204
 
 
@@ -437,11 +431,14 @@ def get_alert_image(filename):
         description: 图片未找到
     """
     try:
-        base = os.path.basename(filename)
+        rel = safe_relative(filename)
+        if not rel:
+            return jsonify({'error': 'Image not found'}), 404
+        base = os.path.basename(rel)
         stem, _ext = os.path.splitext(base)
         if stem.endswith('_raw'):
             return jsonify({'error': 'Image not found'}), 404
-        return send_from_directory(current_app.config['ALERT_FOLDER'], filename)
+        return send_from_directory(current_app.config['ALERT_FOLDER'], rel)
     except Exception as e:
         current_app.logger.error(f"Error getting alert image: {str(e)}")
         return jsonify({'error': str(e)}), 404

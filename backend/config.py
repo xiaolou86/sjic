@@ -102,7 +102,7 @@ class Config:
     # 图片测试样本。data 已被 Docker 挂到宿主机，重启和重建容器不会丢。
     IMAGE_SET_FOLDER = os.environ.get('IMAGE_SET_FOLDER') or os.path.join(base_dir, 'data', 'image-sets')
 
-    # 优先读取 YAML 中的自定义告警存储路径，为空则回落到默认的 `alerts` 文件夹
+    # 告警图片根目录。新图写入 年/月/日/小时 子目录，见 app/utils/alert_images.py。
     custom_alert_path = get_cfg('fs', 'alert_storage_path')
     if custom_alert_path and custom_alert_path.strip():
         ALERT_FOLDER = custom_alert_path

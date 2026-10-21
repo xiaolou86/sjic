@@ -1,4 +1,4 @@
-"""RTSP 拉流：后台持续 grab，避免推理阻塞导致 UDP 丢包/重连。"""
+"""RTSP 拉流：后台按推理节拍取最新一帧，空档不取流。"""
 import threading
 import time
 
@@ -39,11 +39,14 @@ def is_valid_frame(frame):
 
 
 class FramePump:
-    """独立线程读流，主循环只取最新帧。
+    """独立线程按推理节拍读流，主循环只取最新一帧。
+
+    空档里不 grab。GStreamer 自己丢掉旧画面；FFmpeg 在这次 read 里丢掉已经到达的旧帧。
+    连续 grab 会把不推理的帧也解出来，还会把解码上限压到约 2fps。
 
     为何要 copy：
     OpenCV retrieve() 常复用内部缓冲，下一次 retrieve 会覆盖同一块内存。
-    在 _store 里立刻 copy 成自有缓冲；解码已限流，比「消费时再 copy」更不容易花屏。
+    在 _store 里立刻 copy 成自有缓冲。
     """
 
     def __init__(self, cap, stop_event, url, logger, open_fn=None, max_decode_fps=12.0):
@@ -86,31 +89,30 @@ class FramePump:
         decode_fps = self._decode_n / dt
         consume_fps = self._consume_n / dt
         self.logger.info(
-            f"RTSP pump: decode={decode_fps:.1f}fps consume={consume_fps:.1f}fps "
-            f"(drop≈{max(0.0, decode_fps - consume_fps):.1f}fps)"
+            f"RTSP pump: frame={decode_fps:.1f}fps consume={consume_fps:.1f}fps"
         )
         self._decode_n = 0
         self._consume_n = 0
         self._stats_t = now
 
     def _read_one(self):
-        """单次 grab+retrieve。不要连 grab 多次：每次 grab 都会阻塞等下一帧，
-        连抓 N 次会把解码上限压到 摄像头fps/N（日志里 ~2fps 就是这个原因）。
-        积压排空靠限流窗口里的 _grab_only。
-        """
+        """到点取一帧。RtspCapture.read 会丢掉已经积压、不会拿去推理的帧。"""
         with self._cap_lock:
             if self.stop_event.is_set() or self.cap is None:
                 return False, None
+            # 裸 VideoCapture 的 read() 会交出缓冲里最旧的一帧，先把已经到达的丢掉。
+            if type(self.cap).__name__ == "VideoCapture":
+                from utils.stream import discard_arrived_frames
+                taken = discard_arrived_frames(self.cap)
+                if taken <= 0 and not self.cap.grab():
+                    return False, None
+                return self.cap.retrieve()
+            read = getattr(self.cap, "read", None)
+            if callable(read):
+                return read()
             if not self.cap.grab():
                 return False, None
             return self.cap.retrieve()
-
-    def _grab_only(self):
-        """只 grab 不 decode，用来在限流间隔内排空网络缓冲。"""
-        with self._cap_lock:
-            if self.stop_event.is_set() or self.cap is None:
-                return False
-            return bool(self.cap.grab())
 
     def _take_cap(self):
         with self._cap_lock:
@@ -162,17 +164,9 @@ class FramePump:
         while not self.stop_event.is_set():
             try:
                 now = time.time()
-                if min_interval and (now - self._last_decode_t) < min_interval:
-                    # 限流窗口内只 grab 排空，避免缓冲堆积导致延时/重连
-                    if not self._grab_only():
-                        self._fail += 1
-                        if self._fail >= 30:
-                            self._reconnect()
-                        else:
-                            time.sleep(0.01)
-                    else:
-                        self._fail = 0
-                    self._maybe_log_stats()
+                if min_interval and self._last_decode_t and (now - self._last_decode_t) < min_interval:
+                    # 空档不取流。连续 grab 会把不推理的帧也解码，GStreamer 里的最新帧也会被抽走。
+                    self.stop_event.wait(min_interval - (now - self._last_decode_t))
                     continue
 
                 ret, frame = self._read_one()
