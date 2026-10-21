@@ -1,7 +1,7 @@
 version: '3.8'
 
-# 开发 / 首次构建镜像：docker compose up -d --build
-# 现场挂载升级：见 deploy/README.md，使用 deploy/platform/docker-compose.yml
+# 开发 / 首次构建镜像：docker compose build
+# 现场安装与升级见 docs/初次打包与部署.md、docs/后续打包与升级.md
 # Edge 侧在 edge-agent/config.yaml 配置平台地址，自行拼接模型下载基址
 
 services:

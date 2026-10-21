@@ -52,12 +52,14 @@ if [ ! -L "$ROOT/current" ]; then
   STAGING="$(mktemp -d "$ROOT/incoming/staging.XXXXXX")"
   tar -xzf "$PKG" -C "$STAGING"
   SJIC_ROOT="$ROOT" bash "$STAGING/install.sh"
+  echo "管理平台 ${VERSION} 已启动。浏览器打开 http://<本机IP>:38880"
 else
-  echo "已存在 /opt/sjic/current，不覆盖应用，只更新升级器。"
-  docker compose -f "$ROOT/updater/docker-compose.yml" up -d
+  echo "已存在 /opt/sjic/current，不覆盖应用和数据。已导入镜像并更新升级器，正在重建容器。"
+  docker compose -f "$ROOT/updater/docker-compose.yml" up -d --force-recreate
+  echo "容器已按现有应用重建。当前应用版本见 $ROOT/current/VERSION。"
 fi
 
 install_file "$HERE/updater/sjic-updater.service" /etc/systemd/system/sjic-updater.service 644
 systemctl daemon-reload
-systemctl enable --now sjic-updater.service
-echo "管理平台 ${VERSION} 已启动。浏览器打开 http://<本机IP>:38880"
+systemctl enable sjic-updater.service
+systemctl restart sjic-updater.service

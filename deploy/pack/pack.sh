@@ -8,7 +8,8 @@ if [ -z "${SJIC_VERSION:-}" ]; then
 fi
 
 cd /src/frontend
-npm ci
+# 默认走阿里云 npm 镜像。需要官方源时：NPM_REGISTRY=https://registry.npmjs.org
+npm ci --registry "${NPM_REGISTRY:-https://registry.npmmirror.com}"
 npm run build
 
 cd /src

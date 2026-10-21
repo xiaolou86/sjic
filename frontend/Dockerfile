@@ -3,6 +3,9 @@ FROM node:22 AS build
 
 WORKDIR /app
 
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+ENV NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
+
 # 安装前端依赖
 COPY package*.json ./
 RUN npm install

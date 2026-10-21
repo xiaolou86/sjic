@@ -58,9 +58,9 @@ if [ ! -L "$ROOT/current" ]; then
   STAGING="$(mktemp -d "$ROOT/incoming/staging.XXXXXX")"
   tar -xzf "$PKG" -C "$STAGING"
   SJIC_ROOT="$ROOT" bash "$STAGING/install.sh"
+  echo "边缘 ${VERSION} 已启动。平台地址在 $ROOT/edge/config.yaml，修改后执行: docker restart sjic-edge"
 else
-  echo "已存在 /opt/sjic/current，不覆盖应用，只更新升级器。"
-  docker compose -f "$ROOT/updater/docker-compose.yml" up -d
+  echo "已存在 /opt/sjic/current，不覆盖应用和配置。已导入镜像并更新升级器，正在重建容器。"
+  docker compose -f "$ROOT/updater/docker-compose.yml" up -d --force-recreate
+  echo "容器已按现有应用重建。当前应用版本见 $ROOT/current/VERSION。平台地址在 $ROOT/edge/config.yaml。"
 fi
-
-echo "边缘 ${VERSION} 已启动。平台地址在 $ROOT/edge/config.yaml，修改后执行: docker restart sjic-edge"

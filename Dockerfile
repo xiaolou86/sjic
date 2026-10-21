@@ -3,6 +3,9 @@ FROM node:22 as frontend-builder
 
 WORKDIR /app/frontend
 
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+ENV NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
+
 # 安装前端依赖
 COPY frontend/package*.json ./
 RUN npm install
@@ -31,7 +34,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # 安装 Python 依赖
 COPY backend/requirements.txt .
-RUN pip --default-timeout=1000 install -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple --no-cache-dir -r requirements.txt
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
+    PIP_DEFAULT_TIMEOUT=120
+RUN pip install --no-cache-dir -r requirements.txt
 
 # 复制后端代码
 COPY backend .

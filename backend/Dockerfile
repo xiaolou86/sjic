@@ -22,8 +22,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     mosquitto \
     && rm -rf /var/lib/apt/lists/*
 
-# 复制依赖文件并升级 pip
+# 复制依赖文件并升级 pip。默认清华 PyPI 源。
 COPY requirements.txt .
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
+    PIP_DEFAULT_TIMEOUT=120
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 

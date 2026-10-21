@@ -7,8 +7,12 @@ FROM ${BASE_IMAGE}
 
 WORKDIR /app
 
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
+    PIP_INDEX_URL=${PIP_INDEX_URL} \
+    PIP_DEFAULT_TIMEOUT=120 \
     TZ=Asia/Shanghai
 
 # 仅安装 Agent 通用依赖；推理框架由基础镜像提供（Jetson）

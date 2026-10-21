@@ -34,6 +34,31 @@ image_exists() {
   docker image inspect "$1" >/dev/null 2>&1
 }
 
+# 只确认这是 sjic-edge:jetson 的 docker save 结果。镜像不跟应用版本走，同一份 tar 可以反复使用。
+verify_edge_tar() {
+  local tar_path="$1"
+  local manifest
+  manifest="$(tar -xOf "$tar_path" manifest.json 2>/dev/null)" || {
+    echo "无法读取 $(basename "$tar_path") 的 manifest.json。请在 Jetson 上执行 docker save -o sjic-edge-jetson.tar sjic-edge:jetson。" >&2
+    exit 1
+  }
+  case "$manifest" in
+    *'"sjic-edge:jetson"'*) ;;
+    *) echo "$(basename "$tar_path") 里没有镜像 sjic-edge:jetson。" >&2; exit 1 ;;
+  esac
+}
+
+record_sha256() {
+  local dest="$1"
+  local dir name
+  dir="$(dirname "$dest")"
+  name="$(basename "$dest")"
+  (
+    cd "$dir"
+    sha256sum "$name" | tee "$name.sha256"
+  )
+}
+
 read_package() {
   local path="$1"
   local component="$2"
@@ -83,6 +108,7 @@ export_platform() {
   copy_lf "$REPO/deploy/platform/docker-compose.yml" "$folder/updater/docker-compose.yml"
   printf '%s\n' "$VERSION" > "$folder/VERSION"
   archive_dir "$folder" "$REPO/dist/sjic-platform-setup-${VERSION}.tar.gz"
+  record_sha256 "$REPO/dist/sjic-platform-setup-${VERSION}.tar.gz"
   rm -rf "$folder"
 }
 
@@ -97,11 +123,12 @@ export_edge() {
       echo "找不到边缘镜像文件 $EDGE_IMAGE" >&2
       exit 1
     fi
+    verify_edge_tar "$EDGE_IMAGE"
     cp -a "$EDGE_IMAGE" "$folder/images/sjic-edge-jetson.tar"
   elif image_exists sjic-edge:jetson; then
     docker save -o "$folder/images/sjic-edge-jetson.tar" sjic-edge:jetson
   else
-    echo "开发机上没有 sjic-edge:jetson。请在 Jetson 构建机执行 docker save -o sjic-edge-jetson.tar sjic-edge:jetson，再使用 --edge-image 指定。" >&2
+    echo "开发机上没有 sjic-edge:jetson。请在 Jetson 构建机执行 docker save -o sjic-edge-jetson.tar sjic-edge:jetson，再用 --edge-image 指定。" >&2
     exit 1
   fi
   cp -a "$package" "$folder/"
@@ -112,6 +139,7 @@ export_edge() {
   copy_lf "$REPO/edge-agent/deploy/docker-compose.yml" "$folder/updater/docker-compose.yml"
   printf '%s\n' "$VERSION" > "$folder/VERSION"
   archive_dir "$folder" "$REPO/dist/sjic-edge-setup-${VERSION}.tar.gz"
+  record_sha256 "$REPO/dist/sjic-edge-setup-${VERSION}.tar.gz"
   rm -rf "$folder"
 }
 

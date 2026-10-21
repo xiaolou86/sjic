@@ -19,6 +19,7 @@ services:
     environment:
       SJIC_VERSION: ${SJIC_VERSION:-}
       SJIC_COMPONENT: ${SJIC_COMPONENT:-all}
+      NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
     command: ["sh", "/src/deploy/pack/pack.sh"]
 volumes:
   pack_node_modules:
