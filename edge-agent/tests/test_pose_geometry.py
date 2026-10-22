@@ -15,6 +15,7 @@ from pose_geometry import (
     keypoint_debug_rows,
     is_fall,
     is_finger_click_watch,
+    person_has_glasses,
     full_face_visible,
     is_gaze_away,
     is_head_down,
@@ -586,6 +587,40 @@ class ExplainSceneTest(unittest.TestCase):
         self.assertEqual(rows[0]['c'], 0.1)
         self.assertTrue(rows[5]['ok'])
         self.assertEqual(rows[5]['x'], 8.0)
+
+
+class _GlassesBox:
+    def __init__(self, x1, y1, x2, y2):
+        self.x1 = x1
+        self.y1 = y1
+        self.x2 = x2
+        self.y2 = y2
+
+    @property
+    def center(self):
+        return ((self.x1 + self.x2) / 2.0, (self.y1 + self.y2) / 2.0)
+
+
+class PersonHasGlassesTest(unittest.TestCase):
+    def test_overlap_counts_when_center_is_outside_the_head(self):
+        points = kps(
+            l_eye=(130, 100, 0.9),
+            r_eye=(150, 100, 0.9),
+            l_shoulder=(100, 200, 0.9),
+            r_shoulder=(180, 200, 0.9),
+        )
+        person = _GlassesBox(40, 40, 240, 400)
+        hanging = _GlassesBox(160, 110, 220, 170)
+        self.assertFalse(
+            102 <= hanging.center[0] <= 178 and 72 <= hanging.center[1] <= 128
+        )
+        self.assertTrue(person_has_glasses(person, points, [hanging]))
+        self.assertFalse(person_has_glasses(person, points, [_GlassesBox(300, 300, 340, 340)]))
+
+    def test_without_head_points_uses_the_upper_body(self):
+        person = _GlassesBox(0, 0, 100, 200)
+        self.assertTrue(person_has_glasses(person, None, [_GlassesBox(20, 10, 60, 50)]))
+        self.assertFalse(person_has_glasses(person, None, [_GlassesBox(20, 140, 60, 180)]))
 
 
 if __name__ == '__main__':

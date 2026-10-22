@@ -11,12 +11,13 @@ from datetime import datetime
 import cv2
 
 from .base import BaseAlgorithm, effective_confidence
+from .class_map import apply_model_class_ids
 from .detection_preview import offer_detection_preview
 from .object_detection import ObjectDetectionAlgorithm
 from .occlusion import is_occlusion_spec, occlusion_preview
 from .pose_behavior import PoseBehaviorAlgorithm
 from .pose_geometry import normalize_mount_position, person_has_glasses
-from .rules import behavior_rois, build_rules, person_count_specs
+from .rules import behavior_rois, build_rules, explain_detection_rules, person_count_specs
 from runtime import create_runtime
 from utils.calc import get_letterbox_params, preprocess
 from utils.rtsp import FramePump, is_valid_frame
@@ -173,6 +174,8 @@ class ExamPipelineAlgorithm(BaseAlgorithm):
             } if need_pose else {}
             scene_rois = behavior_rois(behaviors, transform_roi) if need_pose else {}
 
+            labelmap = ((config_dict.get('models') or {}).get('object_detection') or {}).get('labelmap')
+            apply_model_class_ids(rules, fusions, od_runtime, labelmap, logger)
             infer_classes = []
             for rule in rules:
                 infer_classes.extend(rule.class_ids or [])
@@ -181,6 +184,12 @@ class ExamPipelineAlgorithm(BaseAlgorithm):
             infer_classes = sorted(set(int(x) for x in infer_classes))
             if not infer_classes and rules:
                 infer_classes = [0]
+                logger.warning(
+                    "检测场景没有类别，推理只保留类别 0。"
+                    "眼镜、手表若不是类别 0，画面上不会有框"
+                )
+            elif infer_classes:
+                logger.info(f"object classes={infer_classes}")
 
             od_conf_specs = detect_raw + fusions
             pose_conf_specs = behaviors + fusions
@@ -283,6 +292,12 @@ class ExamPipelineAlgorithm(BaseAlgorithm):
 
                 scenes = []
                 if od_ok:
+                    try:
+                        scenes.extend(explain_detection_rules(
+                            rules, boxes, now, task_sched_start, task_sched_end,
+                        ))
+                    except Exception as e:
+                        logger.debug(f"detection preview skipped: {e}")
                     self._eval_rules(
                         rules, boxes, now, processed, task_sched_start, task_sched_end,
                         task_name, od_algorithm_id, on_alert, logger,
@@ -294,15 +309,6 @@ class ExamPipelineAlgorithm(BaseAlgorithm):
                         state_since, last_alert, extra_state, person_rules, scene_rois,
                         on_alert, logger, algorithm_id=pose_algorithm_id,
                     )
-                    try:
-                        scenes = pose_helper.preview_debug(
-                            list(behaviors or []) + list(fusions or []),
-                            persons, now, view, task_confidence,
-                            task_sched_start, task_sched_end, scene_rois, boxes=boxes,
-                        )
-                    except Exception as e:
-                        logger.debug(f"preview debug skipped: {e}")
-                        scenes = []
                 if od_ok and pose_ok and fusions:
                     self._eval_fusions(
                         fusions, boxes, persons, now, processed, task_confidence,
@@ -310,6 +316,15 @@ class ExamPipelineAlgorithm(BaseAlgorithm):
                         pose_algorithm_id or od_algorithm_id, last_alert, extra_state,
                         pose_helper, on_alert, logger,
                     )
+                if pose_ok:
+                    try:
+                        scenes.extend(pose_helper.preview_debug(
+                            list(behaviors or []) + list(fusions or []),
+                            persons, now, view, task_confidence,
+                            task_sched_start, task_sched_end, scene_rois, boxes=boxes,
+                        ))
+                    except Exception as e:
+                        logger.debug(f"preview debug skipped: {e}")
                 offer_detection_preview(
                     config_dict.get('task_id'),
                     processed,

@@ -8,7 +8,37 @@ def _class_ok(box, class_ids):
     return int(getattr(box, 'class_id', 0)) in class_ids
 
 
-def _boxes_in_roi(boxes, class_ids, roi_polygon, min_confidence=None):
+def _point_in_polygon(polygon, x, y):
+    try:
+        return bool(polygon.contains(Point((float(x), float(y)))))
+    except Exception:
+        return False
+
+
+def _object_in_roi(box, roi_polygon):
+    """眼镜、手表这类目标用框是否沾到区域，不用脚点。
+
+    脚点是给人站在哪一块区域用的。眼镜框的底边常常落在脸部区域外面，
+    只看脚点会把已经框住的眼镜、手表丢掉。
+    """
+    if roi_polygon is None:
+        return True
+    try:
+        x1, y1 = float(box.x1), float(box.y1)
+        x2, y2 = float(box.x2), float(box.y2)
+    except (TypeError, ValueError, AttributeError):
+        return False
+    samples = (
+        ((x1 + x2) / 2.0, (y1 + y2) / 2.0),
+        (x1, y1),
+        (x2, y1),
+        (x1, y2),
+        (x2, y2),
+    )
+    return any(_point_in_polygon(roi_polygon, x, y) for x, y in samples)
+
+
+def _boxes_in_roi(boxes, class_ids, roi_polygon, min_confidence=None, roi_mode='foot'):
     matched = []
     for box in boxes:
         if min_confidence is not None:
@@ -20,8 +50,12 @@ def _boxes_in_roi(boxes, class_ids, roi_polygon, min_confidence=None):
         if not _class_ok(box, class_ids):
             continue
         if roi_polygon is not None:
-            foot = box.foot_center
-            if not roi_polygon.contains(Point(foot)):
+            if roi_mode == 'overlap':
+                inside = _object_in_roi(box, roi_polygon)
+            else:
+                foot = getattr(box, 'foot_center', None)
+                inside = foot is not None and _point_in_polygon(roi_polygon, foot[0], foot[1])
+            if not inside:
                 continue
         matched.append(box)
     return matched
@@ -72,7 +106,9 @@ class BaseRule:
 
 class PresenceRule(BaseRule):
     def evaluate(self, boxes, now, logger):
-        matched = _boxes_in_roi(boxes, self.class_ids, self._roi_polygon, self.min_confidence)
+        matched = _boxes_in_roi(
+            boxes, self.class_ids, self._roi_polygon, self.min_confidence, roi_mode='overlap',
+        )
         if not matched or not self._cooldown_ok(now):
             return None
         conf = max(b.confidence for b in matched)
@@ -210,6 +246,77 @@ def person_count_message(spec, btype, hit):
     if btype == 'linger':
         return f"行为[{name}] 持续有人 {count} 人"
     return f"行为[{name}] 人数 {count} ≥ {(spec or {}).get('min_count', 5)}"
+
+
+def _class_id_text(class_ids):
+    if not class_ids:
+        return '未选'
+    return '、'.join(str(int(class_id)) for class_id in class_ids)
+
+
+def _confidence_text(value):
+    try:
+        return f'{float(value):.2f}'
+    except (TypeError, ValueError):
+        return '不限'
+
+
+def explain_detection_rules(rules, boxes, now, task_start=None, task_end=None):
+    """本帧目标检测场景说明。不改冷却，也不触发告警。"""
+    from utils.schedule import is_item_active_now
+
+    rows = []
+    for rule in rules or []:
+        name = rule.name or rule.alert_type or '检测场景'
+        note = getattr(rule, '_class_note', '') or ''
+        if not is_item_active_now(now, rule.spec, task_start, task_end):
+            reason = '当前不在该场景的生效时段'
+        elif rule.rule_type != 'presence':
+            reason = f"已调用{rule.rule_type}判定"
+        else:
+            class_hits = _boxes_in_roi(
+                boxes, rule.class_ids, None, rule.min_confidence, roi_mode='overlap',
+            )
+            region_hits = _boxes_in_roi(
+                boxes, rule.class_ids, rule._roi_polygon, rule.min_confidence, roi_mode='overlap',
+            )
+            ids = _class_id_text(rule.class_ids)
+            threshold = _confidence_text(rule.min_confidence)
+            if not class_hits:
+                reason = (
+                    f"已调用出现判定。本帧没有类别 {ids}、置信度≥{threshold} 的目标"
+                )
+                hit = False
+            elif not region_hits:
+                reason = f"类别 {ids} 有 {len(class_hits)} 个框，但没有沾到标注区域"
+                hit = False
+            elif not rule._cooldown_ok(now):
+                reason = f"类别 {ids} 本帧有 {len(region_hits)} 个框，还在告警冷却里"
+                hit = False
+            else:
+                reason = f"类别 {ids} 本帧有 {len(region_hits)} 个框，出现即告警"
+                hit = True
+            if note:
+                reason = f"{note}。{reason}"
+            rows.append({
+                'name': name,
+                'type': rule.alert_type,
+                'people': [{'hit': hit, 'reason': reason}],
+            })
+            if len(rows) >= 8:
+                break
+            continue
+        if note:
+            reason = f"{note}。{reason}"
+        rows.append({
+            'name': name,
+            'type': rule.alert_type,
+            'reason': reason,
+            'people': [],
+        })
+        if len(rows) >= 8:
+            break
+    return rows
 
 
 def build_rules(raw_rules, transform_roi, alert_cooldown_sec, is_point_in_roi, logger):

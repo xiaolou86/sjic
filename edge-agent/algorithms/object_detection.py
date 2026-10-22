@@ -1,7 +1,8 @@
 from .base import BaseAlgorithm, effective_confidence
+from .class_map import apply_model_class_ids
 from .detection_preview import offer_detection_preview
 from .occlusion import is_occlusion_spec, occlusion_preview, update_occlusion
-from .rules import build_rules
+from .rules import build_rules, explain_detection_rules
 import cv2
 import time
 from datetime import datetime
@@ -158,12 +159,15 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                 )
                 occlusion_state = {}
 
-                infer_classes = []
-                for rule in rules:
-                    infer_classes.extend(rule.class_ids or [])
-                if rules and algorithm_parameters.get('labels'):
-                    infer_classes.extend(int(x) for x in algorithm_parameters.get('labels'))
-                infer_classes = sorted(set(infer_classes))
+                def collect_infer_classes():
+                    found = []
+                    for rule in rules:
+                        found.extend(rule.class_ids or [])
+                    if rules and algorithm_parameters.get('labels'):
+                        found.extend(int(x) for x in algorithm_parameters.get('labels'))
+                    return sorted(set(int(x) for x in found))
+
+                infer_classes = collect_infer_classes()
                 if rules and not infer_classes:
                     infer_classes = [0]
                 need_infer = bool(rules)
@@ -174,6 +178,20 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                 warmup = first_frame if need_infer and is_valid_frame(first_frame) else None
                 if need_infer:
                     runtime.load(model_path)
+                    apply_model_class_ids(
+                        rules, [], runtime,
+                        (config_dict.get('model') or {}).get('labelmap'),
+                        logger,
+                    )
+                    infer_classes = collect_infer_classes()
+                    if rules and not infer_classes:
+                        infer_classes = [0]
+                        logger.warning(
+                            "检测场景没有类别，推理只保留类别 0。"
+                            "眼镜、手表若不是类别 0，画面上不会有框"
+                        )
+                    elif infer_classes:
+                        logger.info(f"object classes={infer_classes}")
                     logger.info(
                         f"Throughput caps: inferFps={infer_fps:.1f} decodeFps≈{decode_fps:.1f}"
                     )
@@ -254,6 +272,13 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                         fps_window_t = last_log
                         fps_window_n = 0
 
+                    try:
+                        scenes = explain_detection_rules(
+                            rules, boxes, now, task_sched_start, task_sched_end,
+                        )
+                    except Exception as e:
+                        logger.debug(f"detection preview skipped: {e}")
+                        scenes = []
                     offer_detection_preview(
                         config_dict.get('task_id'),
                         processed,
@@ -261,6 +286,7 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                         object_threshold=confidence,
                         infer_ms=infer_ms,
                         occlusion=occlusion_view,
+                        scenes=scenes,
                     )
 
                     for rule in rules:

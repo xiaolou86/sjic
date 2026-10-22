@@ -267,6 +267,7 @@ function DetectionPreviewDialog({ task, onClose }) {
           摄像头遮挡单独显示外圈发平的比例，画面上的「阈值 0.50」是目标检测的置信度。
           骨骼点坐标和本帧场景结论在画面下面，用来区分是点没检全，还是几何判断没过。
           这里成立不等于已经告警，告警还要等停留时间，并且不在冷却时间内。
+          识别眼镜、识别手表只要出现所选类别就告警。AI眼镜默认要手腕离开后再贴耳 3 次，一张不动的图只会记 1 次。智能手表要两只手腕都靠近手表框。
         </Alert>
         {armError && <Alert severity="error" sx={{ mb: 1.5 }}>{armError}</Alert>}
         {!armError && session && session.node_status && session.node_status !== 'online' && (

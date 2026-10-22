@@ -132,6 +132,7 @@ class DetectorService:
                     "download_url": download_url,
                     "filename": model.path if model else "",
                     "required": needs_model,
+                    "labelmap": model.labelmap if model else None,
                 },
                 "parameters": {
                     "confidence": task.confidence,
@@ -178,6 +179,7 @@ class DetectorService:
             "required": True,
             "algorithm_id": algorithm.id,
             "infer_fps": algorithm.resolved_infer_fps(),
+            "labelmap": model.labelmap,
         }
 
     def _start_exam_pipeline(self, task):

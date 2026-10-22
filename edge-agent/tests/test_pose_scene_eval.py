@@ -720,3 +720,52 @@ class GazeAwayStandingGateTest(unittest.TestCase):
         self._run(sitting, 1)
         self.assertEqual(len(self.alerts), 1)
         self.assertEqual(self.alerts[0]['alert_type'], 'gaze_away')
+
+
+class FusionPreviewReasonTest(unittest.TestCase):
+    def test_glasses_without_a_person_says_whether_the_box_exists(self):
+        algo = PoseBehaviorAlgorithm()
+        spec = {
+            'id': 'g',
+            'type': 'smart_glasses',
+            'name': 'AI眼镜',
+            'class_ids': [2],
+            'min_touches': 3,
+        }
+        now = datetime(2026, 10, 22, 22, 0, 0)
+        empty = algo.preview_debug(
+            [spec], [], now, 'back_top', 0.5, None, None, {}, boxes=[],
+        )
+        self.assertIn('没有眼镜框', empty[0]['reason'])
+        self.assertIn('类别 2', empty[0]['reason'])
+
+        glasses = _Box(confidence=0.9, x1=10, y1=10, x2=40, y2=30)
+        glasses.class_id = 2
+        found = algo.preview_debug(
+            [spec], [], now, 'back_top', 0.5, None, None, {}, boxes=[glasses],
+        )
+        self.assertIn('检出眼镜 1 个', found[0]['reason'])
+
+    def test_still_frame_touch_count_stays_visible(self):
+        algo = PoseBehaviorAlgorithm()
+        spec = {
+            'id': 'g',
+            'type': 'smart_glasses',
+            'name': 'AI眼镜',
+            'class_ids': [2],
+            'min_touches': 3,
+            '_class_note': '类别 9（眼镜）按模型改到 2（glasses）',
+        }
+        person = _Box(confidence=0.9, x1=60, y1=40, x2=230, y2=430)
+        kps = _turned_standing_pose()
+        now = datetime(2026, 10, 22, 22, 0, 0)
+        algo._person_tracker.update([(person, kps)], now)
+        track = algo._person_tracker.track_for(person, kps)
+        track.touch['g'] = {'touches': 1, 'near': True}
+        rows = algo.preview_debug(
+            [spec], [(person, kps)], now, 'back_top', 0.5, None, None, {}, boxes=[],
+        )
+        reason = rows[0]['people'][0]['reason']
+        self.assertIn('累计 1/3 次', reason)
+        self.assertIn('按住中', reason)
+        self.assertIn('按模型改到 2', rows[0]['reason'])

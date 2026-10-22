@@ -439,17 +439,28 @@ def accumulate_rising_count(state, active, now, min_count, window_seconds, hold_
     return False
 
 
+def _rect_overlaps_box(rect, box):
+    """检测框和头部区域有接触就算，不要求中心点落在里面。"""
+    try:
+        x1, y1, x2, y2 = (float(value) for value in rect)
+        bx1, by1 = float(box.x1), float(box.y1)
+        bx2, by2 = float(box.x2), float(box.y2)
+    except (TypeError, ValueError, AttributeError):
+        return False
+    return min(x2, bx2) >= max(x1, bx1) and min(y2, by2) >= max(y1, by1)
+
+
 def person_has_glasses(box, kps, glasses_boxes):
-    """眼镜框中心落在头部区域（关键点不足时用人体框上半部分）才算戴着眼镜。"""
+    """眼镜框沾到头部区域（关键点不足时用人体框上半部分）才算戴着眼镜。"""
     if not glasses_boxes:
         return False
     head = _head_rect(kps) if kps is not None else None
     for glasses in glasses_boxes:
-        cx, cy = glasses.center
         if head is not None:
-            if _point_in_rect(cx, cy, head):
+            if _rect_overlaps_box(head, glasses):
                 return True
             continue
+        cx, cy = glasses.center
         if _point_in_upper_body(box, cx, cy):
             return True
     return False

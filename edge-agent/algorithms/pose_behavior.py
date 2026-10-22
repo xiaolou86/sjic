@@ -181,6 +181,35 @@ def _preview_seconds(spec, btype):
     return None
 
 
+def _preview_class_text(class_ids):
+    found = []
+    for raw in class_ids or []:
+        try:
+            found.append(str(int(raw)))
+        except (TypeError, ValueError):
+            continue
+    return '、'.join(found) if found else '未选'
+
+
+def _touch_progress(track, bid, spec, default_need):
+    """融合场景的累计次数。按住不重复加，一张不动的图只会停在 1 次。"""
+    state = {}
+    if track is not None:
+        state = track.touch.get(bid) or {}
+    try:
+        count = int(state.get('touches') or 0)
+    except (TypeError, ValueError):
+        count = 0
+    try:
+        need = int((spec or {}).get('min_touches', default_need))
+    except (TypeError, ValueError):
+        need = default_need
+    if need < 1:
+        need = 1
+    holding = '按住中' if state.get('near') else '未按住'
+    return f"累计 {count}/{need} 次（{holding}，松开再碰才加一次）"
+
+
 def _preview_class_boxes(boxes, spec, min_confidence):
     wanted = set()
     for raw in (spec or {}).get('class_ids') or []:
@@ -536,7 +565,25 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
                 'people': [],
             }
             if not chosen:
-                row['reason'] = f"没有达到置信度 {scene_conf:.2f} 或落在区域内的人"
+                if btype in ('smart_glasses', 'smart_watch'):
+                    target_boxes = _preview_class_boxes(boxes, spec, scene_conf)
+                    kind = '眼镜' if btype == 'smart_glasses' else '手表'
+                    ids = _preview_class_text(spec.get('class_ids'))
+                    if target_boxes:
+                        row['reason'] = (
+                            f"检出{kind} {len(target_boxes)} 个，"
+                            f"但这帧没有达到置信度 {scene_conf:.2f} 的人，不会判断佩戴或点击"
+                        )
+                    else:
+                        row['reason'] = (
+                            f"没有{kind}框（场景类别 {ids}），"
+                            f"也没有达到置信度 {scene_conf:.2f} 的人"
+                        )
+                else:
+                    row['reason'] = f"没有达到置信度 {scene_conf:.2f} 或落在区域内的人"
+                note = spec.get('_class_note')
+                if note:
+                    row['reason'] = f"{note}。{row['reason']}"
                 rows.append(row)
                 continue
             if btype in PERSON_COUNT_TYPES:
@@ -573,6 +620,9 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
                 elif kps is not None:
                     person['index'] = rank.get(id(kps))
                 row['people'].append(person)
+            note = spec.get('_class_note')
+            if note and not row.get('reason'):
+                row['reason'] = note
             rows.append(row)
             if len(rows) >= 12:
                 break
@@ -616,6 +666,11 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
                 if note:
                     hit = False
                     reason = f"{reason}。{note}"
+        if btype in ('smart_glasses', 'smart_watch'):
+            need = 1 if btype == 'smart_watch' else 3
+            progress = _touch_progress(track, bid, spec, need)
+            if progress:
+                reason = f"{reason}。{progress}"
         return {
             'confidence': confidence,
             'hit': bool(hit),
