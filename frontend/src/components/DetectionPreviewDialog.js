@@ -33,6 +33,12 @@ function formatScore(value) {
   return number.toFixed(2);
 }
 
+function formatPercent(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '-';
+  return `${Math.round(number * 100)}%`;
+}
+
 function extractApiError(error, fallback) {
   const data = error?.response?.data;
   if (typeof data?.error === 'string' && data.error) return data.error;
@@ -258,6 +264,7 @@ function DetectionPreviewDialog({ task, onClose }) {
       <DialogContent>
         <Alert severity="info" sx={{ mb: 1.5 }}>
           画面是边缘正在推理的那一帧。目标检测画框并标出类别，姿态检测画骨骼点。
+          摄像头遮挡单独显示外圈发平的比例，画面上的「阈值 0.50」是目标检测的置信度。
           骨骼点坐标和本帧场景结论在画面下面，用来区分是点没检全，还是几何判断没过。
           这里成立不等于已经告警，告警还要等停留时间，并且不在冷却时间内。
         </Alert>
@@ -321,6 +328,28 @@ function DetectionPreviewDialog({ task, onClose }) {
                 data={stats?.pose}
                 emptyText="这一帧没有超过阈值的人体"
               />
+            )}
+            {stats?.occlusion && (
+              <Box sx={{ flex: 1, minWidth: 220 }}>
+                <Typography variant="subtitle1">摄像头遮挡</Typography>
+                <Typography variant="h5" sx={{ my: 0.5 }}>
+                  {formatPercent(stats.occlusion.ratio)}
+                  <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                    外圈发平
+                  </Typography>
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  门槛 {formatPercent(stats.occlusion.cover_ratio)}
+                  {stats.occlusion.held != null
+                    ? ` · 已持续 ${stats.occlusion.held}s / ${stats.occlusion.seconds}s`
+                    : ''}
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 1 }}>
+                  {stats.occlusion.hit
+                    ? '这一帧外圈已经发平。持续满设定时长后告警。'
+                    : '这一帧外圈还有纹理。'}
+                </Typography>
+              </Box>
             )}
           </Box>
         )}

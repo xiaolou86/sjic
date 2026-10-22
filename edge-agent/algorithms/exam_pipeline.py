@@ -13,6 +13,7 @@ import cv2
 from .base import BaseAlgorithm, effective_confidence
 from .detection_preview import offer_detection_preview
 from .object_detection import ObjectDetectionAlgorithm
+from .occlusion import is_occlusion_spec, occlusion_preview
 from .pose_behavior import PoseBehaviorAlgorithm
 from .pose_geometry import normalize_mount_position, person_has_glasses
 from .rules import behavior_rois, build_rules, person_count_specs
@@ -76,15 +77,18 @@ class ExamPipelineAlgorithm(BaseAlgorithm):
             task_sched_end = parameters.get('schedule_end') or algo_params.get('schedule_end')
 
             rules_raw = _enabled(algo_params.get('rules'))
+            # 遮挡不看检测框，也不吃任务置信度。混进 build_rules 会被当成未知规则丢掉。
+            occlusion_specs = [spec for spec in rules_raw if is_occlusion_spec(spec)]
+            detect_raw = [spec for spec in rules_raw if not is_occlusion_spec(spec)]
             behaviors = _enabled([
                 item for item in (algo_params.get('behaviors') or [])
                 if isinstance(item, dict)
                 and item.get('type') not in _FUSION_TYPES
             ])
             fusions = _enabled(algo_params.get('fusions'))
-            need_od = bool(rules_raw or fusions)
+            need_od = bool(detect_raw or fusions)
             need_pose = bool(behaviors or fusions)
-            if not need_od and not need_pose:
+            if not need_od and not need_pose and not occlusion_specs:
                 raise RuntimeError("exam_pipeline: no enabled scenes")
             if camera_stream is None:
                 raise RuntimeError("exam_pipeline: camera is None")
@@ -110,7 +114,8 @@ class ExamPipelineAlgorithm(BaseAlgorithm):
                 pose_runtime.load(pose_path)
             logger.info(
                 f"exam_pipeline plan: od={need_od} pose={need_pose} "
-                f"rules={len(rules_raw)} behaviors={len(behaviors)} fusions={len(fusions)}"
+                f"occlusion={len(occlusion_specs)} rules={len(detect_raw)} "
+                f"behaviors={len(behaviors)} fusions={len(fusions)}"
             )
 
             infer_fps = float(parameters.get('inferFps') or algo_params.get('infer_fps') or 5)
@@ -122,15 +127,17 @@ class ExamPipelineAlgorithm(BaseAlgorithm):
             pump = FramePump(camera_stream, stop_event, rtsp_url, logger, max_decode_fps=decode_fps)
             pump.start()
             first_frame, last_seq = pump.get_latest(last_seq=0, wait_sec=8.0)
-            if first_frame is None:
-                h = camera_stream.get(cv2.CAP_PROP_FRAME_HEIGHT)
-                w = camera_stream.get(cv2.CAP_PROP_FRAME_WIDTH)
-            else:
-                h, w = first_frame.shape[0], first_frame.shape[1]
-            new_h, new_w, top, bottom, left, right = get_letterbox_params(h, w, target_size=640)
-            if new_h is None:
-                logger.error("error: get_letterbox_params return None")
-                return
+            new_h = new_w = top = left = bottom = right = None
+            if need_od or need_pose:
+                if first_frame is None:
+                    h = camera_stream.get(cv2.CAP_PROP_FRAME_HEIGHT)
+                    w = camera_stream.get(cv2.CAP_PROP_FRAME_WIDTH)
+                else:
+                    h, w = first_frame.shape[0], first_frame.shape[1]
+                new_h, new_w, top, bottom, left, right = get_letterbox_params(h, w, target_size=640)
+                if new_h is None:
+                    logger.error("error: get_letterbox_params return None")
+                    return
 
             od_helper = ObjectDetectionAlgorithm()
             pose_helper = PoseBehaviorAlgorithm()
@@ -138,15 +145,22 @@ class ExamPipelineAlgorithm(BaseAlgorithm):
             def transform_roi(region):
                 return od_helper._transform_roi(region, new_h, new_w, top, left, logger)
 
-            for spec in rules_raw:
+            for spec in detect_raw:
                 spec['_min_confidence'] = effective_confidence(spec, task_confidence)
             rules = build_rules(
-                rules_raw,
+                detect_raw,
                 transform_roi,
                 alert_threshold,
                 od_helper.is_point_in_roi,
                 logger,
             ) if need_od else []
+            occlusion_state = {}
+
+            def emit_occlusion(**kwargs):
+                if od_algorithm_id is not None:
+                    kwargs['algorithm_id'] = od_algorithm_id
+                if on_alert:
+                    on_alert(**kwargs)
             person_rules = {
                 rule.id: rule
                 for rule in build_rules(
@@ -168,7 +182,7 @@ class ExamPipelineAlgorithm(BaseAlgorithm):
             if not infer_classes and rules:
                 infer_classes = [0]
 
-            od_conf_specs = rules_raw + fusions
+            od_conf_specs = detect_raw + fusions
             pose_conf_specs = behaviors + fusions
             od_confidence = min(
                 (effective_confidence(spec, task_confidence) for spec in od_conf_specs),
@@ -185,8 +199,8 @@ class ExamPipelineAlgorithm(BaseAlgorithm):
                 last_alert[spec.get('id') or spec.get('type')] = None
             extra_state = {spec.get('id') or spec.get('type'): {} for spec in behaviors + fusions}
 
-            warmup = first_frame if is_valid_frame(first_frame) else None
-            if warmup is not None:
+            warmup = first_frame if (need_od or need_pose) and is_valid_frame(first_frame) else None
+            if warmup is not None and new_h is not None:
                 processed = preprocess(warmup, new_h, new_w, top, bottom, left, right)
                 if processed is not None:
                     self._warmup(od_runtime, processed, od_confidence, infer_classes, logger, 'od')
@@ -210,6 +224,21 @@ class ExamPipelineAlgorithm(BaseAlgorithm):
                 if frame is None or not is_valid_frame(frame):
                     continue
                 next_infer_t = time.time() + infer_interval
+                now = datetime.now()
+                if occlusion_specs:
+                    od_helper._check_occlusion(
+                        occlusion_specs, occlusion_state, frame, now,
+                        task_sched_start, task_sched_end, alert_threshold,
+                        emit_occlusion, task_name, logger,
+                    )
+                occlusion_view = occlusion_preview(occlusion_specs, occlusion_state, now) if occlusion_specs else None
+                if not need_od and not need_pose:
+                    offer_detection_preview(
+                        config_dict.get('task_id'),
+                        frame,
+                        occlusion=occlusion_view,
+                    )
+                    continue
                 processed = preprocess(frame, new_h, new_w, top, bottom, left, right)
                 if processed is None:
                     continue
@@ -252,7 +281,6 @@ class ExamPipelineAlgorithm(BaseAlgorithm):
                     fps_window_t = last_log
                     fps_window_n = 0
 
-                now = datetime.now()
                 scenes = []
                 if od_ok:
                     self._eval_rules(
@@ -293,6 +321,7 @@ class ExamPipelineAlgorithm(BaseAlgorithm):
                     object_error=need_od and not od_ok,
                     pose_error=need_pose and not pose_ok,
                     scenes=scenes,
+                    occlusion=occlusion_view,
                 )
         except Exception as e:
             logger.error(f"Error in exam_pipeline: {str(e)}", exc_info=True)

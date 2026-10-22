@@ -69,6 +69,7 @@ def update_occlusion(spec, frame, now, state, cooldown_sec):
         cooldown = 0.0
 
     ratio = ring_occlusion_ratio(frame, block=block, std_max=std_max)
+    state['ratio'] = ratio
     if ratio < cover_ratio:
         state['since'] = None
         return None
@@ -85,6 +86,45 @@ def update_occlusion(spec, frame, now, state, cooldown_sec):
     state['last_alert'] = now
     state['since'] = now
     return f"摄像头遮挡：外圈 {ratio:.0%} 持续 {elapsed:.1f}s"
+
+
+def occlusion_preview(specs, states, now=None):
+    """最新一帧外圈发平占比，给预览用。没算过的场景不出现。"""
+    best = None
+    for spec in specs or []:
+        if not isinstance(spec, dict):
+            continue
+        bid = spec.get('id') or spec.get('type') or 'camera_occlusion'
+        state = (states or {}).get(bid) or {}
+        ratio = state.get('ratio')
+        if ratio is None:
+            continue
+        try:
+            cover = float(spec.get('cover_ratio', DEFAULT_COVER_RATIO))
+        except (TypeError, ValueError):
+            cover = DEFAULT_COVER_RATIO
+        try:
+            seconds = float(spec.get('seconds', DEFAULT_HOLD_SECONDS))
+        except (TypeError, ValueError):
+            seconds = DEFAULT_HOLD_SECONDS
+        held = None
+        since = state.get('since')
+        if now is not None and since is not None:
+            try:
+                held = round((now - since).total_seconds(), 1)
+            except (TypeError, ValueError, AttributeError):
+                held = None
+        item = {
+            'name': spec.get('name') or '摄像头遮挡',
+            'ratio': round(float(ratio), 4),
+            'cover_ratio': cover,
+            'seconds': seconds,
+            'hit': float(ratio) >= cover,
+            'held': held,
+        }
+        if best is None or item['ratio'] > best['ratio']:
+            best = item
+    return best
 
 
 def ring_occlusion_ratio(frame, block=DEFAULT_BLOCK, std_max=DEFAULT_STD_MAX):

@@ -1,6 +1,6 @@
 from .base import BaseAlgorithm, effective_confidence
 from .detection_preview import offer_detection_preview
-from .occlusion import is_occlusion_spec, update_occlusion
+from .occlusion import is_occlusion_spec, occlusion_preview, update_occlusion
 from .rules import build_rules
 import cv2
 import time
@@ -39,6 +39,7 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
             state = states.setdefault(bid, {'since': None, 'last_alert': None})
             if not is_item_active_now(now, spec, task_start, task_end):
                 state['since'] = None
+                state['ratio'] = None
                 continue
             message = update_occlusion(spec, frame, now, state, alert_threshold)
             if not message or not on_alert:
@@ -218,7 +219,13 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                         task_sched_start, task_sched_end, alert_threshold,
                         on_alert, task_name, logger,
                     )
+                    occlusion_view = occlusion_preview(occlusion_specs, occlusion_state, now)
                     if not need_infer:
+                        offer_detection_preview(
+                            config_dict.get('task_id'),
+                            frame,
+                            occlusion=occlusion_view,
+                        )
                         continue
 
                     processed = preprocess(frame, new_h, new_w, top, bottom, left, right)
@@ -253,6 +260,7 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                         boxes=boxes,
                         object_threshold=confidence,
                         infer_ms=infer_ms,
+                        occlusion=occlusion_view,
                     )
 
                     for rule in rules:

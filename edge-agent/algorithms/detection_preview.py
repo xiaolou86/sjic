@@ -94,6 +94,7 @@ def offer_detection_preview(
     object_error=False,
     pose_error=False,
     scenes=None,
+    occlusion=None,
     _sink=None,
 ):
     """推理线程里调用。未开预览或距上次不足间隔时直接返回。"""
@@ -103,7 +104,7 @@ def offer_detection_preview(
             boxes=boxes, persons=persons,
             object_threshold=object_threshold, pose_threshold=pose_threshold,
             infer_ms=infer_ms, object_error=object_error, pose_error=pose_error,
-            scenes=scenes, _sink=_sink,
+            scenes=scenes, occlusion=occlusion, _sink=_sink,
         )
     except Exception as exc:
         _warn_upload(exc)
@@ -123,6 +124,7 @@ def _offer_detection_preview(
     object_error=False,
     pose_error=False,
     scenes=None,
+    occlusion=None,
     _sink=None,
 ):
     task_key = _task_key(task_id)
@@ -154,6 +156,7 @@ def _offer_detection_preview(
         object_error=object_error,
         pose_error=pose_error,
         scenes=scenes,
+        occlusion=occlusion,
     )
     if vis is None:
         return
@@ -177,6 +180,7 @@ def compose_preview(
     object_error=False,
     pose_error=False,
     scenes=None,
+    occlusion=None,
     draw_limit=_DRAW_LIMIT,
 ):
     """返回 (画好的 BGR 图, 统计)。boxes/persons 为 None 表示这一路本帧没跑。"""
@@ -207,6 +211,12 @@ def compose_preview(
             captions.append(
                 f"目标 {object_stats['count']} / 阈值 {_fmt_threshold(object_threshold)}"
             )
+
+    if occlusion:
+        stats['occlusion'] = occlusion
+        captions.append(
+            f"遮挡 {_fmt_percent(occlusion.get('ratio'))} / 门槛 {_fmt_percent(occlusion.get('cover_ratio'))}"
+        )
 
     if persons is not None or pose_error:
         pose_stats, pose_labels = _draw_pose(
@@ -414,6 +424,13 @@ def _fmt_threshold(value):
     if number is None:
         return '-'
     return f'{number:.2f}'
+
+
+def _fmt_percent(value):
+    try:
+        return f'{float(value):.0%}'
+    except (TypeError, ValueError):
+        return '-'
 
 
 def _paint_labels(vis, labels):

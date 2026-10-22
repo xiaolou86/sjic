@@ -77,6 +77,25 @@ class TestComposePreview(unittest.TestCase):
         self.assertIn('鼻', person['missing'])
         self.assertEqual(stats['pose']['people'][1]['usable'], 0)
 
+    def test_occlusion_ratio_is_separate_from_object_threshold(self):
+        frame = np.zeros((40, 40, 3), dtype=np.uint8)
+        _vis, stats = compose_preview(
+            frame,
+            boxes=[],
+            object_threshold=0.5,
+            occlusion={
+                'ratio': 0.766,
+                'cover_ratio': 0.25,
+                'hit': True,
+                'seconds': 3,
+                'held': 1.2,
+            },
+        )
+        self.assertEqual(stats['object']['count'], 0)
+        self.assertEqual(stats['object']['threshold'], 0.5)
+        self.assertEqual(stats['occlusion']['ratio'], 0.766)
+        self.assertTrue(stats['occlusion']['hit'])
+
     def test_infer_error_does_not_draw_stale_boxes(self):
         frame = np.zeros((40, 40, 3), dtype=np.uint8)
         vis, stats = compose_preview(
