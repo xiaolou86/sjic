@@ -4,7 +4,8 @@
 #   1. docker compose build
 #   2. docker save -o sjic-edge-jetson.tar sjic-edge:jetson
 # 客户盒子不放源码，安装见 docs/初次打包与部署.md。日常升级走管理平台下发的安装包。
-#   RTSP 默认走 NVDEC（nvv4l2decoder）；失败回退 avdec_h264。SJIC_RTSP_HWDEC=0 可强制软解。
+#   RTSP 只有在容器内 OpenCV 启用 GStreamer 且 nvv4l2decoder 管道可用时才走 NVDEC；
+#   否则会回退 FFmpeg。SJIC_RTSP_HWDEC=0 可禁用 GStreamer 硬解候选。
 #
 # 远程重启 Agent：平台下发 agent/restart → 容器进程退出 → restart: unless-stopped 自动拉起
 # 远程重启/关机主机：平台下发 agent/power → nsenter 宿主机 PID 1 执行 reboot/poweroff
