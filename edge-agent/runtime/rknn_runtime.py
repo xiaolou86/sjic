@@ -145,6 +145,7 @@ class RKNNRuntime(BaseRuntime):
             raise RuntimeError(f"Failed to init RKNN runtime, ret={ret}")
 
         logger.info(f"[RKNNRuntime] Model loaded on NPU: {model_path}")
+        logger.info("[RKNNRuntime] RKNN 权重没有类别名，输出里只有类别号")
 
     def infer(self, frame, conf=0.5, classes=None, imgsz=640) -> DetectionResult:
         if self.rknn is None:

@@ -65,6 +65,7 @@ class MusaRuntime(BaseRuntime):
             import mtnn_api
             logger.info(f"[MusaRuntime] Loading MTNN model via mtnn_api: {model_path}")
             self.session = mtnn_api.MTNNSession(model_path)
+            logger.info("[MusaRuntime] MTNN 权重没有类别名，输出里只有类别号")
         except ImportError as e:
             raise ImportError(f"mtnn_api not found. Please install Moore Threads SDK: {e}")
         except Exception as e:

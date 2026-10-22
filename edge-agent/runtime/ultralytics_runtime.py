@@ -4,6 +4,7 @@ Ultralytics YOLO 推理后端
 支持模型格式: .pt, .engine, .onnx
 """
 from .base_runtime import BaseRuntime, DetectionResult, DetectionBox
+from .class_names import format_class_names, read_ultralytics_names
 import logging
 
 logger = logging.getLogger('runtime.ultralytics')
@@ -14,6 +15,7 @@ class UltralyticsRuntime(BaseRuntime):
 
     def __init__(self):
         self.model = None
+        self.names = {}
         self._model_path = None
         self._device = self._pick_device()
 
@@ -32,7 +34,13 @@ class UltralyticsRuntime(BaseRuntime):
         from ultralytics import YOLO
         self._model_path = model_path
         self.model = YOLO(model_path)
+        self.names = read_ultralytics_names(self.model)
         logger.info(f"[UltralyticsRuntime] Loaded model: {model_path} device={self._device}")
+        text = format_class_names(self.names)
+        if text:
+            logger.info(f"[UltralyticsRuntime] 权重类别({len(self.names)}): {text}")
+        else:
+            logger.info("[UltralyticsRuntime] 权重里没有类别名")
 
     def infer(self, frame, conf=0.5, classes=None, imgsz=640) -> DetectionResult:
         if self.model is None:
