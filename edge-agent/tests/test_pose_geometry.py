@@ -570,6 +570,58 @@ class GazeAwayStandingGateTest(unittest.TestCase):
         self.assertTrue(hit)
         self.assertNotIn('不报长时间不看屏幕', reason)
 
+    def test_tall_box_with_feet_under_body_is_not_gaze_away_when_knees_bend(self):
+        """站着但膝盖没到 150°。高框且脚在髋下方，仍不报不看屏幕。"""
+        points = _straight_legs(
+            nose=(140, 40, 0.9),
+            l_eye=(125, 38, 0.85),
+            r_eye=(155, 38, 0.85),
+            l_ear=(110, 42, 0.7),
+            r_ear=(170, 42, 0.7),
+            l_knee=(170, 280, 0.9),
+            r_knee=(50, 280, 0.9),
+            l_ankle=(118, 400, 0.9),
+            r_ankle=(162, 400, 0.9),
+        )
+        self.assertFalse(is_desk_standing(points, TALL_BOX, 1.6))
+        self.assertFalse(is_gaze_away(points, view='back_top', box=TALL_BOX))
+        hit, reason = explain_scene('gaze_away', points, TALL_BOX, {}, 'back_top')
+        self.assertFalse(hit)
+        self.assertIn('脚在髋下方', reason)
+        self.assertIn('不报长时间不看屏幕', reason)
+
+    def test_legs_stretched_forward_on_a_tall_box_are_still_gaze_away(self):
+        """坐着把腿伸向前方：脚的横向偏移更大，高框也不能当成站着。"""
+        points = _straight_legs(
+            nose=(140, 40, 0.9),
+            l_eye=(125, 38, 0.85),
+            r_eye=(155, 38, 0.85),
+            l_ear=(110, 42, 0.7),
+            r_ear=(170, 42, 0.7),
+            l_knee=(70, 240, 0.9),
+            r_knee=(210, 240, 0.9),
+            l_ankle=(20, 288, 0.9),
+            r_ankle=(260, 288, 0.9),
+        )
+        self.assertFalse(is_desk_standing(points, TALL_BOX, 1.6))
+        self.assertTrue(is_gaze_away(points, view='back_top', box=TALL_BOX))
+        hit, reason = explain_scene('gaze_away', points, TALL_BOX, {}, 'back_top')
+        self.assertTrue(hit)
+        self.assertNotIn('不报长时间不看屏幕', reason)
+
+    def test_tall_box_without_legs_is_still_gaze_away(self):
+        """只有高框、没有腿时不能当成站着，转头仍要报。"""
+        points = _turned_face(
+            l_hip=(0, 0, 0),
+            r_hip=(0, 0, 0),
+            l_knee=(0, 0, 0),
+            r_knee=(0, 0, 0),
+            l_ankle=(0, 0, 0),
+            r_ankle=(0, 0, 0),
+        )
+        self.assertFalse(is_desk_standing(points, TALL_BOX, 1.6))
+        self.assertTrue(is_gaze_away(points, view='back_top', box=TALL_BOX))
+
 
 class ExplainSceneTest(unittest.TestCase):
     def test_missing_shoulders_says_points_are_incomplete(self):

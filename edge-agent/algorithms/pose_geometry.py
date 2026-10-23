@@ -270,8 +270,11 @@ def is_gaze_away(
     min_hip_degrees=DESK_HIP_STRAIGHT_DEGREES,
 ):
     """
-    不看屏幕。前提是非站立，站立与考台旁站人、手指屏幕同一套。
-    站着的人不报。没有人框时站立前提不成立，只看头部。
+    不看屏幕。站着的人不报。
+    考台旁站人那套（高框，且同一条腿膝角和上下身都伸直）直接排除。
+    人框高宽比已经达标、但膝或髋没到伸直阈值时，只要有一条腿的脚在髋下方，
+    并且竖向位移不小于横向，也视为站着。坐着把腿伸到身前时脚在横向更远，不排除。
+    没有人框时站立前提不成立，只看头部。
     后上方、侧上方：五个头部点置信度都至少 0.5，视为转头。低头看屏幕通常只见后脑或侧脸，不算。
     前上方、正上方：明显抬头，或左右观望。俯视看屏幕的低头不算。
     pitch_degrees 只保留兼容。
@@ -280,7 +283,9 @@ def is_gaze_away(
     view = normalize_mount_position(view)
     if kps is None:
         return False
-    if is_desk_standing(kps, box, min_height_width, min_knee_degrees, min_hip_degrees):
+    if is_standing_for_gaze(
+        kps, box, min_height_width, min_knee_degrees, min_hip_degrees,
+    ):
         return False
     if view in ('back_top', 'side_top'):
         return full_face_visible(kps)
@@ -618,6 +623,53 @@ def is_desk_standing(
     return False
 
 
+def _foot_below_hip(kps, hip_index, knee_index, ankle_index):
+    """这条腿朝画面下方，而不是伸到身前。有脚踝用脚踝，否则用膝盖。"""
+    if not _kp_ok(kps, hip_index):
+        return False
+    hip = _kp(kps, hip_index)
+    if _kp_ok(kps, ankle_index):
+        foot = _kp(kps, ankle_index)
+    elif _kp_ok(kps, knee_index):
+        foot = _kp(kps, knee_index)
+    else:
+        return False
+    if _kp_ok(kps, knee_index) and _kp(kps, knee_index)[1] <= hip[1]:
+        return False
+    drop = foot[1] - hip[1]
+    # 高位俯视会把腿压短。低于约 0.35 个肩宽多半是坐着，或点漂了。
+    if drop < 0.35 * _scale(kps):
+        return False
+    return drop >= abs(foot[0] - hip[0])
+
+
+def legs_down_under_body(kps):
+    """至少一条腿的脚在髋下方，且竖向位移不小于横向。"""
+    if not _has_skeleton(kps):
+        return False
+    return (
+        _foot_below_hip(kps, L_HIP, L_KNEE, L_ANKLE)
+        or _foot_below_hip(kps, R_HIP, R_KNEE, R_ANKLE)
+    )
+
+
+def is_standing_for_gaze(
+    kps, box, min_ratio=1.6,
+    min_knee_degrees=DESK_KNEE_STRAIGHT_DEGREES,
+    min_hip_degrees=DESK_HIP_STRAIGHT_DEGREES,
+):
+    """
+    长时间不看屏幕用来排除站着的人。
+    考台旁站人成立时排除。人框高宽比达标、脚在身体下方时也排除，
+    避免站立前倾或膝盖略弯、角度没到伸直阈值的人被报成不看屏幕。
+    """
+    if is_desk_standing(kps, box, min_ratio, min_knee_degrees, min_hip_degrees):
+        return True
+    if not is_standing_by_box(box, min_ratio):
+        return False
+    return legs_down_under_body(kps)
+
+
 def _forward_down_axis(kps):
     """
     躯干轴：肩中点指向髋中点。
@@ -917,6 +969,13 @@ def _explain_gaze_away(kps, yaw_degrees, view, box=None, spec=None):
             'min_hip_degrees': min_hip,
         })
         return False, '站立，不报长时间不看屏幕。' + stand_reason
+    if is_standing_by_box(box, min_height_width) and legs_down_under_body(kps):
+        ratio = box_height_width_ratio(box)
+        ratio_text = f"{ratio:.2f}" if ratio is not None else '未知'
+        return False, (
+            f"人框高/宽 {ratio_text}，脚在髋下方，视为站着，不报长时间不看屏幕。"
+            '膝或上下身还没到考台旁站人的伸直阈值'
+        )
     hit = is_gaze_away(
         kps, yaw_degrees, view=view, box=box,
         min_height_width=min_height_width,

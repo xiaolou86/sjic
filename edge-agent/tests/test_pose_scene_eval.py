@@ -721,6 +721,23 @@ class GazeAwayStandingGateTest(unittest.TestCase):
         self.assertEqual(len(self.alerts), 1)
         self.assertEqual(self.alerts[0]['alert_type'], 'gaze_away')
 
+    def test_soft_knee_standing_does_not_alert(self):
+        standing = _Box(x1=60, y1=40, x2=230, y2=430)
+        pose = _turned_standing_pose()
+        pose[13] = [170.0, 280.0, 0.9]
+        pose[14] = [50.0, 280.0, 0.9]
+        pose[15] = [118.0, 400.0, 0.9]
+        pose[16] = [162.0, 400.0, 0.9]
+        _eval(
+            self.algo, [self.spec], [(standing, pose)],
+            self.start, self.state, self.alerts,
+        )
+        _eval(
+            self.algo, [self.spec], [(standing, pose)],
+            self.start + timedelta(seconds=2), self.state, self.alerts,
+        )
+        self.assertEqual(self.alerts, [])
+
 
 class FusionPreviewReasonTest(unittest.TestCase):
     def test_glasses_without_a_person_says_whether_the_box_exists(self):

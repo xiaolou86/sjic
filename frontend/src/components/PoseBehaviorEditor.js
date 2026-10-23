@@ -79,7 +79,7 @@ function PoseBehaviorEditor({ algorithm, algorithmParameters, onChange, catalogP
       <Grid item xs={12}>
         <Typography variant="subtitle2" gutterBottom>姿态行为 / 场景</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-          可添加多个场景。每个场景可单独画检测区域，不画则使用整个画面。场景时段、置信度优先于任务。人员倒地请用目标检测。智能手表请在混合任务的融合场景里添加。手指屏幕只报站立，长时间不看屏幕只报非站立，站立判断与考台旁站人相同。考台旁站人要有骨骼点，人框高宽比达标，且至少一条腿的膝角和上下身夹角都伸直，同一人几乎不动达到持续时长记为辅助作弊。
+          可添加多个场景。每个场景可单独画检测区域，不画则使用整个画面。场景时段、置信度优先于任务。人员倒地请用目标检测。智能手表请在混合任务的融合场景里添加。手指屏幕只报站立，长时间不看屏幕只报非站立。考台旁站人那套成立时不报不看屏幕；人框够高且脚在身体下方时也不报。考台旁站人要有骨骼点，人框高宽比达标，且至少一条腿的膝角和上下身夹角都伸直，同一人几乎不动达到持续时长记为辅助作弊。
         </Typography>
       </Grid>
 
