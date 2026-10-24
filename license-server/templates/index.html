@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>SJIC 授权签发</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Microsoft YaHei", sans-serif; margin: 24px; color: #222; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 16px; margin-top: 32px; }
+  form { display: grid; grid-template-columns: 100px minmax(0, 520px); gap: 10px 12px; align-items: center; }
+  input, select { font: inherit; padding: 4px 6px; }
+  .hint { grid-column: 2; color: #888; font-size: 12px; margin-top: -6px; }
+  .error { background: #fdecea; color: #b71c1c; padding: 8px 12px; margin-bottom: 16px; }
+  .ok { background: #e8f5e9; color: #1b5e20; padding: 8px 12px; margin-bottom: 16px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #f5f5f5; white-space: nowrap; }
+  tr.new { background: #fffde7; }
+  .mc { font-family: Consolas, monospace; font-size: 12px; word-break: break-all; max-width: 260px; }
+  .nowrap { white-space: nowrap; }
+</style>
+</head>
+<body>
+<h1>SJIC 授权签发</h1>
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% if created %}
+<div class="ok">已签发 #{{ created }}：<a href="{{ url_for('download_license', license_id=created) }}">下载授权文件</a>，然后在平台「授权管理」页导入。</div>
+{% endif %}
+
+<form method="post" action="{{ url_for('create_license') }}">
+  <label for="machine_code">机器码 *</label>
+  <input id="machine_code" name="machine_code" required value="{{ form.machine_code or '' }}" placeholder="从平台「授权管理」页复制">
+
+  <label for="edition">版本 *</label>
+  <select id="edition" name="edition">
+    <option value="trial" {% if form.edition == 'trial' %}selected{% endif %}>试用版（{{ trial_days }} 天）</option>
+    <option value="official" {% if form.edition == 'official' %}selected{% endif %}>正式版</option>
+  </select>
+
+  <label for="expires_at">到期日</label>
+  <input id="expires_at" name="expires_at" type="date" value="{{ form.expires_at or '' }}">
+  <div class="hint">正式版必填，到期日当天仍有效；试用版自签发日起 {{ trial_days }} 天。</div>
+
+  <label for="max_cameras">视频路数 *</label>
+  <input id="max_cameras" name="max_cameras" type="number" min="0" required value="{{ form.max_cameras or '' }}">
+  <div class="hint">0 表示不限。</div>
+
+  <label for="customer_id">客户标识</label>
+  <input id="customer_id" name="customer_id" value="{{ form.customer_id or '' }}">
+
+  <label for="allowed_algorithms">允许算法</label>
+  <input id="allowed_algorithms" name="allowed_algorithms" value="{{ form.allowed_algorithms or '' }}" placeholder="算法类型，逗号分隔">
+  <div class="hint">留空表示不限制算法。</div>
+
+  <label for="note">备注</label>
+  <input id="note" name="note" value="{{ form.note or '' }}" placeholder="只记录在本服务，不写入授权文件">
+
+  <span></span>
+  <div><button type="submit">签发</button></div>
+</form>
+
+<h2>签发记录（{{ licenses|length }}）</h2>
+<table>
+  <thead>
+    <tr>
+      <th>ID</th><th>创建时间</th><th>客户</th><th>版本</th><th>机器码</th><th>路数</th>
+      <th>签发日</th><th>到期日</th><th>算法</th><th>备注</th><th>文件</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for l in licenses %}
+    <tr {% if l.id == created %}class="new"{% endif %}>
+      <td>{{ l.id }}</td>
+      <td class="nowrap">{{ l.created_at }}</td>
+      <td>{{ l.customer_id }}</td>
+      <td class="nowrap">{{ '正式版' if l.edition == 'official' else '试用版' }}</td>
+      <td class="mc">{{ l.machine_code }}</td>
+      <td>{{ l.max_cameras or '不限' }}</td>
+      <td class="nowrap">{{ l.issued_at }}</td>
+      <td class="nowrap">{{ l.expires_at }}</td>
+      <td>{{ l.allowed_algorithms|join(', ') or '全部' }}</td>
+      <td>{{ l.note }}</td>
+      <td class="nowrap">
+        <a href="{{ url_for('download_license', license_id=l.id) }}">下载</a>
+        · <a href="{{ url_for('download_license', license_id=l.id, inline=1) }}" target="_blank">查看</a>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="11">暂无记录</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<script>
+  const edition = document.getElementById('edition');
+  const expires = document.getElementById('expires_at');
+  const sync = () => {
+    expires.disabled = edition.value !== 'official';
+    expires.required = !expires.disabled;
+  };
+  edition.addEventListener('change', sync);
+  sync();
+</script>
+</body>
+</html>

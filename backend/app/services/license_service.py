@@ -5,7 +5,7 @@ import os
 import platform
 import subprocess
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import yaml
 
@@ -19,6 +19,7 @@ class LicenseService:
 
     TRIAL_DAYS = 30
     DEFAULT_TRIAL_MAX_CAMERAS = 4
+    # Licenses are issued by license-server/signer.py; keep the canonical payload in sync.
     SIGN_FIELDS = (
         'edition',
         'machine_code',
@@ -292,43 +293,6 @@ class LicenseService:
             return None
         with open(path, 'r', encoding='utf-8') as f:
             return json.load(f)
-
-    def build_license(
-        self,
-        *,
-        edition,
-        machine_code,
-        max_cameras,
-        expires_at=None,
-        allowed_algorithms=None,
-        customer_id='',
-        issued_at=None,
-    ):
-        """Build a signed license dict (used by generator and import validation)."""
-        now = datetime.now(timezone.utc)
-        edition = str(edition or '').strip().lower()
-        if edition not in ('trial', 'official'):
-            raise ValueError('edition must be trial or official')
-
-        issued = self._parse_license_date(issued_at) or now
-        if edition == 'trial':
-            exp = issued + timedelta(days=self.TRIAL_DAYS)
-        else:
-            exp = self._parse_license_date(expires_at, end_of_day=True)
-            if not exp:
-                raise ValueError('official license requires expires_at (YYYY-MM-DD)')
-
-        data = {
-            'edition': edition,
-            'customer_id': customer_id or '',
-            'machine_code': str(machine_code).strip(),
-            'max_cameras': int(max_cameras),
-            'allowed_algorithms': list(allowed_algorithms or []),
-            'issued_at': self._format_date(issued),
-            'expires_at': self._format_date(exp),
-        }
-        data['signature'] = self.sign_license(data)
-        return data
 
     def save_license(self, data):
         os.makedirs(self.instance_dir, exist_ok=True)

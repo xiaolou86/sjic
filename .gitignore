@@ -60,6 +60,8 @@ backend/instance/
 /backend/app.db
 /backend/instance/
 /backend/data/
+/license-server/data/
+/license-server/.env
 
 # ============================================
 # Binary / Large files (use Git LFS if needed)

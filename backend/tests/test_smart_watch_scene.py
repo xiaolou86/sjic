@@ -205,8 +205,8 @@ class DetectionSceneClassTest(unittest.TestCase):
         self.assertIn('smoke_detect', od_ids)
         self.assertNotIn('fire_smoke', od_ids)
         labels = catalog.alert_type_labels()
-        self.assertEqual(labels['fire_detect'], '火情')
-        self.assertEqual(labels['smoke_detect'], '烟雾')
+        self.assertEqual(labels['fire_detect'], '识别火情')
+        self.assertEqual(labels['smoke_detect'], '识别烟雾')
 
     def test_scene_class_must_stay_inside_algorithm_labels(self):
         params = {'rules': [{'name': '识别手机', 'enabled': True, 'class_ids': [1]}]}

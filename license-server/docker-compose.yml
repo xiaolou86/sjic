@@ -1,0 +1,18 @@
+# 授权签发服务，单独部署在发行方机器上，不随客户平台交付。
+# 用法：cp .env.example .env，填好后 docker compose up -d --build
+
+services:
+  license-server:
+    build: .
+    image: sjic-license-server:latest
+    container_name: sjic-license-server
+    restart: unless-stopped
+    ports:
+      - "${LICENSE_SERVER_PORT:-38890}:38890"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TZ=Asia/Shanghai
+      - LICENSE_SIGNING_KEY=${LICENSE_SIGNING_KEY:?请在 .env 中设置 LICENSE_SIGNING_KEY}
+      - LICENSE_ADMIN_USER=${LICENSE_ADMIN_USER:-admin}
+      - LICENSE_ADMIN_PASSWORD=${LICENSE_ADMIN_PASSWORD:?请在 .env 中设置 LICENSE_ADMIN_PASSWORD}

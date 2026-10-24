@@ -6,5 +6,5 @@
   "allowed_algorithms": [],
   "issued_at": "2026-01-01",
   "expires_at": "2027-12-31",
-  "signature": "REPLACE_BY_RUNNING_scripts/generate_license.py"
+  "signature": "ISSUED_BY_LICENSE_SERVER"
 }

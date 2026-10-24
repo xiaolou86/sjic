@@ -49,27 +49,7 @@ Windows Docker Desktop 一般无需挂载；依赖容器可见的 DMI `product_u
 
 ## 签发授权
 
-在发行方机器上（需与线上一致的 `license.signing_key`）：
-
-```bash
-cd backend
-
-# 试用版（自动 30 天）
-python scripts/generate_license.py \
-  --machine-code <客户机器码> \
-  --edition trial \
-  --max-cameras 4 \
-  --out license-trial.json
-
-# 正式版
-python scripts/generate_license.py \
-  --machine-code <客户机器码> \
-  --edition official \
-  --max-cameras 32 \
-  --expires-at 2027-12-31 \
-  --customer-id acme \
-  --out license-official.json
-```
+签发不在 backend 里做，由仓库根目录的 [`license-server/`](../../license-server/README.md) 单独部署在发行方机器上，提供签发页面并记录每次签发。它的 `LICENSE_SIGNING_KEY` 必须与客户平台一致。
 
 `issued_at` / `expires_at` 使用 **YYYY-MM-DD**（到期日当天仍有效）。
 
@@ -89,7 +69,7 @@ python scripts/generate_license.py \
 ```yaml
 license:
   trial_max_cameras: 4          # 仅作签发参考/状态展示
-  signing_key: "change-me"      # 须与 generate_license.py 一致；也可用环境变量 LICENSE_SIGNING_KEY
+  signing_key: "change-me"      # 须与 license-server 一致；也可用环境变量 LICENSE_SIGNING_KEY
 ```
 
 ## 运行时约束
