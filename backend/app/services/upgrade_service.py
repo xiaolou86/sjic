@@ -1,15 +1,54 @@
-"""保存已验签的安装包，并通知宿主机升级器。"""
+"""保存已校验的安装包，检查升级前约束，并通知宿主机升级器。"""
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import current_app
+from sqlalchemy import or_
 
 from app.utils.release_pkg import load_verifier, read_version
+
+RUNNING_TASK_STATES = ('running', 'syncing', 'starting')
+# 心跳每 10 秒一次，超过这个时间没收到就当作不在线。
+HEARTBEAT_FRESH_SECONDS = 60
 
 
 class UpgradeError(Exception):
     pass
+
+
+def _version_gte(left, right):
+    try:
+        return load_verifier().version_gte(left, right)
+    except FileNotFoundError as exc:
+        raise UpgradeError(str(exc)) from exc
+
+
+def running_tasks(node_id=None):
+    from app.models import Task
+    query = Task.query.filter(or_(
+        Task.status.in_(RUNNING_TASK_STATES),
+        Task.run_status.in_(RUNNING_TASK_STATES),
+    ))
+    if node_id is not None:
+        query = query.filter(Task.edge_node_id == node_id)
+    return query.order_by(Task.id).all()
+
+
+def _ensure_no_running_tasks(node_id=None):
+    tasks = running_tasks(node_id)
+    if not tasks:
+        return
+    names = '、'.join(task.name for task in tasks[:5])
+    if len(tasks) > 5:
+        names += f' 等 {len(tasks)} 个任务'
+    raise UpgradeError(f'还有任务在运行：{names}。请先停止这些任务再升级')
+
+
+def _ensure_not_downgrade(version):
+    current = read_version()
+    if not _version_gte(version, current):
+        raise UpgradeError(f'安装包版本 {version} 低于当前版本 {current}。数据库只能往前迁移，平台不支持降级')
 
 
 def _path(env_name, default):
@@ -68,6 +107,8 @@ def stage_package(component, stream):
         manifest = verifier.verify_tarball(temporary)
         if manifest.get('component') != component:
             raise UpgradeError(f'这是{manifest.get("component")}安装包，不能当作{component}安装包')
+        if component == 'platform':
+            _ensure_not_downgrade(manifest['version'])
         filename = f'sjic-{component}-{manifest["version"]}.tar.gz'
         final_path = os.path.join(directory, filename)
         os.replace(temporary, final_path)
@@ -112,10 +153,24 @@ def upgrade_download_path(filename):
     return f"/static-upgrades/{filename}?md5={token}&expires={expire_time}"
 
 
+def check_edge_upgrade(node, meta):
+    label = node.name or node.mac_address
+    fresh = node.last_heartbeat and datetime.now() - node.last_heartbeat < timedelta(seconds=HEARTBEAT_FRESH_SECONDS)
+    if node.status != 'online' or not fresh:
+        raise UpgradeError(f'{label} 不在线，无法升级')
+    _ensure_no_running_tasks(node.id)
+    platform_version = read_version()
+    if not _version_gte(platform_version, meta['version']):
+        # 两个安装包出自同一个版本号，这条保证先升平台、后升边缘。
+        raise UpgradeError(f'边缘安装包版本 {meta["version"]} 高于平台当前版本 {platform_version}，请先升级平台')
+
+
 def request_platform_upgrade():
     meta = package_meta('platform')
     if not meta:
         raise UpgradeError('请先上传平台安装包')
+    _ensure_not_downgrade(meta['version'])
+    _ensure_no_running_tasks()
     incoming = incoming_dir()
     request_path = os.path.join(incoming, 'platform.request.json')
     running_path = os.path.join(incoming, 'platform.request.running')

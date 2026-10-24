@@ -3,7 +3,8 @@
 # ---------------------------------------------------------
 
 app:
-  secret_key: "your-secret-key"
+  # JWT 签名密钥。不填时首次启动随机生成，保存在 instance/secret_key；也可用环境变量 SECRET_KEY
+  secret_key: ""
   
 database:
   # 如果要切回 SQLite，填入 sqlite:///app.db 即可
@@ -25,9 +26,8 @@ storage:
   download_secure_key: "my-super-secret-key-for-nginx"
 
   # ---------- 针对 S3/MinIO 配置 ----------
+  # 访问密钥不要写在这里，用环境变量 STORAGE_ACCESS_KEY、STORAGE_SECRET_KEY 提供
   endpoint: "https://minio-api.nm.ljyun.cn"
-  access_key: "zdVLmnfYFK8KtoMbTVEA"
-  secret_key: "qcyJQhNt6tZwYptfM2VnzWltegvOoA845F9QcRq8"
   bucket: "dev/sjic/models"
 
 fs:

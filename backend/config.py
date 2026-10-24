@@ -1,4 +1,5 @@
 import os
+import secrets
 import yaml
 from datetime import datetime
 
@@ -47,8 +48,26 @@ os.makedirs(default_sqlite_dir, exist_ok=True)
 default_sqlite_path = os.path.join(default_sqlite_dir, 'app.db')
 fallback_uri = resolve_sqlite_uri(f"sqlite:///{default_sqlite_path}")
 
+
+def load_secret_key():
+    """JWT 签名密钥。没有配置时随机生成并存进 instance 目录（现场是数据卷，升级不会变）。"""
+    configured = os.environ.get('SECRET_KEY') or get_cfg('app', 'secret_key')
+    if configured and configured != 'your-secret-key':
+        return configured
+    path = os.path.join(default_sqlite_dir, 'secret_key')
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        pass
+    else:
+        with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+            handle.write(secrets.token_hex(32))
+    with open(path, encoding='utf-8') as handle:
+        return handle.read().strip()
+
+
 class Config:
-    SECRET_KEY = os.environ.get('SECRET_KEY') or get_cfg('app', 'secret_key', 'your-secret-key')
+    SECRET_KEY = load_secret_key()
     
     # MQTT 配置 (支持环境变量与 YAML，Docker 部署时通过 mosquitto 容器名连接)
     MQTT_BROKER_URL = os.environ.get('MQTT_BROKER_URL') or get_cfg('mqtt', 'broker_url', '127.0.0.1')
@@ -97,8 +116,8 @@ class Config:
     MODEL_FOLDER = os.path.join(base_dir, 'models')
     # 视频源
     VIDEO_FOLDER = os.path.join(base_dir, 'videos')
-    # 前端标定后的图像
-    IMAGE_FOLDER = os.path.join(base_dir, 'images')
+    # 前端标定后的图像。放在 data 下：现场 data 是数据卷，升级切换版本目录不会丢。
+    IMAGE_FOLDER = os.environ.get('IMAGE_FOLDER') or os.path.join(base_dir, 'data', 'images')
     # 图片测试样本。data 已被 Docker 挂到宿主机，重启和重建容器不会丢。
     IMAGE_SET_FOLDER = os.environ.get('IMAGE_SET_FOLDER') or os.path.join(base_dir, 'data', 'image-sets')
 

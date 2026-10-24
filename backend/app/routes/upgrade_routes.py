@@ -7,6 +7,7 @@ from app.extensions import db
 from app.services.mqtt_service import mqtt_service
 from app.services.upgrade_service import (
     UpgradeError,
+    check_edge_upgrade,
     package_meta,
     platform_status,
     request_platform_upgrade,
@@ -90,6 +91,10 @@ def upgrade_edge_node(node_id):
         return jsonify({'error': str(exc)}), 400
     if not meta:
         return jsonify({'error': '请先在系统设置中上传边缘安装包'}), 400
+    try:
+        check_edge_upgrade(node, meta)
+    except UpgradeError as exc:
+        return jsonify({'error': str(exc)}), 400
 
     user, role = _operator()
     current_app.logger.warning(

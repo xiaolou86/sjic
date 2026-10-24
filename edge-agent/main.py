@@ -76,10 +76,12 @@ def main():
     task_manager.sync_display_config()
 
     try:
-        from utils.upgrade import read_host_status
+        from utils.upgrade import read_host_status, write_ready
         host_status = read_host_status()
         if host_status and host_status.get('state') == 'failed':
             mqtt_client.publish_upgrade_status('failed', host_status.get('message') or '升级失败', read_version())
+        # 初始化已完成。恢复任务可能要下载模型，不能让它拖到宿主机判定超时回滚。
+        write_ready()
     except Exception as exc:
         logger.debug(f'upgrade status file skipped: {exc}')
     

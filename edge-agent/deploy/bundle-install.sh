@@ -58,7 +58,7 @@ fi
 if [ ! -L "$ROOT/current" ]; then
   STAGING="$(mktemp -d "$ROOT/incoming/staging.XXXXXX")"
   tar -xzf "$PKG" -C "$STAGING"
-  SJIC_ROOT="$ROOT" bash "$STAGING/install.sh"
+  SJIC_ROOT="$ROOT" SJIC_EDGE_INLINE=1 bash "$STAGING/install.sh"
   echo "边缘 ${VERSION} 已启动。平台地址在 $ROOT/edge/config.yaml，修改后执行: docker restart sjic-edge"
 else
   echo "已存在 /opt/sjic/current，不覆盖应用和配置。已导入镜像并更新升级器，正在重建容器。"

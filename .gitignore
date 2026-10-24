@@ -59,6 +59,7 @@ backend/instance/
 !/logs/.gitkeep
 /backend/app.db
 /backend/instance/
+/backend/data/
 
 # ============================================
 # Binary / Large files (use Git LFS if needed)

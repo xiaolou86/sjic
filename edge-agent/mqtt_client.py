@@ -20,6 +20,7 @@ class EdgeMqttClient:
         self.client.on_disconnect = self.on_disconnect
         self.task_manager = task_manager
         self._power_lock = threading.Lock()
+        self.upgrading = False
 
         self.topic_prefix = f"sjic/edge/{self.edge_id}"
 
@@ -86,6 +87,9 @@ class EdgeMqttClient:
                 logger.info(f"Pose skeleton overlay set to {show_pose_skeleton()}")
                 return
             if msg.topic.endswith("/task/start"):
+                if self.upgrading:
+                    self._reject_task_during_upgrade(data)
+                    return
                 self.task_manager.start_task(data)
             elif msg.topic.endswith("/task/stop"):
                 task_id = data.get("task_id")
@@ -170,11 +174,24 @@ class EdgeMqttClient:
         }
         self.client.publish(f"{self.topic_prefix}/upgrade/status", json.dumps(payload), qos=1)
 
+    def _reject_task_during_upgrade(self, data):
+        task_id = (data or {}).get("task_id")
+        logger.warning(f"Task {task_id} start rejected: agent upgrade in progress")
+        if task_id:
+            # 回报 stopped：手动启动的任务保持停止；定时任务由平台调度器在升级后自动重试。
+            self.publish_task_status({
+                "timestamp": int(time.time()),
+                "task_id": task_id,
+                "status": "stopped",
+                "message": "节点正在升级，暂不启动任务",
+            })
+
     def _handle_agent_upgrade(self, data):
         if not self._power_lock.acquire(blocking=False):
             logger.warning('Agent upgrade ignored because power/restart/upgrade is already running')
             return
         logger.warning('Agent upgrade requested via MQTT version=%s', (data or {}).get('version'))
+        self.upgrading = True
 
         def _run():
             try:
@@ -187,6 +204,7 @@ class EdgeMqttClient:
                 except Exception:
                     pass
             finally:
+                self.upgrading = False
                 if self._power_lock.locked():
                     self._power_lock.release()
 

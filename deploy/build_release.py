@@ -13,11 +13,22 @@ sys.path.insert(0, str(REPO / 'deploy'))
 import verify_release  # noqa: E402
 
 
-SKIP_DIRS = {
-    '__pycache__', '.git', '.pytest_cache', 'tests', 'instance', 'logs',
-    'models', 'alerts', 'videos', 'deploy', 'node_modules', '.venv', 'venv',
+SKIP_DIRS = {'__pycache__', '.pytest_cache', 'tests'}
+# 白名单：只收运行需要的顶层文件和目录。代码新增顶层文件或目录时要加到这里。
+# config.yaml 不进包：现场靠环境变量和默认值运行，版本目录每次升级也会被整体替换。
+PLATFORM_ENTRIES = (
+    'app', 'config', 'migrations',
+    'config.py', 'entrypoint.sh', 'migrate_entry.py', 'mosquitto.conf', 'run.py',
+)
+PLATFORM_SKIP = {('app', 'cmd')}
+EDGE_ENTRIES = (
+    'algorithms', 'engine', 'platforms', 'runtime', 'utils',
+    'main.py', 'mqtt_client.py',
+)
+FORBIDDEN_SUFFIXES = {
+    '.bak', '.orig', '.rej', '.swp', '.tmp',
+    '.mp4', '.avi', '.mkv', '.mov', '.db', '.sqlite',
 }
-EDGE_SKIP_FILES = {'config.yaml', '.env'}
 
 
 def require_python310() -> None:
@@ -26,13 +37,19 @@ def require_python310() -> None:
         raise SystemExit(f'请使用 Python 3.10 打包，当前是 {version}。字节码必须和现场解释器一致。')
 
 
-def copy_tree(source: Path, dest: Path, skip_files: set) -> None:
+def copy_tree(source: Path, dest: Path, entries=None, skip=frozenset()) -> None:
+    """复制 source 下的文件；entries 为 None 时复制全部，否则只复制列出的顶层文件和目录。"""
+    for name in entries or ():
+        if not (source / name).exists():
+            raise SystemExit(f'缺少 {source / name}')
     dest.mkdir(parents=True, exist_ok=True)
-    for path in source.rglob('*'):
+    for path in sorted(source.rglob('*')):
         relative = path.relative_to(source)
+        if entries is not None and relative.parts[0] not in entries:
+            continue
         if any(part in SKIP_DIRS for part in relative.parts):
             continue
-        if path.name in skip_files:
+        if any(relative.parts[:len(prefix)] == prefix for prefix in skip):
             continue
         target = dest / relative
         if path.is_dir():
@@ -40,6 +57,8 @@ def copy_tree(source: Path, dest: Path, skip_files: set) -> None:
             continue
         if not path.is_file():
             continue
+        if path.suffix.lower() in FORBIDDEN_SUFFIXES:
+            raise SystemExit(f'{path} 不应打进安装包，请删除或移出仓库后重试')
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, target)
 
@@ -97,15 +116,15 @@ def build_component(component: str, version: str, min_version: str, output: Path
         install_sh = (REPO / 'deploy' / 'package_install.sh').read_bytes().replace(b'\r\n', b'\n')
         (staging / 'install.sh').write_bytes(install_sh)
         if component == 'platform':
-            copy_tree(REPO / 'backend', staging / 'backend', set())
+            copy_tree(REPO / 'backend', staging / 'backend', PLATFORM_ENTRIES, PLATFORM_SKIP)
             frontend_build = REPO / 'frontend' / 'build'
             if not frontend_build.is_dir():
                 raise SystemExit('缺少 frontend/build。请先在 frontend 目录执行 npm run build。')
-            copy_tree(frontend_build, staging / 'frontend' / 'build', set())
+            copy_tree(frontend_build, staging / 'frontend' / 'build')
             compile_tree(staging / 'backend')
             write_version(staging, version, [staging / 'backend' / 'VERSION'])
         else:
-            copy_tree(REPO / 'edge-agent', staging / 'edge-agent', EDGE_SKIP_FILES)
+            copy_tree(REPO / 'edge-agent', staging / 'edge-agent', EDGE_ENTRIES)
             compile_tree(staging / 'edge-agent')
             write_version(staging, version, [staging / 'edge-agent' / 'VERSION'])
 

@@ -75,6 +75,33 @@ class TestReleasePackage(unittest.TestCase):
         self.assertIn('frontend/build/manifest.json', listed)
         self.assertIn('install.sh', listed)
 
+    def test_whitelist_skips_extras_and_rejects_backup_files(self):
+        module_path = Path(__file__).resolve().parents[2] / 'deploy' / 'build_release.py'
+        spec = importlib.util.spec_from_file_location('sjic_build_release', module_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        src = Path(tempfile.mkdtemp())
+        out = Path(tempfile.mkdtemp())
+        try:
+            (src / 'app' / 'cmd').mkdir(parents=True)
+            (src / 'app' / 'models').mkdir()
+            (src / 'app' / 'main.py').write_text('x', encoding='utf-8')
+            (src / 'app' / 'models' / 'task.py').write_text('x', encoding='utf-8')
+            (src / 'app' / 'cmd' / 'debug.py').write_text('x', encoding='utf-8')
+            (src / 'images').mkdir()
+            (src / 'images' / 'calibration_2.jpg').write_bytes(b'x')
+            (src / 'config.yaml').write_text('secret', encoding='utf-8')
+            module.copy_tree(src, out / 'a', ('app',), {('app', 'cmd')})
+            copied = sorted(p.relative_to(out / 'a').as_posix() for p in (out / 'a').rglob('*') if p.is_file())
+            self.assertEqual(copied, ['app/main.py', 'app/models/task.py'])
+
+            (src / 'app' / 'routes.py.bak').write_text('x', encoding='utf-8')
+            with self.assertRaises(SystemExit):
+                module.copy_tree(src, out / 'b', ('app',), {('app', 'cmd')})
+        finally:
+            shutil.rmtree(src, ignore_errors=True)
+            shutil.rmtree(out, ignore_errors=True)
+
     def test_accepts_pyc_package(self):
         path = self._write_blob(self._archive({
             'install.sh': '#!/bin/bash\necho ok\n',

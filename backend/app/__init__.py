@@ -148,7 +148,10 @@ def create_app(config_class=Config):
         try:
             from sqlalchemy import inspect as sa_inspect
             from app.models.algorithm import Algorithm
-            if sa_inspect(db.engine).has_table('algorithms'):
+            if os.environ.get('SJIC_MIGRATE_ONLY') == '1':
+                # 迁移前表结构还是旧的，按新模型查询会失败；正常启动时再初始化。
+                app.logger.info('Skip algorithm seed in migrate-only mode')
+            elif sa_inspect(db.engine).has_table('algorithms'):
                 Algorithm.initialize_default_algorithms()
                 app.logger.info('Algorithms metadata initialized')
             else:
