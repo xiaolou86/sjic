@@ -44,7 +44,7 @@ def in_daily_window(now, start_hhmm, end_hhmm):
 
 def _is_running_status(status):
     s = (status or '').lower()
-    return s in ('running', 'syncing', 'starting')
+    return s in ('running', 'syncing', 'starting', 'waiting')
 
 
 def tick_once(app):

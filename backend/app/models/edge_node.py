@@ -1,5 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from app.extensions import db
+
+# 心跳每 10 秒一次，超过这个时间没收到就当作不在线。
+HEARTBEAT_FRESH_SECONDS = 60
 
 class EdgeNode(db.Model):
     __tablename__ = 'edge_nodes'
@@ -25,6 +28,11 @@ class EdgeNode(db.Model):
 
     # Relationships
     tasks = db.relationship('Task', backref='edge_node', lazy=True)
+
+    def is_online(self):
+        if self.status != 'online' or not self.last_heartbeat:
+            return False
+        return datetime.now() - self.last_heartbeat < timedelta(seconds=HEARTBEAT_FRESH_SECONDS)
 
     def to_dict(self):
         bound_camera_ids = []

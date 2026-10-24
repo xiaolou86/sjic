@@ -146,24 +146,33 @@ class DetectorService:
                 }
             }
 
-            from app.services.mqtt_service import mqtt_service
-            mqtt_service.publish_task_start(edge_node.mac_address, task_payload)
-
-            task.status = 'syncing'
-            task.run_status = 'starting'
-            # 手动/自动启动后，允许调度器继续按时段管理
-            if task.has_schedule():
-                task.schedule_paused = False
-            
-            current_app.logger.info(f"Published task {task_id} to edge node {edge_node.mac_address}")
-            db.session.commit()
-            
-            return {"success": True, "message": "Task start command sent to edge node"}
+            return self._dispatch_start(task, edge_node, task_payload)
             
         except Exception as e:
             import traceback
             current_app.logger.error(f"Error starting detection: {str(e)}\n{traceback.format_exc()}")
             return {"success": False, "message": str(e)}
+
+    def _dispatch_start(self, task, edge_node, task_payload):
+        # 边缘端是 clean session，离线时下发的指令会丢。先记为 waiting，盒子上线后由心跳补发。
+        online = edge_node.is_online()
+        if online:
+            from app.services.mqtt_service import mqtt_service
+            mqtt_service.publish_task_start(edge_node.mac_address, task_payload)
+            task.status = 'starting'
+        else:
+            task.status = 'waiting'
+        task.run_status = task.status
+        # 手动/自动启动后，允许调度器继续按时段管理
+        if task.has_schedule():
+            task.schedule_paused = False
+        db.session.commit()
+
+        if online:
+            current_app.logger.info(f"Published task {task.id} to edge node {edge_node.mac_address}")
+            return {"success": True, "message": "Task start command sent to edge node"}
+        current_app.logger.info(f"Task {task.id} waiting for edge node {edge_node.mac_address} to come online")
+        return {"success": True, "message": "Edge node offline, task will start when it comes online"}
 
     def _model_payload(self, algorithm):
         if not algorithm or not algorithm.model_id:
@@ -258,19 +267,7 @@ class DetectorService:
                 },
             }
 
-            from app.services.mqtt_service import mqtt_service
-            mqtt_service.publish_task_start(edge_node.mac_address, task_payload)
-
-            task.status = 'syncing'
-            task.run_status = 'starting'
-            if task.has_schedule():
-                task.schedule_paused = False
-            current_app.logger.info(
-                f"Published exam pipeline task {task.id} to edge node {edge_node.mac_address} "
-                f"models={list(models.keys())}"
-            )
-            db.session.commit()
-            return {"success": True, "message": "Task start command sent to edge node"}
+            return self._dispatch_start(task, edge_node, task_payload)
         except Exception as e:
             import traceback
             current_app.logger.error(f"Error starting exam pipeline: {str(e)}\n{traceback.format_exc()}")

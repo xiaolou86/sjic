@@ -7,6 +7,7 @@ import {
 } from '@mui/material';
 import { Add, Edit, Delete, PlayArrow, Stop, Info, Search } from '@mui/icons-material';
 import axios from '../utils/axios';
+import { isTaskActive, taskStatusLabel } from '../utils/taskStatus';
 import BeltCalibrationTool from '../components/BeltCalibrationTool';
 import BeltDeviationCalibrationTool from '../components/BeltDeviationCalibrationTool';
 import DetectionRulesEditor from '../components/DetectionRulesEditor';
@@ -350,7 +351,6 @@ function Tasks() {
       await axios.post('/api/detection/start', {
         task_id: task.id
       });
-      task.status = 'running';
       fetchTasks();
     } catch (error) {
       console.error('Error starting detection:', error);
@@ -906,6 +906,7 @@ function Tasks() {
           >
             <MenuItem value="all">运行状态 (全部)</MenuItem>
             <MenuItem value="stopped">🔴 已停止 (Stopped)</MenuItem>
+            <MenuItem value="waiting">⏳ 等待节点上线 (Waiting)</MenuItem>
             <MenuItem value="starting">🟡 启动中 (Starting)</MenuItem>
             <MenuItem value="running">🟢 运行中 (Running)</MenuItem>
           </Select>
@@ -984,7 +985,7 @@ function Tasks() {
                       );
                     })()}
                   </TableCell>
-                  <TableCell>{task.status}</TableCell>
+                  <TableCell>{taskStatusLabel(task.status)}</TableCell>
                   <TableCell>
                     <IconButton onClick={() => handleEdit(task)}>
                       <Edit />
@@ -992,7 +993,7 @@ function Tasks() {
                     <IconButton onClick={() => handleDelete(task.id)}>
                       <Delete />
                     </IconButton>
-                    {task.status === 'running' ? (
+                    {isTaskActive(task.status) ? (
                       <IconButton onClick={() => handleStopDetection(task)}>
                         <Stop />
                       </IconButton>

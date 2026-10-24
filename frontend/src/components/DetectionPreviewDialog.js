@@ -4,6 +4,7 @@ import {
   Typography
 } from '@mui/material';
 import axios from '../utils/axios';
+import { taskStatusLabel } from '../utils/taskStatus';
 
 export function taskPreviewEngines(task) {
   if (!task) return [];
@@ -18,14 +19,6 @@ export function taskPreviewEngines(task) {
   }
   return [];
 }
-
-const STATUS_LABEL = {
-  running: '运行中',
-  stopped: '已停止',
-  syncing: '同步中',
-  starting: '启动中',
-  error: '出错',
-};
 
 function formatScore(value) {
   const number = Number(value);
@@ -275,7 +268,7 @@ function DetectionPreviewDialog({ task, onClose }) {
         )}
         {!armError && !taskRunning && (
           <Alert severity="warning" sx={{ mb: 1.5 }}>
-            任务当前是「{STATUS_LABEL[task.status] || task.status || '未运行'}」。先启动任务，节点开始推理后这里才会有画面。
+            任务当前是「{taskStatusLabel(task.status)}」。先启动任务，节点开始推理后这里才会有画面。
           </Alert>
         )}
         <Box

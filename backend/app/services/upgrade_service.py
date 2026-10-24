@@ -1,16 +1,14 @@
 """保存已校验的安装包，检查升级前约束，并通知宿主机升级器。"""
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from flask import current_app
 from sqlalchemy import or_
 
 from app.utils.release_pkg import load_verifier, read_version
 
-RUNNING_TASK_STATES = ('running', 'syncing', 'starting')
-# 心跳每 10 秒一次，超过这个时间没收到就当作不在线。
-HEARTBEAT_FRESH_SECONDS = 60
+RUNNING_TASK_STATES = ('running', 'syncing', 'starting', 'waiting')
 
 
 class UpgradeError(Exception):
@@ -155,8 +153,7 @@ def upgrade_download_path(filename):
 
 def check_edge_upgrade(node, meta):
     label = node.name or node.mac_address
-    fresh = node.last_heartbeat and datetime.now() - node.last_heartbeat < timedelta(seconds=HEARTBEAT_FRESH_SECONDS)
-    if node.status != 'online' or not fresh:
+    if not node.is_online():
         raise UpgradeError(f'{label} 不在线，无法升级')
     _ensure_no_running_tasks(node.id)
     platform_version = read_version()

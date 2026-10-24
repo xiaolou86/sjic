@@ -20,7 +20,7 @@ class Task(db.Model):
     status = db.Column(db.String(20), default='stopped')
     # 边缘架构新增字段
     edge_node_id = db.Column(db.Integer, db.ForeignKey('edge_nodes.id'), nullable=True) # 指派给哪个边缘节点执行
-    run_status = db.Column(db.String(20), default='stopped') # 边缘端实际的运行状态: syncing, running, stopped, error
+    run_status = db.Column(db.String(20), default='stopped') # 边缘端实际的运行状态: waiting(等节点上线), starting, running, stopped, error
     # 每日运行时段（HH:MM）；两者都设置则为定时任务，由调度器按窗口启停
     schedule_start = db.Column(db.String(8), nullable=True)
     schedule_end = db.Column(db.String(8), nullable=True)

@@ -116,6 +116,8 @@ class MqttService:
                         t.run_status = 'stopped'
 
                 db.session.commit()
+                if reported_status == 'online':
+                    self._start_waiting_tasks(node)
             except Exception as e:
                 # 捕获并发心跳导致的并发插入冲突 (UNIQUE constraint failed)
                 db.session.rollback()
@@ -128,6 +130,20 @@ class MqttService:
                     node.hardware_status = data.get('hardware', {})
                     self._apply_version_report(node, data)
                     db.session.commit()
+
+    def _start_waiting_tasks(self, node):
+        waiting = Task.query.filter(Task.edge_node_id == node.id, Task.status == 'waiting').all()
+        if not waiting:
+            return
+        from app.services.detector import DetectorService
+        detector = DetectorService()
+        for t in waiting:
+            result = detector.start_detection(t.id)
+            if not result.get('success'):
+                logger.warning(f"Waiting task {t.id} failed to start on {node.mac_address}: {result.get('message')}")
+                t.status = 'stopped'
+                t.run_status = 'stopped'
+                db.session.commit()
 
     def _handle_task_status(self, data):
         """更新任务在云端的运行状态反馈"""
