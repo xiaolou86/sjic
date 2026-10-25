@@ -35,9 +35,16 @@ image_exists() {
 }
 
 # 只确认这是 sjic-edge:jetson 的 docker save 结果。镜像不跟应用版本走，同一份 tar 可以反复使用。
+# docker save 把 manifest.json 放在文件开头，只读这一段，避免把几个 GB 的镜像扫完。
 verify_edge_tar() {
   local tar_path="$1"
   local manifest
+  echo "正在核对 $(basename "$tar_path") 的镜像清单..."
+  manifest="$(head -c 2097152 "$tar_path" | tar -xO manifest.json 2>/dev/null || true)"
+  case "$manifest" in
+    *'"sjic-edge:jetson"'*) return 0 ;;
+  esac
+  echo "清单不在文件开头，改为通读 $(basename "$tar_path")..."
   manifest="$(tar -xOf "$tar_path" manifest.json 2>/dev/null)" || {
     echo "无法读取 $(basename "$tar_path") 的 manifest.json。请在 Jetson 上执行 docker save -o sjic-edge-jetson.tar sjic-edge:jetson。" >&2
     exit 1
@@ -116,18 +123,23 @@ export_platform() {
 export_edge() {
   local package="$REPO/dist/sjic-edge-${VERSION}.tar.gz"
   local folder="$STAGING/sjic-edge-setup-${VERSION}"
+  local image_src image_dest
   read_package "$package" edge "$VERSION"
   rm -rf "$folder"
-  mkdir -p "$folder/images" "$folder/updater"
+  mkdir -p "$folder/updater"
+  # 镜像已经是 tar，不再打进 gzip。setup 包只带安装脚本和应用包。
+  image_dest="$REPO/dist/sjic-edge-jetson.tar"
   if [ -n "$EDGE_IMAGE" ]; then
     if [ ! -f "$EDGE_IMAGE" ]; then
       echo "找不到边缘镜像文件 $EDGE_IMAGE" >&2
       exit 1
     fi
     verify_edge_tar "$EDGE_IMAGE"
-    cp -a "$EDGE_IMAGE" "$folder/images/sjic-edge-jetson.tar"
+    image_src="$EDGE_IMAGE"
   elif image_exists sjic-edge:jetson; then
-    docker save -o "$folder/images/sjic-edge-jetson.tar" sjic-edge:jetson
+    echo "正在导出边缘镜像到 $image_dest（不压缩）..."
+    docker save -o "$image_dest" sjic-edge:jetson
+    image_src="$image_dest"
   else
     echo "开发机上没有 sjic-edge:jetson。请在 Jetson 构建机执行 docker save -o sjic-edge-jetson.tar sjic-edge:jetson，再用 --edge-image 指定。" >&2
     exit 1
@@ -143,6 +155,12 @@ export_edge() {
   archive_dir "$folder" "$REPO/dist/sjic-edge-setup-${VERSION}.tar.gz"
   record_sha256 "$REPO/dist/sjic-edge-setup-${VERSION}.tar.gz"
   rm -rf "$folder"
+  if [ "$(readlink -f "$image_src")" != "$(readlink -f "$image_dest")" ]; then
+    echo "正在复制边缘镜像到 $image_dest（不压缩）..."
+    cp -a "$image_src" "$image_dest"
+  fi
+  echo "正在计算边缘镜像校验和..."
+  record_sha256 "$image_dest"
 }
 
 if [ "$COMPONENT" = "platform" ] || [ "$COMPONENT" = "all" ]; then

@@ -12,6 +12,9 @@ ROOT=/opt/sjic
 VERSION="$(tr -d '[:space:]' < "$HERE/VERSION")"
 PKG="$HERE/sjic-edge-${VERSION}.tar.gz"
 IMAGE_TAR="$HERE/images/sjic-edge-jetson.tar"
+if [ ! -f "$IMAGE_TAR" ] && [ -f "$HERE/../sjic-edge-jetson.tar" ]; then
+  IMAGE_TAR="$HERE/../sjic-edge-jetson.tar"
+fi
 STAGING=""
 
 cleanup() {
@@ -27,10 +30,11 @@ if [ ! -f "$PKG" ]; then
 fi
 
 if [ -f "$IMAGE_TAR" ]; then
+  echo "正在导入 $(basename "$IMAGE_TAR")"
   docker load -i "$IMAGE_TAR"
 fi
 if ! docker image inspect sjic-edge:jetson >/dev/null 2>&1; then
-  echo "缺少镜像 sjic-edge:jetson。请把构建机导出的 sjic-edge-jetson.tar 放到 images/ 后重试。" >&2
+  echo "缺少镜像 sjic-edge:jetson。请把 sjic-edge-jetson.tar 和 setup 包放在同一目录后重试。" >&2
   exit 1
 fi
 
