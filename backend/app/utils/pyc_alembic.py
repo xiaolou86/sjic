@@ -49,6 +49,7 @@ def install_pyc_env_loader():
         from alembic.util import load_python_file
 
     original = ScriptDirectory.run_env
+    original_from_config = ScriptDirectory.from_config
 
     def run_env(self):
         install_pyc_revision_support()
@@ -59,5 +60,12 @@ def install_pyc_env_loader():
             return None
         return original(self)
 
+    def from_config(config):
+        # Alembic 1.16 用 sourceless 识别 versions/*.pyc。未打开时升级会空跑。
+        if not config.get_alembic_boolean_option('sourceless'):
+            config.set_main_option('sourceless', 'true')
+        return original_from_config(config)
+
     ScriptDirectory.run_env = run_env
+    ScriptDirectory.from_config = from_config
     ScriptDirectory._sjic_env_ready = True

@@ -3,6 +3,7 @@
 # 构建机（有源码的那台 Jetson）:
 #   1. docker compose build
 #   2. docker save -o sjic-edge-jetson.tar sjic-edge:jetson
+# 构建时编译为 .pyc 并删除 .py，镜像里不留源码。
 # 客户盒子不放源码，安装见 docs/初次打包与部署.md。日常升级走管理平台下发的安装包。
 #   RTSP 硬解：镜像装了 GStreamer + PyGObject，容器里有 nvv4l2decoder 时走 NVDEC，
 #   否则回退 FFmpeg 软解。日志 "Opened RTSP via ..." 写明实际后端；现场核对：

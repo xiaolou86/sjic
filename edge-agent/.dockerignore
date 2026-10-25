@@ -1,13 +1,16 @@
 models/
 alerts/
 logs/
+tests/
+deploy/
 __pycache__/
 *.py[cod]
 *.egg-info/
 .env
 .git/
 .gitignore
-readme.md
+config.yaml
+*.md
 image.png
 check_jetson.sh
 export_tensorrt.sh

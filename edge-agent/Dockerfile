@@ -36,7 +36,13 @@ RUN pip install --no-cache-dir -r "${REQUIREMENTS_FILE}"
 
 COPY . .
 
-# 运行时目录（也可由 compose volume 覆盖）
-RUN mkdir -p /app/models /app/alerts /app/logs
+# 客户镜像不留 .py。字节码用本镜像里的解释器编译，和现场一致。
+# 升级包会整目录挂到 /app，盖住这里的文件；入口脚本随升级包一起换。
+RUN python -m compileall -b -f -q /app \
+    && find /app -depth -type d -name __pycache__ -exec rm -rf {} + \
+    && find /app -type f -name '*.py' -delete \
+    && sed -i 's/\r$//' /app/entrypoint.sh \
+    && chmod +x /app/entrypoint.sh \
+    && mkdir -p /app/models /app/alerts /app/logs
 
-CMD ["python", "main.py"]
+CMD ["/bin/sh", "/app/entrypoint.sh"]

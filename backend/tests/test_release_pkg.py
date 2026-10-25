@@ -94,6 +94,7 @@ class TestReleasePackage(unittest.TestCase):
             module.copy_tree(src, out / 'a', ('app',), {('app', 'cmd')})
             copied = sorted(p.relative_to(out / 'a').as_posix() for p in (out / 'a').rglob('*') if p.is_file())
             self.assertEqual(copied, ['app/main.py', 'app/models/task.py'])
+            self.assertIn('entrypoint.sh', module.EDGE_ENTRIES)
 
             (src / 'app' / 'routes.py.bak').write_text('x', encoding='utf-8')
             with self.assertRaises(SystemExit):
@@ -101,6 +102,42 @@ class TestReleasePackage(unittest.TestCase):
         finally:
             shutil.rmtree(src, ignore_errors=True)
             shutil.rmtree(out, ignore_errors=True)
+
+    def test_compile_tree_removes_python_source(self):
+        module_path = Path(__file__).resolve().parents[2] / 'deploy' / 'build_release.py'
+        spec = importlib.util.spec_from_file_location('sjic_build_release_compile', module_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        root = Path(tempfile.mkdtemp())
+        try:
+            package = root / 'pkg'
+            package.mkdir()
+            (package / '__init__.py').write_text('VALUE = 1\n', encoding='utf-8')
+            (root / 'main.py').write_text('from pkg import VALUE\n', encoding='utf-8')
+            (root / 'entrypoint.sh').write_bytes(b'#!/bin/sh\r\nset -e\r\n')
+            module.compile_tree(root)
+            files = sorted(
+                path.relative_to(root).as_posix()
+                for path in root.rglob('*')
+                if path.is_file()
+            )
+            self.assertEqual(files, ['entrypoint.sh', 'main.pyc', 'pkg/__init__.pyc'])
+            dest = Path(tempfile.mkdtemp())
+            try:
+                module.copy_tree(root, dest, ('entrypoint.sh',))
+                self.assertEqual((dest / 'entrypoint.sh').read_bytes(), b'#!/bin/sh\nset -e\n')
+            finally:
+                shutil.rmtree(dest, ignore_errors=True)
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+        broken = Path(tempfile.mkdtemp())
+        try:
+            (broken / 'bad.py').write_text('def (\n', encoding='utf-8')
+            with self.assertRaises(SystemExit):
+                module.compile_tree(broken)
+        finally:
+            shutil.rmtree(broken, ignore_errors=True)
 
     def test_accepts_pyc_package(self):
         path = self._write_blob(self._archive({

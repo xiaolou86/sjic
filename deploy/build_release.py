@@ -23,7 +23,7 @@ PLATFORM_ENTRIES = (
 PLATFORM_SKIP = {('app', 'cmd')}
 EDGE_ENTRIES = (
     'algorithms', 'engine', 'platforms', 'runtime', 'utils',
-    'main.py', 'mqtt_client.py',
+    'entrypoint.sh', 'main.py', 'mqtt_client.py',
 )
 FORBIDDEN_SUFFIXES = {
     '.bak', '.orig', '.rej', '.swp', '.tmp',
@@ -60,11 +60,15 @@ def copy_tree(source: Path, dest: Path, entries=None, skip=frozenset()) -> None:
         if path.suffix.lower() in FORBIDDEN_SUFFIXES:
             raise SystemExit(f'{path} 不应打进安装包，请删除或移出仓库后重试')
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(path, target)
+        data = path.read_bytes()
+        if path.suffix == '.sh':
+            data = data.replace(b'\r\n', b'\n')
+        target.write_bytes(data)
 
 
 def compile_tree(root: Path) -> None:
-    compileall.compile_dir(str(root), legacy=True, force=True, quiet=1)
+    if not compileall.compile_dir(str(root), legacy=True, force=True, quiet=1):
+        raise SystemExit(f'{root} 有 Python 文件未能编译成字节码')
     for path in list(root.rglob('*')):
         if path.is_dir() and path.name == '__pycache__':
             shutil.rmtree(path, ignore_errors=True)

@@ -13,6 +13,18 @@ def main():
     app = create_app()
     with app.app_context():
         upgrade()
+        if not _current_revision():
+            raise RuntimeError(
+                '数据库迁移没有写入版本号。迁移脚本未被识别，表不会被创建'
+            )
+
+
+def _current_revision():
+    from alembic.runtime.migration import MigrationContext
+    from app.extensions import db
+
+    with db.engine.connect() as connection:
+        return MigrationContext.configure(connection).get_current_revision()
 
 
 if __name__ == '__main__':
