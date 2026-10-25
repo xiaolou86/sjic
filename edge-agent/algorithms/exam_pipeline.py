@@ -20,7 +20,7 @@ from .pose_geometry import normalize_mount_position, person_has_glasses
 from .rules import behavior_rois, build_rules, explain_detection_rules, person_count_specs
 from runtime import create_runtime
 from utils.calc import get_letterbox_params, preprocess
-from utils.rtsp import FramePump, is_valid_frame
+from utils.rtsp import FramePump, InferPacer, is_valid_frame
 from utils.schedule import is_item_active_now
 
 
@@ -120,12 +120,11 @@ class ExamPipelineAlgorithm(BaseAlgorithm):
             )
 
             infer_fps = float(parameters.get('inferFps') or algo_params.get('infer_fps') or 5)
-            infer_interval = (1.0 / infer_fps) if infer_fps > 0 else 0.0
-            decode_fps = infer_fps if infer_fps > 0 else 12.0
             rtsp_url = (config_dict.get('camera') or {}).get('rtsp_url')
             view = normalize_mount_position((config_dict.get('camera') or {}).get('mount_position'))
+            logger.info(f"Throughput caps: inferFps={infer_fps:.1f}")
 
-            pump = FramePump(camera_stream, stop_event, rtsp_url, logger, max_decode_fps=decode_fps)
+            pump = FramePump(camera_stream, stop_event, rtsp_url, logger)
             pump.start()
             first_frame, last_seq = pump.get_latest(last_seq=0, wait_sec=8.0)
             new_h = new_w = top = left = bottom = right = None
@@ -219,20 +218,13 @@ class ExamPipelineAlgorithm(BaseAlgorithm):
             last_log = time.time()
             fps_window_t = time.time()
             fps_window_n = 0
-            next_infer_t = 0.0
-            while not stop_event.is_set():
-                now_t = time.time()
-                if infer_interval and now_t < next_infer_t:
-                    if stop_event.wait(timeout=min(0.05, next_infer_t - now_t)):
-                        break
-                    continue
-
+            pacer = InferPacer(infer_fps)
+            while pacer.wait(stop_event):
                 frame, last_seq = pump.get_latest(last_seq=last_seq, wait_sec=2.0)
                 if stop_event.is_set():
                     break
                 if frame is None or not is_valid_frame(frame):
                     continue
-                next_infer_t = time.time() + infer_interval
                 now = datetime.now()
                 if occlusion_specs:
                     od_helper._check_occlusion(

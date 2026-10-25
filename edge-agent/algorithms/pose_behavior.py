@@ -54,7 +54,7 @@ from .rules import (
     person_count_specs,
 )
 from utils.calc import get_letterbox_params, preprocess
-from utils.rtsp import FramePump, is_valid_frame
+from utils.rtsp import FramePump, InferPacer, is_valid_frame
 from utils.schedule import is_item_active_now
 
 
@@ -944,16 +944,11 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
                 or algo_params.get('infer_fps')
                 or 5
             )
-            infer_interval = (1.0 / infer_fps) if infer_fps > 0 else 0.0
-            decode_fps = infer_fps if infer_fps > 0 else 12.0
-            pump = FramePump(camera_stream, stop_event, rtsp_url, logger, max_decode_fps=decode_fps)
+            pump = FramePump(camera_stream, stop_event, rtsp_url, logger)
             pump.start()
             try:
                 runtime.load(model_path)
-                logger.info(
-                    f"Throughput caps: inferFps={infer_fps:.1f} decodeFps≈{decode_fps:.1f} "
-                    f"mount_position={view}"
-                )
+                logger.info(f"Throughput caps: inferFps={infer_fps:.1f} mount_position={view}")
                 first_frame, last_seq = pump.get_latest(last_seq=0, wait_sec=8.0)
                 if first_frame is None:
                     import cv2
@@ -984,25 +979,18 @@ class PoseBehaviorAlgorithm(BaseAlgorithm):
                     )
                 }
                 scene_rois = behavior_rois(behaviors, transform_roi)
-                next_infer_t = 0.0
                 frame_idx = 0
                 last_log = time.time()
                 fps_window_t = time.time()
                 fps_window_n = 0
 
-                while not stop_event.is_set():
-                    now_t = time.time()
-                    if infer_interval and now_t < next_infer_t:
-                        if stop_event.wait(timeout=min(0.05, next_infer_t - now_t)):
-                            break
-                        continue
-
+                pacer = InferPacer(infer_fps)
+                while pacer.wait(stop_event):
                     frame, last_seq = pump.get_latest(last_seq=last_seq, wait_sec=2.0)
                     if stop_event.is_set():
                         break
                     if frame is None or not is_valid_frame(frame):
                         continue
-                    next_infer_t = time.time() + infer_interval
                     processed = preprocess(frame, new_h, new_w, top, bottom, left, right)
                     if processed is None:
                         continue

@@ -7,7 +7,7 @@ import cv2
 import time
 from datetime import datetime
 from utils.calc import transform_points_from_frontend_to_backend, get_letterbox_params, preprocess
-from utils.rtsp import FramePump, is_valid_frame
+from utils.rtsp import FramePump, InferPacer, is_valid_frame
 from utils.schedule import is_item_active_now
 
 
@@ -101,17 +101,14 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
             alert_threshold = int(parameters.get('alertThreshold', 10))
             task_sched_start = parameters.get('schedule_start') or algorithm_parameters.get('schedule_start')
             task_sched_end = parameters.get('schedule_end') or algorithm_parameters.get('schedule_end')
-            # 解码/推理都不必跟摄像头满帧率；告警场景默认 5fps
+            # 推理不必跟摄像头满帧率；告警场景默认 5fps
             infer_fps = float(
                 parameters.get('inferFps')
                 or algorithm_parameters.get('infer_fps')
                 or 5
             )
-            infer_interval = (1.0 / infer_fps) if infer_fps > 0 else 0.0
-            # 与推理同频即可：更高只会多 decode/copy 又被丢掉
-            decode_fps = infer_fps if infer_fps > 0 else 12.0
 
-            pump = FramePump(camera, stop_event, rtsp_url, logger, max_decode_fps=decode_fps)
+            pump = FramePump(camera, stop_event, rtsp_url, logger)
             pump.start()
             try:
                 first_frame, last_seq = pump.get_latest(last_seq=0, wait_sec=8.0)
@@ -192,13 +189,11 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                         )
                     elif infer_classes:
                         logger.info(f"object classes={infer_classes}")
-                    logger.info(
-                        f"Throughput caps: inferFps={infer_fps:.1f} decodeFps≈{decode_fps:.1f}"
-                    )
+                    logger.info(f"Throughput caps: inferFps={infer_fps:.1f}")
                 elif occlusion_specs:
                     logger.info(
                         f"摄像头遮挡挂在本路已解码画面上，本帧不跑检测模型 "
-                        f"decodeFps≈{decode_fps:.1f}"
+                        f"inferFps={infer_fps:.1f}"
                     )
                 if warmup is not None:
                     processed = preprocess(warmup, new_h, new_w, top, bottom, left, right)
@@ -214,15 +209,8 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                 last_log = time.time()
                 fps_window_t = time.time()
                 fps_window_n = 0
-                next_infer_t = 0.0
-                while not stop_event.is_set():
-                    now_t = time.time()
-                    if infer_interval and now_t < next_infer_t:
-                        # 限流等待，避免无意义取帧/copy
-                        if stop_event.wait(timeout=min(0.05, next_infer_t - now_t)):
-                            break
-                        continue
-
+                pacer = InferPacer(infer_fps)
+                while pacer.wait(stop_event):
                     frame, last_seq = pump.get_latest(last_seq=last_seq, wait_sec=2.0)
                     if stop_event.is_set():
                         break
@@ -230,7 +218,6 @@ class ObjectDetectionAlgorithm(BaseAlgorithm):
                         logger.warning("No new RTSP frame for 2s")
                         continue
 
-                    next_infer_t = time.time() + infer_interval
                     now = datetime.now()
                     self._check_occlusion(
                         occlusion_specs, occlusion_state, frame, now,

@@ -7,9 +7,8 @@ from .occlusion import (
     DEFAULT_STD_MAX,
     ring_occlusion_ratio,
 )
-import time
 from datetime import datetime
-from utils.rtsp import FramePump, is_valid_frame
+from utils.rtsp import FramePump, InferPacer, is_valid_frame
 from utils.schedule import in_daily_window
 
 
@@ -35,13 +34,16 @@ class CameraHealthAlgorithm(BaseAlgorithm):
                 return
 
             rtsp_url = config_dict.get('camera', {}).get('rtsp_url')
+            # 整幅模糊和统计按原图做，不能每帧都算
+            infer_fps = float(parameters.get('inferFps') or algo_params.get('infer_fps') or 5)
             pump = FramePump(camera_stream, stop_event, rtsp_url, logger)
             pump.start()
             try:
                 last_seq = 0
                 bad_since = None
                 last_alert_time = None
-                while not stop_event.is_set():
+                pacer = InferPacer(infer_fps)
+                while pacer.wait(stop_event):
                     frame, last_seq = pump.get_latest(last_seq=last_seq, wait_sec=2.0)
                     if stop_event.is_set():
                         break
@@ -80,7 +82,6 @@ class CameraHealthAlgorithm(BaseAlgorithm):
                         )
                     last_alert_time = now
                     bad_since = now
-                    time.sleep(0.05)
             finally:
                 pump.release()
         except Exception as e:

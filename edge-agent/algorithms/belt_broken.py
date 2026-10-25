@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 from datetime import datetime
 import time
+from utils.rtsp import InferPacer
 from .base import BaseAlgorithm
 
 
@@ -28,7 +29,9 @@ class BeltBrokenAlgorithm(BaseAlgorithm):
         last_alert_time = None
 
         # 推理循环
-        while not stop_event.is_set():
+        algo_params = params.get('algorithm_parameters') or {}
+        pacer = InferPacer(params.get('inferFps') or algo_params.get('infer_fps') or 5)
+        while pacer.wait(stop_event):
             ret, frame = camera_stream.read()
             if not ret:
                 time.sleep(1) # 重试机制

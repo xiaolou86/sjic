@@ -2,6 +2,7 @@ from .base import BaseAlgorithm
 import cv2
 import numpy as np
 import time
+from utils.rtsp import InferPacer
 
 
 class BeltBrokenRCNNAlgorithm(BaseAlgorithm):
@@ -52,7 +53,8 @@ class BeltBrokenRCNNAlgorithm(BaseAlgorithm):
             # 使用计算出的转换比例
             min_area_cm2 = algorithm_parameters.get('min_area_cm2', 100)
             
-            while not stop_event.is_set():
+            pacer = InferPacer(parameters.get('inferFps') or algorithm_parameters.get('infer_fps') or 5)
+            while pacer.wait(stop_event):
                 ret, frame = camera.read()
                 if not ret:
                     continue

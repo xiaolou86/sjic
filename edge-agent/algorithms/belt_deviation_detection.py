@@ -5,6 +5,7 @@ from datetime import datetime
 from shapely.geometry import LineString, Polygon
 import time
 from utils.calc import transform_points_from_frontend_to_backend, get_letterbox_params, preprocess, preprocess_return_numpy
+from utils.rtsp import InferPacer
 
 
 class BeltDeviationDetection(BaseAlgorithm):
@@ -66,7 +67,8 @@ class BeltDeviationDetection(BaseAlgorithm):
                 [line_points[2], line_points[3]]
             ]
 
-            while not stop_event.is_set():
+            pacer = InferPacer(parameters.get('inferFps') or algorithm_parameters.get('infer_fps') or 5)
+            while pacer.wait(stop_event):
                 ret, frame = camera.read()
                 if not ret:
                     time.sleep(1)

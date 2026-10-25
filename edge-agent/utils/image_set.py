@@ -50,6 +50,9 @@ def open_image_set_capture(url):
 
 
 class ImageSetCapture:
+    # 静图随取随有，FramePump 按需 read，不开后台线程。
+    reads_latest = True
+
     def __init__(self, url):
         raw = str(url or '').strip()
         if not raw.startswith(IMAGE_SET_PREFIX) or not raw[len(IMAGE_SET_PREFIX):].strip():

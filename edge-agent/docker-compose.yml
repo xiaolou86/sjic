@@ -4,8 +4,10 @@
 #   1. docker compose build
 #   2. docker save -o sjic-edge-jetson.tar sjic-edge:jetson
 # 客户盒子不放源码，安装见 docs/初次打包与部署.md。日常升级走管理平台下发的安装包。
-#   RTSP 只有在容器内 OpenCV 启用 GStreamer 且 nvv4l2decoder 管道可用时才走 NVDEC；
-#   否则会回退 FFmpeg。SJIC_RTSP_HWDEC=0 可禁用 GStreamer 硬解候选。
+#   RTSP 硬解：镜像装了 GStreamer + PyGObject，容器里有 nvv4l2decoder 时走 NVDEC，
+#   否则回退 FFmpeg 软解。日志 "Opened RTSP via ..." 写明实际后端；现场核对：
+#   docker exec sjic-edge python -m utils.stream_check "<rtsp地址>" --fps 5
+#   SJIC_RTSP_HWDEC=0 可禁用 GStreamer 硬解候选。
 #
 # 远程重启 Agent：平台下发 agent/restart → 容器进程退出 → restart: unless-stopped 自动拉起
 # 远程重启/关机主机：平台下发 agent/power → nsenter 宿主机 PID 1 执行 reboot/poweroff
@@ -55,6 +57,7 @@ services:
       args:
         BASE_IMAGE: ${EDGE_BASE_IMAGE_X86:-python:3.10-slim}
         REQUIREMENTS_FILE: requirements-cpu.txt
+        INSTALL_GSTREAMER: "0"
     image: sjic-edge:x86
     container_name: sjic-edge
     restart: unless-stopped

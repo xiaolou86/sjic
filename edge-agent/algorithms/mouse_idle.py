@@ -68,17 +68,17 @@ class MouseIdleAlgorithm(BaseAlgorithm):
                     idle_for = time.time() - last_act
                     now = datetime.now()
 
-                    frame = None
-                    if pump is not None:
-                        frame, last_seq = pump.get_latest(last_seq=last_seq, wait_sec=0.5)
-
                     if idle_for < idle_seconds:
-                        time.sleep(0.5)
+                        stop_event.wait(0.5)
                         continue
                     if last_alert_time and (now - last_alert_time).total_seconds() < alert_threshold:
-                        time.sleep(0.5)
+                        stop_event.wait(0.5)
                         continue
 
+                    # 只在要告警时取一帧当截图
+                    frame = None
+                    if pump is not None:
+                        frame, last_seq = pump.get_latest(last_seq=last_seq, wait_sec=2.0)
                     message = f"超过 {idle_seconds:.0f}s 无鼠标操作（已空闲 {idle_for:.0f}s）"
                     raw_frame = frame if (frame is not None and is_valid_frame(frame)) else None
                     alert_frame = raw_frame
@@ -94,7 +94,7 @@ class MouseIdleAlgorithm(BaseAlgorithm):
                             raw_frame=raw_frame,
                         )
                     last_alert_time = now
-                    time.sleep(1.0)
+                    stop_event.wait(1.0)
             finally:
                 if pump is not None:
                     pump.release()
