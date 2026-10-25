@@ -13,7 +13,14 @@ sys.path.insert(0, str(ROOT))
 
 from utils import rtsp  # noqa: E402
 from utils.rtsp import FramePump, InferPacer  # noqa: E402
-from utils.stream import RtspCapture, drain_to_live, raw_to_bgr  # noqa: E402
+from utils.stream import (  # noqa: E402
+    RtspCapture,
+    _mask_url,
+    _rtspsrc,
+    _split_rtsp_auth,
+    drain_to_live,
+    raw_to_bgr,
+)
 
 URL = "rtsp://127.0.0.1/live"
 
@@ -122,6 +129,39 @@ class _ReadOnly:
 
     def release(self):
         pass
+
+
+class TestRtspAuthInPipeline(unittest.TestCase):
+    def test_password_may_contain_at(self):
+        url = "rtsp://admin:c@111@192.168.25.115:554/Streaming/Channels/101"
+        location, username, password = _split_rtsp_auth(url)
+        self.assertEqual(location, "rtsp://192.168.25.115:554/Streaming/Channels/101")
+        self.assertEqual(username, "admin")
+        self.assertEqual(password, "c@111")
+        src = _rtspsrc(url)
+        self.assertIn('location="rtsp://192.168.25.115:554/Streaming/Channels/101"', src)
+        self.assertIn('user-id="admin"', src)
+        self.assertIn('user-pw="c@111"', src)
+        self.assertNotIn("admin:c", src)
+        self.assertNotIn("c@111@", _mask_url(url))
+
+    def test_percent_encoded_password_is_decoded_for_rtspsrc(self):
+        location, username, password = _split_rtsp_auth(
+            "rtsp://admin:c%40111@192.168.25.115/live"
+        )
+        self.assertEqual((location, username, password), (
+            "rtsp://192.168.25.115/live", "admin", "c@111",
+        ))
+
+    def test_quote_in_password_is_escaped(self):
+        src = _rtspsrc('rtsp://admin:a"b\\c@192.168.25.115/live')
+        self.assertIn(r'user-pw="a\"b\\c"', src)
+
+    def test_url_without_auth_stays_unchanged(self):
+        url = "rtsp://192.168.25.115/live"
+        self.assertEqual(_split_rtsp_auth(url), (url, "", ""))
+        self.assertNotIn("user-id", _rtspsrc(url))
+        self.assertEqual(_mask_url(url), url)
 
 
 class TestDrainToLive(unittest.TestCase):

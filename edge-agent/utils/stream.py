@@ -113,12 +113,54 @@ def _hwdec_wanted():
 
 def _mask_url(url):
     """日志里不带摄像头账号密码。"""
-    text = str(url or "")
+    location, username, password = _split_rtsp_auth(url)
+    if not username and not password:
+        return str(url or "")
+    return location.replace("://", "://***@", 1)
+
+
+def _gst_quote(value):
+    """gst-launch 双引号字符串。密码里的 @、! 不能露在引号外面。"""
+    escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _split_rtsp_auth(url):
+    """拆出账号密码。密码里可以有 @，按主机前的最后一个 @ 切。
+
+    返回 (不带账号的地址, 用户名, 密码)。没有账号时地址原样返回。
+    """
+    from urllib.parse import unquote
+
+    text = str(url or "").strip()
     head, sep, rest = text.partition("://")
-    authority, slash, path = rest.partition("/")
-    if not sep or "@" not in authority:
-        return text
-    return f"{head}://***@{authority.rsplit('@', 1)[1]}{slash}{path}"
+    if not sep:
+        return text, "", ""
+    authority, slash, tail = rest.partition("/")
+    userinfo, at, hostport = authority.rpartition("@")
+    if not at or not hostport:
+        return text, "", ""
+    username, colon, password = userinfo.partition(":")
+    if not colon:
+        password = ""
+    location = f"{head}://{hostport}{slash}{tail}"
+    return location, unquote(username), unquote(password)
+
+
+def _rtspsrc(rtsp_url):
+    """rtspsrc 片段。账号密码用属性传递，不写进 location。
+
+    GStreamer 按第一个 @ 切 RTSP 地址。密码里再有 @（例如 cloud@123）时，
+    写在 location 里会被当成主机名，摄像头返回 401，硬解管道就被放弃。
+    """
+    location, username, password = _split_rtsp_auth(rtsp_url)
+    auth = ""
+    if username or password:
+        auth = f" user-id={_gst_quote(username)} user-pw={_gst_quote(password)}"
+    return (
+        f"rtspsrc location={_gst_quote(location)}{auth} protocols=tcp latency=200 retry=5 "
+        f"timeout=5000000 tcp-timeout=5000000 drop-on-latency=true"
+    )
 
 
 def _gi_gst():
@@ -216,11 +258,7 @@ def _gst_candidates(rtsp_url):
     appsink 收解码器原生格式（Jetson 由 VIC 转成 BGRx），推理取走的那一帧才转 BGR。
     格式为 BGR 的是带 videoconvert 的旧管道，只给读不了原生格式的老 OpenCV 用。
     """
-    location = rtsp_url.replace("\\", "\\\\").replace('"', '\\"')
-    src = (
-        f'rtspsrc location="{location}" protocols=tcp latency=200 retry=5 '
-        f'timeout=5000000 tcp-timeout=5000000 drop-on-latency=true'
-    )
+    src = _rtspsrc(rtsp_url)
     sink = "appsink name=sink max-buffers=1 drop=true sync=false"
 
     def chain(codec, decoder, fmt, label):
