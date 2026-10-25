@@ -14,3 +14,6 @@ config.yaml
 image.png
 check_jetson.sh
 export_tensorrt.sh
+# docker save 若写在本目录，下次构建会把整个镜像 tar 再 COPY 进去，体积翻倍
+*.tar
+*.tar.gz

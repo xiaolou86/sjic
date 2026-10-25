@@ -304,6 +304,11 @@ FUSION_SCENE_PRESETS = [
 ]
 
 
+def detection_scene_count():
+    """运行概览「算法场景」：目标检测场景与姿态检测场景之和。"""
+    return len(OD_SCENE_PRESETS) + len(POSE_SCENE_PRESETS)
+
+
 def _od_schema():
     return {
         'scene_presets': OD_SCENE_PRESETS,

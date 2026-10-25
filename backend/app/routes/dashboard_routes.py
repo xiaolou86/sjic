@@ -8,12 +8,11 @@ from sqlalchemy import func
 from app.extensions import db
 from app.models.camera import Camera
 from app.models.detection_model import DetectionModel
-from app.models.algorithm import Algorithm
 from app.models.edge_node import EdgeNode
 from app.models.task import Task
 from app.models.alert import Alert
 from app.middleware.auth import token_required
-from app.utils.algorithm_catalog import label_for_alert_type
+from app.utils.algorithm_catalog import detection_scene_count, label_for_alert_type
 
 dashboard_bp = Blueprint('dashboard', __name__)
 
@@ -32,7 +31,7 @@ def dashboard_summary():
     try:
         camera_count = Camera.query.count()
         model_count = DetectionModel.query.count()
-        algorithm_count = Algorithm.query.count()
+        scene_count = detection_scene_count()
         node_count = EdgeNode.query.count()
         online_node_count = EdgeNode.query.filter_by(status='online').count()
         task_count = Task.query.count()
@@ -116,7 +115,7 @@ def dashboard_summary():
             'counts': {
                 'cameras': camera_count,
                 'models': model_count,
-                'algorithms': algorithm_count,
+                'algorithm_scenes': scene_count,
                 'nodes': node_count,
                 'nodes_online': online_node_count,
                 'tasks': task_count,

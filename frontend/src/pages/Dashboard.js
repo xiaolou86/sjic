@@ -15,7 +15,7 @@ const TICKER_MS = 4500;
 const STAT_CARDS = [
   { key: 'cameras', label: '接入视频', icon: Videocam, path: '/streams', color: '#42a5f5' },
   { key: 'models', label: '模型数量', icon: ModelTraining, path: '/models', color: '#ab47bc' },
-  { key: 'algorithms', label: '算法数量', icon: Code, path: '/algorithms', color: '#26a69a' },
+  { key: 'algorithm_scenes', label: '算法场景', icon: Code, path: '/algorithms', color: '#26a69a' },
   { key: 'nodes', label: '边缘终端', icon: Computer, path: '/nodes', color: '#66bb6a', subKey: 'nodes_online', subLabel: '在线' },
   { key: 'tasks_running', label: '运行中任务', icon: Task, path: '/tasks', color: '#ffa726', subKey: 'tasks', subLabel: '全部' },
 ];
@@ -45,7 +45,7 @@ function Dashboard() {
   const [counts, setCounts] = useState({
     cameras: 0,
     models: 0,
-    algorithms: 0,
+    algorithm_scenes: 0,
     nodes: 0,
     nodes_online: 0,
     tasks: 0,

@@ -46,7 +46,7 @@ verify_edge_tar() {
   esac
   echo "清单不在文件开头，改为通读 $(basename "$tar_path")..."
   manifest="$(tar -xOf "$tar_path" manifest.json 2>/dev/null)" || {
-    echo "无法读取 $(basename "$tar_path") 的 manifest.json。请在 Jetson 上执行 docker save -o sjic-edge-jetson.tar sjic-edge:jetson。" >&2
+    echo "无法读取 $(basename "$tar_path") 的 manifest.json。请在仓库根目录执行 docker save -o sjic-edge-jetson.tar sjic-edge:jetson，不要把 tar 写进 edge-agent/。" >&2
     exit 1
   }
   case "$manifest" in
@@ -141,7 +141,7 @@ export_edge() {
     docker save -o "$image_dest" sjic-edge:jetson
     image_src="$image_dest"
   else
-    echo "开发机上没有 sjic-edge:jetson。请在 Jetson 构建机执行 docker save -o sjic-edge-jetson.tar sjic-edge:jetson，再用 --edge-image 指定。" >&2
+    echo "开发机上没有 sjic-edge:jetson。请在仓库根目录执行 docker save -o sjic-edge-jetson.tar sjic-edge:jetson，再用 --edge-image 指定。" >&2
     exit 1
   fi
   cp -a "$package" "$folder/"
@@ -156,8 +156,8 @@ export_edge() {
   record_sha256 "$REPO/dist/sjic-edge-setup-${VERSION}.tar.gz"
   rm -rf "$folder"
   if [ "$(readlink -f "$image_src")" != "$(readlink -f "$image_dest")" ]; then
-    echo "正在复制边缘镜像到 $image_dest（不压缩）..."
-    cp -a "$image_src" "$image_dest"
+    echo "moving edge image from $image_src to $image_dest (no compression)..."
+    mv "$image_src" "$image_dest"
   fi
   echo "正在计算边缘镜像校验和..."
   record_sha256 "$image_dest"

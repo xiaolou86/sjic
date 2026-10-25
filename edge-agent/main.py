@@ -63,7 +63,7 @@ def read_version():
 def main():
     config = load_config()
     arch = config.get('architecture', 'x86')
-    logger.info(f"Starting SJIC Edge Agent [{config['edge_name']}] [{config['edge_id']}] on platform: {arch}")
+    logger.info(f"Starting SJIC Edge Agent [{config['edge_name']}] [{config['edge_id']}] on platform v10: {arch}")
     start_gpu_sampler(arch)
 
     # 1. 实例化任务管理器 (负责 AI 推理全生命周期)
