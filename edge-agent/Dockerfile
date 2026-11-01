@@ -15,18 +15,23 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_DEFAULT_TIMEOUT=120 \
     TZ=Asia/Shanghai
 
+# TZ=Asia/Shanghai 只是名字。基础镜像没有 zoneinfo 时，glibc 会把 Asia/Shanghai
+# 解析成 POSIX 时区（缩写 Asia、偏移 0），date 和日志仍是 UTC。
 # RTSP 硬解：pip 的 opencv-python-headless 不带 GStreamer，utils/stream.py 经 PyGObject 直接跑
 # GStreamer 管道（nvv4l2decoder 来自 L4T，不在这里装；缺了就回退 FFmpeg 软解）。
 # apt 的 python3-gi 只装给系统 Python；python:3.10-slim 里用不上，x86 构建传 0。
 ARG INSTALL_GSTREAMER=1
-RUN if [ "${INSTALL_GSTREAMER}" = "1" ]; then \
-        apt-get update && \
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tzdata && \
+    ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
+    echo $TZ > /etc/timezone && \
+    if [ "${INSTALL_GSTREAMER}" = "1" ]; then \
         DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             python3-gi gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 \
             gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-            gstreamer1.0-plugins-bad gstreamer1.0-libav && \
-        rm -rf /var/lib/apt/lists/*; \
-    fi
+            gstreamer1.0-plugins-bad gstreamer1.0-libav; \
+    fi && \
+    rm -rf /var/lib/apt/lists/*
 
 # 仅安装 Agent 通用依赖；推理框架由基础镜像提供（Jetson）
 # x86 构建时请通过 build-args 换成带 torch 的 requirements
