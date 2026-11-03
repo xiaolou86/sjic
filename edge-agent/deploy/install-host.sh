@@ -13,9 +13,34 @@ AGENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_DEPLOY="$(cd "$SCRIPT_DIR/../.." && pwd)/deploy"
 ROOT=/opt/sjic
 DEST="$ROOT/releases/initial"
+EDGE_ARCH="${EDGE_ARCH:-jetson}"
+if [ "$EDGE_ARCH" = "x86" ]; then
+  EDGE_IMAGE=sjic-edge:x86
+  COMPOSE_SRC="$SCRIPT_DIR/docker-compose.x86.yml"
+  ARCH_HINT="x86"
+else
+  EDGE_IMAGE=sjic-edge:jetson
+  COMPOSE_SRC="$SCRIPT_DIR/docker-compose.yml"
+  ARCH_HINT="jetson"
+fi
 
-if ! docker image inspect sjic-edge:jetson >/dev/null 2>&1; then
-  echo "缺少镜像 sjic-edge:jetson。请先在 edge-agent 目录执行: docker compose build" >&2
+compose() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose "$@"
+  elif command -v docker-compose >/dev/null 2>&1; then
+    docker-compose "$@"
+  else
+    echo "需要 Docker Compose（docker compose 或 docker-compose）。openEuler 请安装 docker-compose 插件。" >&2
+    exit 1
+  fi
+}
+
+if ! docker image inspect "$EDGE_IMAGE" >/dev/null 2>&1; then
+  if [ "$EDGE_ARCH" = "x86" ]; then
+    echo "缺少镜像 $EDGE_IMAGE。请先在 edge-agent 目录执行: docker compose --profile x86 build" >&2
+  else
+    echo "缺少镜像 $EDGE_IMAGE。请先在 edge-agent 目录执行: docker compose build" >&2
+  fi
   exit 1
 fi
 
@@ -38,11 +63,11 @@ install_file() {
 install_file "$REPO_DEPLOY/verify_release.py" "$ROOT/updater/verify_release.py" 644
 install_file "$REPO_DEPLOY/apply-package.sh" "$ROOT/updater/apply-package.sh" 755
 install_file "$SCRIPT_DIR/apply-edge.sh" "$ROOT/updater/apply-edge.sh" 755
-install_file "$SCRIPT_DIR/docker-compose.yml" "$ROOT/updater/docker-compose.yml" 644
+install_file "$COMPOSE_SRC" "$ROOT/updater/docker-compose.yml" 644
 
 if [ ! -f "$ROOT/edge/config.yaml" ]; then
   sed 's/\r$//' "$AGENT_DIR/config.yaml" > "$ROOT/edge/config.yaml"
-  echo "已写入 $ROOT/edge/config.yaml。请确认 architecture 为 jetson，并填写平台地址。"
+  echo "已写入 $ROOT/edge/config.yaml。请确认 architecture 为 $ARCH_HINT，并填写平台地址。"
 fi
 
 if [ ! -L "$ROOT/current" ]; then
@@ -59,5 +84,5 @@ if [ ! -L "$ROOT/current" ]; then
   ln -sfn "$DEST" "$ROOT/current"
 fi
 
-docker compose -f "$ROOT/updater/docker-compose.yml" up -d
-echo "Jetson Agent 已按 /opt/sjic/current/edge-agent 挂载启动。之后由管理平台页面下发升级。"
+compose -f "$ROOT/updater/docker-compose.yml" up -d
+echo "$ARCH_HINT Agent 已按 /opt/sjic/current/edge-agent 挂载启动。之后由管理平台页面下发升级。"

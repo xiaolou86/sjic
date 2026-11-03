@@ -1,0 +1,24 @@
+name: sjic-edge
+
+# x86 CPU / openEuler：镜像由 edge-agent/docker-compose.yml 的 x86 profile 构建为 sjic-edge:x86。
+# 不要用同目录 docker-compose.yml（那份带 runtime: nvidia，没有 NVIDIA Container Toolkit 会起不来）。
+
+services:
+  edge-agent:
+    image: sjic-edge:x86
+    container_name: sjic-edge
+    restart: unless-stopped
+    network_mode: host
+    ipc: host
+    pid: host
+    privileged: true
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - /opt/sjic/current/edge-agent:/app:z
+      - /opt/sjic/edge/config.yaml:/app/config.yaml:ro,z
+      - /opt/sjic/edge/models:/app/models:z
+      - /opt/sjic/edge/alerts:/app/alerts:z
+      - /opt/sjic/edge/logs:/app/logs:z
+      - /opt/sjic/incoming:/opt/sjic/incoming:z
+      - /opt/sjic/updater:/opt/sjic/updater:ro,z

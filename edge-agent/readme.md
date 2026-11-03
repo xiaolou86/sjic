@@ -121,11 +121,22 @@ python export.py
 
 在开发用的 Jetson 上构建镜像并导出，客户盒子只安装交付包。步骤见 [docs/初次打包与部署.md](../docs/初次打包与部署.md)。
 
-### x86 / CPU 调试
+### x86 / CPU（普通 Linux、openEuler）
+
+宿主机不需要 NVIDIA runtime。容器是 Debian slim，和宿主机发行版无关。openEuler 上常见两点：没有 `nvidia` runtime；SELinux 开着时数据卷要带 `:z`（compose 里已加）。
 
 ```bash
-# 先将 config.yaml 中 architecture 改为 x86
+# config.yaml 中 architecture: "x86"
 docker compose --profile x86 up -d --build
 ```
+
+按 `/opt/sjic` 方式安装：
+
+```bash
+docker compose --profile x86 build
+sudo EDGE_ARCH=x86 bash deploy/install-host.sh
+```
+
+编排文件用 `deploy/docker-compose.x86.yml`，不要用带 `runtime: nvidia` 的那份。任务模型用 `.pt` / `.onnx`，不要用 Jetson 的 `.engine`。
 
 详见同目录 `Dockerfile`、`docker-compose.yml`。

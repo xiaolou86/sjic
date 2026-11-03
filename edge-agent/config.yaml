@@ -1,5 +1,5 @@
 edge_name: "" # optional
-architecture: "moore_e1000"       # jetson / rk3588 / x86
+architecture: "x86"       # jetson / rk3588 / x86
 
 mqtt:
   broker_url: "192.168.3.27"    # Platform IP address

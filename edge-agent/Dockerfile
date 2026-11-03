@@ -20,9 +20,11 @@ ENV PYTHONUNBUFFERED=1 \
 # RTSP 硬解：pip 的 opencv-python-headless 不带 GStreamer，utils/stream.py 经 PyGObject 直接跑
 # GStreamer 管道（nvv4l2decoder 来自 L4T，不在这里装；缺了就回退 FFmpeg 软解）。
 # apt 的 python3-gi 只装给系统 Python；python:3.10-slim 里用不上，x86 构建传 0。
+# libglib2.0-0 / libgomp1：slim 上 opencv-python-headless 运行时需要，和宿主机是否为 openEuler 无关。
 ARG INSTALL_GSTREAMER=1
 RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tzdata && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        tzdata libglib2.0-0 libgomp1 libgl1 && \
     ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
     echo $TZ > /etc/timezone && \
     if [ "${INSTALL_GSTREAMER}" = "1" ]; then \
@@ -36,8 +38,12 @@ RUN apt-get update && \
 # 仅安装 Agent 通用依赖；推理框架由基础镜像提供（Jetson）
 # x86 构建时请通过 build-args 换成带 torch 的 requirements
 ARG REQUIREMENTS_FILE=requirements.txt
+ARG INSTALL_CPU_TORCH=0
 COPY requirements.txt requirements-cpu.txt requirements-jetson.txt ./
-RUN pip install --no-cache-dir -r "${REQUIREMENTS_FILE}"
+RUN if [ "${INSTALL_CPU_TORCH}" = "1" ]; then \
+        pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu; \
+    fi && \
+    pip install --no-cache-dir -r "${REQUIREMENTS_FILE}"
 
 COPY . .
 

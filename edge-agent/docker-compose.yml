@@ -15,8 +15,10 @@
 # 远程重启/关机主机：平台下发 agent/power → nsenter 宿主机 PID 1 执行 reboot/poweroff
 #   因此需要 privileged + pid: host；网卡需开启 WOL 才能被平台网络唤醒
 #
-# x86/CPU 调试:
+# x86/CPU（普通 Linux / openEuler，无 NVIDIA runtime）:
+#   先把 config.yaml 的 architecture 改为 x86
 #   docker compose --profile x86 up -d --build
+#   现场按 /opt/sjic 挂载时用 deploy/docker-compose.x86.yml，不要用 nvidia 那份。
 
 services:
   edge-agent:
@@ -50,7 +52,7 @@ services:
     # devices:
     #   - /dev/video0:/dev/video0
 
-  # PC / 无 NVIDIA runtime 时的调试镜像（CPU）
+  # PC / openEuler / 无 NVIDIA runtime 时的 CPU 镜像。不要加 runtime: nvidia。
   edge-agent-x86:
     profiles: ["x86"]
     build:
@@ -60,6 +62,7 @@ services:
         BASE_IMAGE: ${EDGE_BASE_IMAGE_X86:-python:3.10-slim}
         REQUIREMENTS_FILE: requirements-cpu.txt
         INSTALL_GSTREAMER: "0"
+        INSTALL_CPU_TORCH: "1"
     image: sjic-edge:x86
     container_name: sjic-edge
     restart: unless-stopped
@@ -70,7 +73,8 @@ services:
     environment:
       - TZ=Asia/Shanghai
     volumes:
-      - ./config.yaml:/app/config.yaml:ro
-      - ./models:/app/models
-      - ./alerts:/app/alerts
-      - ./logs:/app/logs
+      # :z 给 openEuler 等开了 SELinux 的宿主机用；未启用时 Docker 会忽略标签
+      - ./config.yaml:/app/config.yaml:ro,z
+      - ./models:/app/models:z
+      - ./alerts:/app/alerts:z
+      - ./logs:/app/logs:z

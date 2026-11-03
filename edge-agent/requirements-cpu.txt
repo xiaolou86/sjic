@@ -3,10 +3,9 @@
 # ============================================================
 -r requirements.txt
 
-# 推理引擎 (CPU 模式的 ultralytics)
+# 推理引擎。torch / torchvision 由 Dockerfile 在 INSTALL_CPU_TORCH=1 时
+# 从 https://download.pytorch.org/whl/cpu 安装，避免 Tuna 拉到 CUDA 轮子。
 ultralytics>=8.2.0
-torch>=2.6.0
-torchvision>=0.15.0
 
 # 常用 CPU 推理加速（可选）
 onnxruntime>=1.15.0
