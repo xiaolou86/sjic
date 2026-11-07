@@ -13,6 +13,17 @@ VERSION="$(tr -d '[:space:]' < "$HERE/VERSION")"
 PKG="$HERE/sjic-platform-${VERSION}.tar.gz"
 STAGING=""
 
+compose() {
+  if command -v docker-compose >/dev/null 2>&1; then
+    docker-compose "$@"
+  elif docker compose version 2>/dev/null | grep -qi compose; then
+    docker compose "$@"
+  else
+    echo "未找到 Docker Compose。请安装 docker-compose 1.x 或 Docker Compose 插件。" >&2
+    return 1
+  fi
+}
+
 cleanup() {
   if [ -n "$STAGING" ] && [ -d "$STAGING" ]; then
     rm -rf "$STAGING"
@@ -56,7 +67,7 @@ if [ ! -L "$ROOT/current" ]; then
   echo "管理平台 ${VERSION} 已启动。浏览器打开 http://<本机IP>:38880"
 else
   echo "已存在 /opt/sjic/current，不覆盖应用和数据。已导入镜像并更新升级器，正在重建容器。"
-  docker compose -f "$ROOT/updater/docker-compose.yml" up -d --force-recreate
+  compose -f "$ROOT/updater/docker-compose.yml" up -d --force-recreate
   echo "容器已按现有应用重建。当前应用版本见 $ROOT/current/VERSION。"
 fi
 

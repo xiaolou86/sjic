@@ -8,6 +8,17 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MANIFEST="$HERE/manifest.json"
 COMPOSE="$ROOT/updater/docker-compose.yml"
 
+compose() {
+  if command -v docker-compose >/dev/null 2>&1; then
+    docker-compose "$@"
+  elif docker compose version 2>/dev/null | grep -qi compose; then
+    docker compose "$@"
+  else
+    echo "未找到 Docker Compose。请安装 docker-compose 1.x 或 Docker Compose 插件。" >&2
+    return 1
+  fi
+}
+
 json_get() {
   sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" "$MANIFEST" | head -1
 }
@@ -163,11 +174,11 @@ copy_legacy_images() {
 }
 
 platform_up() {
-  docker compose -f "$COMPOSE" up -d --force-recreate --no-deps backend frontend
+  compose -f "$COMPOSE" up -d --force-recreate --no-deps backend frontend
 }
 
 run_migration() {
-  docker compose -f "$COMPOSE" run --rm --no-deps -T -e SJIC_MIGRATE_ONLY=1 backend \
+  compose -f "$COMPOSE" run --rm --no-deps -T -e SJIC_MIGRATE_ONLY=1 backend \
     python -c "import migrate_entry; migrate_entry.main()"
 }
 
@@ -189,7 +200,7 @@ rollback_platform() {
   local message="$1"
   ROLLBACK_ON_ERROR=0
   write_status failed "$message"
-  docker compose -f "$COMPOSE" stop backend || true
+  compose -f "$COMPOSE" stop backend || true
   restore_db || true
   if [ -n "$PREV" ]; then
     ln -sfn "$PREV" "$ROOT/current"
@@ -202,8 +213,8 @@ rollback_platform() {
 upgrade_platform() {
   require_space $(($(db_size_mb) + 1024))
   write_status running "正在停止平台"
-  if [ -n "$PREV" ] && ! docker compose -f "$COMPOSE" stop backend; then
-    docker compose -f "$COMPOSE" start backend || true
+  if [ -n "$PREV" ] && ! compose -f "$COMPOSE" stop backend; then
+    compose -f "$COMPOSE" start backend || true
     fail "无法停止平台后端，未做任何改动"
   fi
   ROLLBACK_ON_ERROR=1
@@ -223,7 +234,7 @@ upgrade_platform() {
 # ---------- 边缘 ----------
 
 edge_up() {
-  docker compose -f "$COMPOSE" up -d --force-recreate --no-deps edge-agent
+  compose -f "$COMPOSE" up -d --force-recreate --no-deps edge-agent
 }
 
 # 新 agent 进入主循环后把自己的版本号写进 ready 文件。

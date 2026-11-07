@@ -39,6 +39,7 @@ case "$*" in
 esac
 exit 0
 EOF
+cp "$STUB/docker" "$STUB/docker-compose"
 
 cat > "$STUB/systemd-run" <<'EOF'
 #!/bin/bash
@@ -137,6 +138,7 @@ bash "$WORK/pkg-p-1.0.0/install.sh" > "$WORK/out.txt" 2>&1
 check "首装平台成功" '[ $? -eq 0 ] || true; [ "$(current_of "$P")" = 1.0.0 ]'
 check "首装状态 success" 'grep -q "\"state\":\"success\"" "$P/incoming/platform.status.json"'
 check "首装不调用 stop" '! grep -q " stop backend" "$P/docker.log"'
+check "Compose 调用兼容独立版命令" 'grep -q "^docker -f .* up -d" "$P/docker.log"'
 
 echo old > "$P/data/instance/app.db"
 echo oldwal > "$P/data/instance/app.db-wal"
