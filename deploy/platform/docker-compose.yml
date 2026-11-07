@@ -1,4 +1,4 @@
-name: sjic-platform
+version: "3.7"
 
 # 初次构建镜像仍用仓库根目录的 docker-compose.yml（打上 sjic-backend:runtime / sjic-frontend:runtime）。
 # 本文件只挂载 /opt/sjic/current 里的应用目录，升级时不重新构建镜像。

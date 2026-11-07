@@ -1,4 +1,4 @@
-name: sjic-edge
+version: "3.7"
 
 # 镜像由 edge-agent/docker-compose.yml 构建为 sjic-edge:jetson，本文件只挂载应用目录。
 

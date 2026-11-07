@@ -10,9 +10,9 @@ COMPOSE="$ROOT/updater/docker-compose.yml"
 
 compose() {
   if command -v docker-compose >/dev/null 2>&1; then
-    docker-compose "$@"
+    docker-compose -p "sjic-${COMPONENT}" "$@"
   elif docker compose version 2>/dev/null | grep -qi compose; then
-    docker compose "$@"
+    docker compose -p "sjic-${COMPONENT}" "$@"
   else
     echo "未找到 Docker Compose。请安装 docker-compose 1.x 或 Docker Compose 插件。" >&2
     return 1
