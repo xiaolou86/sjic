@@ -145,4 +145,4 @@ sudo EDGE_ARCH=x86 bash deploy/install-host.sh
 
 编排文件用 `deploy/docker-compose.x86.yml`，不要用带 `runtime: nvidia` 的那份。任务模型用 `.pt` / `.onnx`，不要用 Jetson 的 `.engine`。
 
-详见同目录 `Dockerfile`、`docker-compose.yml`。
+x86 构建看 `Dockerfile.x86`、`docker-compose.x86.yml`。Jetson 仍用 `Dockerfile`。

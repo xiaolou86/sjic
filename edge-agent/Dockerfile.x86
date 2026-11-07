@@ -1,0 +1,39 @@
+# x86 CPU 镜像。基础镜像写死 python:3.10-slim，不要用 Jetson/JetPack。
+FROM python:3.10-slim
+
+WORKDIR /app
+
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_INDEX_URL=${PIP_INDEX_URL} \
+    PIP_DEFAULT_TIMEOUT=120 \
+    TZ=Asia/Shanghai
+
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        tzdata libglib2.0-0 libgomp1 libgl1 && \
+    ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
+    echo $TZ > /etc/timezone && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt requirements-cpu.txt ./
+# --index-url 只用 PyTorch CPU 源时，typing-extensions 等依赖会落到源码包，
+# 再去该源找 flit_core 就会失败。主源仍用清华，CPU 轮子走 extra index。
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir torch torchvision \
+        --index-url https://download.pytorch.org/whl/cpu \
+        --extra-index-url ${PIP_INDEX_URL} && \
+    pip install --no-cache-dir -r requirements-cpu.txt
+
+COPY . .
+
+RUN python -m compileall -b -f -q /app \
+    && find /app -depth -type d -name __pycache__ -exec rm -rf {} + \
+    && find /app -type f -name '*.py' -delete \
+    && sed -i 's/\r$//' /app/entrypoint.sh \
+    && chmod +x /app/entrypoint.sh \
+    && mkdir -p /app/models /app/alerts /app/logs
+
+CMD ["/bin/sh", "/app/entrypoint.sh"]
