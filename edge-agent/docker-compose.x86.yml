@@ -1,0 +1,29 @@
+# x86 CPU / openEuler。给 Docker 18.09 + docker-compose 1.x 用，不要加 --profile。
+# 安装: yum/dnf install docker-compose  或 pip install 'docker-compose<2'
+# 启动: docker-compose -f docker-compose.x86.yml up -d --build
+version: "3.7"
+
+services:
+  edge-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: python:3.10-slim
+        REQUIREMENTS_FILE: requirements-cpu.txt
+        INSTALL_GSTREAMER: "0"
+        INSTALL_CPU_TORCH: "1"
+    image: sjic-edge:x86
+    container_name: sjic-edge
+    restart: unless-stopped
+    network_mode: host
+    ipc: host
+    pid: host
+    privileged: true
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro,z
+      - ./models:/app/models:z
+      - ./alerts:/app/alerts:z
+      - ./logs:/app/logs:z

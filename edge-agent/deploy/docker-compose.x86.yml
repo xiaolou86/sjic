@@ -1,7 +1,6 @@
-name: sjic-edge
-
-# x86 CPU / openEuler：镜像由 edge-agent/docker-compose.yml 的 x86 profile 构建为 sjic-edge:x86。
-# 不要用同目录 docker-compose.yml（那份带 runtime: nvidia，没有 NVIDIA Container Toolkit 会起不来）。
+# x86 CPU / openEuler 现场编排。Docker 18.09 用 docker-compose 1.x，不要 --profile。
+# 不要用同目录 docker-compose.yml（那份带 runtime: nvidia）。
+version: "3.7"
 
 services:
   edge-agent:

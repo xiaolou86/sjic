@@ -25,21 +25,23 @@ else
 fi
 
 compose() {
-  if docker compose version >/dev/null 2>&1; then
-    docker compose "$@"
-  elif command -v docker-compose >/dev/null 2>&1; then
+  # Docker 18.09 没有 compose 插件；`docker compose --version` 会误打成 Docker 版本。
+  # 优先独立的 docker-compose 1.x。
+  if command -v docker-compose >/dev/null 2>&1; then
     docker-compose "$@"
+  elif docker compose version 2>/dev/null | grep -qi compose; then
+    docker compose "$@"
   else
-    echo "需要 Docker Compose（docker compose 或 docker-compose）。openEuler 请安装 docker-compose 插件。" >&2
+    echo "需要 docker-compose 1.x。Docker 18.09 不支持 --profile，请安装: pip install 'docker-compose<2'" >&2
     exit 1
   fi
 }
 
 if ! docker image inspect "$EDGE_IMAGE" >/dev/null 2>&1; then
   if [ "$EDGE_ARCH" = "x86" ]; then
-    echo "缺少镜像 $EDGE_IMAGE。请先在 edge-agent 目录执行: docker compose --profile x86 build" >&2
+    echo "缺少镜像 $EDGE_IMAGE。请先在 edge-agent 目录执行: docker-compose -f docker-compose.x86.yml build" >&2
   else
-    echo "缺少镜像 $EDGE_IMAGE。请先在 edge-agent 目录执行: docker compose build" >&2
+    echo "缺少镜像 $EDGE_IMAGE。请先在 edge-agent 目录执行: docker-compose build" >&2
   fi
   exit 1
 fi

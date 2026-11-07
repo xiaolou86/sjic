@@ -125,15 +125,21 @@ python export.py
 
 宿主机不需要 NVIDIA runtime。容器是 Debian slim，和宿主机发行版无关。openEuler 上常见两点：没有 `nvidia` runtime；SELinux 开着时数据卷要带 `:z`（compose 里已加）。
 
+Docker 18.09 没有 Compose V2，`--profile` 不可用。先装独立的 `docker-compose` 1.x，再用单独文件：
+
 ```bash
+# 若没有 docker-compose 命令:
+#   pip install 'docker-compose<2'
+#   或 yum/dnf install docker-compose
+
 # config.yaml 中 architecture: "x86"
-docker compose --profile x86 up -d --build
+docker-compose -f docker-compose.x86.yml up -d --build
 ```
 
 按 `/opt/sjic` 方式安装：
 
 ```bash
-docker compose --profile x86 build
+docker-compose -f docker-compose.x86.yml build
 sudo EDGE_ARCH=x86 bash deploy/install-host.sh
 ```
 
