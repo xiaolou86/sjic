@@ -66,8 +66,12 @@ if [ ! -L "$ROOT/current" ]; then
   SJIC_ROOT="$ROOT" bash "$STAGING/install.sh"
   echo "管理平台 ${VERSION} 已启动。浏览器打开 http://<本机IP>:38880"
 else
-  echo "已存在 /opt/sjic/current，不覆盖应用和数据。已导入镜像并更新升级器，正在重建容器。"
-  compose -f "$ROOT/updater/docker-compose.yml" up -d --force-recreate
+  if [ ! -f "$ROOT/current/install.sh" ]; then
+    echo "现有应用包缺少 install.sh，无法安全执行数据库迁移。" >&2
+    exit 1
+  fi
+  echo "已存在 /opt/sjic/current，不覆盖应用和数据。已导入镜像并更新升级器，正在检查数据库迁移并重建容器。"
+  SJIC_ROOT="$ROOT" bash "$ROOT/current/install.sh"
   echo "容器已按现有应用重建。当前应用版本见 $ROOT/current/VERSION。"
 fi
 
