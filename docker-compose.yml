@@ -57,6 +57,7 @@ services:
     environment:
       - TZ=Asia/Shanghai
       - DOWNLOAD_SECURE_KEY=${DOWNLOAD_SECURE_KEY:-my-super-secret-key-for-nginx}
+      - BACKEND_HOST=backend
     depends_on:
       - backend
     networks:
@@ -64,4 +65,5 @@ services:
 
 networks:
   sjic-network:
+    name: sjic-network
     driver: bridge

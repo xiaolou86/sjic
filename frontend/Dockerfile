@@ -23,7 +23,7 @@ RUN apk add --no-cache tzdata
 # 拷贝打包好的静态文件到 Nginx 根目录
 COPY --from=build /app/build /usr/share/nginx/html
 
-# 使用官方 entrypoint 的 envsubst：注入 DOWNLOAD_SECURE_KEY
+# 使用官方 entrypoint 的 envsubst：注入下载密钥和后端地址
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 
 RUN mkdir -p /usr/share/nginx/models /usr/share/nginx/upgrades

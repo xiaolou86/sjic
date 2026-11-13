@@ -8,9 +8,7 @@ services:
     image: sjic-backend:runtime
     container_name: sjic-backend
     restart: unless-stopped
-    ports:
-      - "38881:38881"
-      - "38883:38883"
+    network_mode: host
     volumes:
       - /opt/sjic/current/backend:/app
       - /opt/sjic/data/instance:/app/instance
@@ -40,15 +38,12 @@ services:
       - SJIC_UPGRADES=/opt/sjic/data/upgrades
       - SJIC_INCOMING=/opt/sjic/incoming
       - HOST_MACHINE_ID=${HOST_MACHINE_ID:-}
-    networks:
-      - sjic-network
 
   frontend:
     image: sjic-frontend:runtime
     container_name: sjic-frontend
     restart: unless-stopped
-    ports:
-      - "38880:38880"
+    network_mode: host
     volumes:
       - /opt/sjic/current/frontend/build:/usr/share/nginx/html:ro
       - /opt/sjic/data/models:/usr/share/nginx/models:ro
@@ -56,11 +51,6 @@ services:
     environment:
       - TZ=Asia/Shanghai
       - DOWNLOAD_SECURE_KEY=${DOWNLOAD_SECURE_KEY:-my-super-secret-key-for-nginx}
+      - BACKEND_HOST=127.0.0.1
     depends_on:
       - backend
-    networks:
-      - sjic-network
-
-networks:
-  sjic-network:
-    driver: bridge
